@@ -6,7 +6,7 @@ import type { ComponentType } from "react";
 import {
   BarChart3, LayoutDashboard, Inbox, TrendingUp, FileText,
   ShieldCheck, CheckCircle2, Clock, Settings, ChevronDown,
-  Users, Car, DollarSign, ShoppingBag, Landmark,
+  Users, Car, DollarSign, ShoppingBag, Landmark, Layers, Droplets,
 } from "lucide-react";
 import { ENTITY_CONFIG, ENTITY_SLUGS, type EntitySlug } from "@/lib/types";
 import { getMockData } from "@/lib/mock";
@@ -118,12 +118,6 @@ export function Sidebar() {
             active={pathname.startsWith("/operations")}
             badge={opsBadge > 0 ? opsBadge : undefined}
           />
-          <NavItem
-            icon={Clock}
-            label="History"
-            href="/analyze/history"
-            active={pathname.startsWith("/analyze/history")}
-          />
         </Section>
 
         {/* SECTION 4 — ANALYZE */}
@@ -135,16 +129,22 @@ export function Sidebar() {
             active={pathname.startsWith("/analyze/performance")}
           />
           <NavItem
-            icon={Users}
-            label="Customers & Vendors"
-            href="/analyze/customers-vendors"
-            active={pathname.startsWith("/analyze/customers-vendors")}
+            icon={Layers}
+            label="Consolidated"
+            href="/analyze/consolidated"
+            active={pathname.startsWith("/analyze/consolidated")}
           />
           <NavItem
-            icon={FileText}
-            label="Reports"
-            href="/reports"
-            active={pathname.startsWith("/reports")}
+            icon={Droplets}
+            label="Cash Flow"
+            href="/analyze/cashflow"
+            active={pathname.startsWith("/analyze/cashflow")}
+          />
+          <NavItem
+            icon={Clock}
+            label="History"
+            href="/analyze/history"
+            active={pathname.startsWith("/analyze/history")}
           />
         </Section>
 
