@@ -1,0 +1,29 @@
+# Dependencies
+node_modules/
+.pnp
+.pnp.js
+
+# Next.js build output
+.next/
+out/
+
+# Secrets — NEVER commit any of these
+.env
+.env.local
+.env*.local
+*.json.secret
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Vercel / Replit
+.vercel
+.replit.secrets
+
+# TypeScript
+*.tsbuildinfo
+next-env.d.ts
+
+# NOTE: data/mock/ is safe to commit — it contains only invented fake data.
+# NEVER add real financial data files to data/mock/ or anywhere in this repo.

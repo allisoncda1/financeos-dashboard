@@ -1,0 +1,33 @@
+@import "tailwindcss";
+
+@theme {
+  /* Sidebar — dark forest green */
+  --color-sidebar:        #1B3A2C;
+  --color-sidebar-border: rgba(255,255,255,0.07);
+  --color-sidebar-muted:  rgba(255,255,255,0.40);
+  --color-sidebar-active: rgba(16,185,129,0.12);
+
+  /* Brand */
+  --color-brand:          #10B981;
+  --color-brand-dark:     #059669;
+
+  /* Entity accent colors */
+  --color-entity-cardealer: #10B981;
+  --color-entity-t3:        #F59E0B;
+  --color-entity-topmrktr:  #8B5CF6;
+  --color-entity-smilemore: #3B82F6;
+
+  /* Status */
+  --color-pass: #22C55E;
+  --color-fail: #EF4444;
+  --color-warn: #F59E0B;
+}
+
+* { box-sizing: border-box; }
+
+body {
+  font-family: -apple-system, BlinkMacSystemFont, "Inter", "Segoe UI", Roboto,
+    "Helvetica Neue", Arial, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  background: #F4F5F7;
+}
