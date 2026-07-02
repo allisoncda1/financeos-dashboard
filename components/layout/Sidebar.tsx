@@ -6,7 +6,7 @@ import type { ComponentType } from "react";
 import {
   BarChart3, LayoutDashboard, Inbox, TrendingUp, FileText,
   ShieldCheck, CheckCircle2, Clock, Settings, ChevronDown,
-  Users, Car,
+  Users, Car, DollarSign, ShoppingBag, Landmark,
 } from "lucide-react";
 import { ENTITY_CONFIG, ENTITY_SLUGS, type EntitySlug } from "@/lib/types";
 import { getMockData } from "@/lib/mock";
@@ -75,16 +75,16 @@ export function Sidebar() {
             const cfg = ENTITY_CONFIG[slug];
             const score = healthScores[slug];
             const dotColor = score >= 85 ? "#10B981" : score >= 70 ? "#F59E0B" : "#EF4444";
-            const active = pathname === `/entity/${slug}` || pathname.startsWith(`/entity/${slug}/`);
+            const isActive = pathname === `/entity/${slug}` || pathname.startsWith(`/entity/${slug}/`);
             return (
               <Link
                 key={slug}
                 href={`/entity/${slug}`}
                 className={`flex items-center gap-2.5 px-2.5 py-1.5 rounded-lg text-[11px] w-full transition-all font-medium ${
-                  active ? "" : "hover:bg-white/5"
+                  isActive ? "" : "hover:bg-white/5"
                 }`}
                 style={
-                  active
+                  isActive
                     ? { background: "rgba(16,185,129,0.12)", color: "#FFFFFF", borderLeft: "2px solid #10B981" }
                     : { color: "rgba(255,255,255,0.55)" }
                 }
@@ -96,6 +96,18 @@ export function Sidebar() {
             );
           })}
         </Section>
+
+        {/* SECTION 2b — ENTITY SUB-NAV (shown when inside an entity) */}
+        {entitySlug && (
+          <Section label="This Entity">
+            <NavItem icon={LayoutDashboard} label="Overview"   href={`/entity/${entitySlug}`}           active={pathname === `/entity/${entitySlug}` || pathname === `/entity/${entitySlug}/`} />
+            <NavItem icon={DollarSign}     label="Financials"  href={`/entity/${entitySlug}/financials`} active={pathname.startsWith(`/entity/${entitySlug}/financials`)} />
+            <NavItem icon={Users}          label="Customers"   href={`/entity/${entitySlug}/customers`}  active={pathname.startsWith(`/entity/${entitySlug}/customers`)} />
+            <NavItem icon={ShoppingBag}    label="Vendors"     href={`/entity/${entitySlug}/vendors`}    active={pathname.startsWith(`/entity/${entitySlug}/vendors`)} />
+            <NavItem icon={Landmark}       label="Banking"     href={`/entity/${entitySlug}/banking`}    active={pathname.startsWith(`/entity/${entitySlug}/banking`)} />
+            <NavItem icon={FileText}       label="Reports"     href={`/entity/${entitySlug}/reports`}    active={pathname.startsWith(`/entity/${entitySlug}/reports`)} />
+          </Section>
+        )}
 
         {/* SECTION 3 — OPERATIONS */}
         <Section label="Operations">

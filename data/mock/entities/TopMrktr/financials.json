@@ -1,0 +1,41 @@
+{
+  "entity_slug": "TopMrktr",
+  "as_of": "2026-06-30",
+  "monthly_pl": [
+    { "month": "2026-01", "revenue": 44000, "cogs": 20000, "gross_profit": 24000, "opex": 14500, "net_income": 9500 },
+    { "month": "2026-02", "revenue": 46000, "cogs": 21000, "gross_profit": 25000, "opex": 15200, "net_income": 9800 },
+    { "month": "2026-03", "revenue": 48000, "cogs": 22000, "gross_profit": 26000, "opex": 15800, "net_income": 10200 },
+    { "month": "2026-04", "revenue": 50800, "cogs": 23300, "gross_profit": 27500, "opex": 16500, "net_income": 11000 },
+    { "month": "2026-05", "revenue": 49300, "cogs": 22600, "gross_profit": 26700, "opex": 16000, "net_income": 10700 },
+    { "month": "2026-06", "revenue": 49000, "cogs": 21100, "gross_profit": 27900, "opex": 15200, "net_income": 12700 }
+  ],
+  "ytd_summary": {
+    "revenue": 287100,
+    "cogs": 130000,
+    "gross_profit": 157100,
+    "opex": 93200,
+    "net_income": 63900
+  },
+  "balance_sheet": {
+    "as_of": "2026-06-30",
+    "assets": {
+      "cash": 142100,
+      "accounts_receivable": 43700,
+      "prepaid_expenses": 7200,
+      "equipment_net": 67800,
+      "total": 260800
+    },
+    "liabilities": {
+      "accounts_payable": 21000,
+      "accrued_liabilities": 9000,
+      "deferred_revenue": 4000,
+      "notes_payable": 25000,
+      "total": 59000
+    },
+    "equity": {
+      "paid_in_capital": 80000,
+      "retained_earnings": 121800,
+      "total": 201800
+    }
+  }
+}

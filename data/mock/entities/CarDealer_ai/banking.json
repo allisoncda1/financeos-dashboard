@@ -1,0 +1,54 @@
+{
+  "entity_slug": "CarDealer_ai",
+  "as_of": "2026-06-30",
+  "total_cash": 312000,
+  "reconciliation_status": "clean",
+  "unreconciled_count": 0,
+  "accounts": [
+    {
+      "id": "chase-opex",
+      "name": "Chase OpEx",
+      "institution": "Chase Bank",
+      "account_type": "Checking",
+      "last_four": "1234",
+      "balance": 271440,
+      "color": "#1A56DB",
+      "reconciled": true,
+      "last_reconciled": "2026-06-30"
+    },
+    {
+      "id": "amex-corp",
+      "name": "American Express Business",
+      "institution": "American Express",
+      "account_type": "Credit Card",
+      "last_four": "5678",
+      "balance": 9360,
+      "color": "#016FD0",
+      "reconciled": true,
+      "last_reconciled": "2026-06-30"
+    },
+    {
+      "id": "mercury-reserve",
+      "name": "Mercury Reserve",
+      "institution": "Mercury Banking",
+      "account_type": "Savings",
+      "last_four": "9012",
+      "balance": 31200,
+      "color": "#5850EC",
+      "reconciled": true,
+      "last_reconciled": "2026-06-30"
+    }
+  ],
+  "transactions": [
+    { "id": "t1",  "account_id": "chase-opex",    "date": "2026-06-28", "description": "Riverside Auto Group — Invoice #2041",  "amount": 24800,   "category": "Revenue",      "reconciled": true },
+    { "id": "t2",  "account_id": "chase-opex",    "date": "2026-06-26", "description": "AutoParts Wholesale — Bill Payment",     "amount": -9400,   "category": "COGS",         "reconciled": true },
+    { "id": "t3",  "account_id": "chase-opex",    "date": "2026-06-24", "description": "Metro Ford — Invoice #2039",             "amount": 18600,   "category": "Revenue",      "reconciled": true },
+    { "id": "t4",  "account_id": "chase-opex",    "date": "2026-06-22", "description": "DealerTech Software — Monthly License",  "amount": -7200,   "category": "SaaS / Tools", "reconciled": true },
+    { "id": "t5",  "account_id": "chase-opex",    "date": "2026-06-20", "description": "Payroll — June 2026",                    "amount": -52000,  "category": "Payroll",      "reconciled": true },
+    { "id": "t6",  "account_id": "chase-opex",    "date": "2026-06-18", "description": "Premier Chevrolet — Invoice #2037",      "amount": 7200,    "category": "Revenue",      "reconciled": true },
+    { "id": "t7",  "account_id": "chase-opex",    "date": "2026-06-15", "description": "National Logistics — Freight",           "amount": -5100,   "category": "COGS",         "reconciled": true },
+    { "id": "t8",  "account_id": "chase-opex",    "date": "2026-06-12", "description": "FleetGuard Insurance — Q2 Premium",      "amount": -6800,   "category": "Insurance",    "reconciled": true },
+    { "id": "t9",  "account_id": "amex-corp",     "date": "2026-06-25", "description": "Office Supplies & Equipment",            "amount": -3500,   "category": "Office",       "reconciled": true },
+    { "id": "t10", "account_id": "mercury-reserve","date": "2026-06-01","description": "Interest Income",                        "amount": 156,     "category": "Interest",     "reconciled": true }
+  ]
+}

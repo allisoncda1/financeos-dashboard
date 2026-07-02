@@ -1,0 +1,41 @@
+{
+  "entity_slug": "T3_Marketing",
+  "as_of": "2026-06-30",
+  "monthly_pl": [
+    { "month": "2026-01", "revenue": 48000, "cogs": 18400, "gross_profit": 29600, "opex": 10600, "net_income": 19000 },
+    { "month": "2026-02", "revenue": 50000, "cogs": 19200, "gross_profit": 30800, "opex": 11000, "net_income": 19800 },
+    { "month": "2026-03", "revenue": 52000, "cogs": 20000, "gross_profit": 32000, "opex": 11500, "net_income": 20500 },
+    { "month": "2026-04", "revenue": 55000, "cogs": 21100, "gross_profit": 33900, "opex": 11800, "net_income": 22100 },
+    { "month": "2026-05", "revenue": 53400, "cogs": 20500, "gross_profit": 32900, "opex": 11400, "net_income": 21500 },
+    { "month": "2026-06", "revenue": 54000, "cogs": 20800, "gross_profit": 33200, "opex": 11300, "net_income": 21900 }
+  ],
+  "ytd_summary": {
+    "revenue": 312400,
+    "cogs": 120000,
+    "gross_profit": 192400,
+    "opex": 67600,
+    "net_income": 124800
+  },
+  "balance_sheet": {
+    "as_of": "2026-06-30",
+    "assets": {
+      "cash": 198400,
+      "accounts_receivable": 54800,
+      "prepaid_expenses": 9800,
+      "equipment_net": 88200,
+      "total": 351200
+    },
+    "liabilities": {
+      "accounts_payable": 28000,
+      "accrued_liabilities": 11000,
+      "deferred_revenue": 6000,
+      "notes_payable": 28000,
+      "total": 73000
+    },
+    "equity": {
+      "paid_in_capital": 100000,
+      "retained_earnings": 178200,
+      "total": 278200
+    }
+  }
+}

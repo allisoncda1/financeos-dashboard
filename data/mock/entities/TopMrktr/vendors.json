@@ -1,0 +1,20 @@
+{
+  "entity_slug": "TopMrktr",
+  "as_of": "2026-06-30",
+  "open_ap": 21000,
+  "aging": [
+    { "label": "Current",   "days": "0",     "amount": 16000, "count": 5 },
+    { "label": "1–30 days", "days": "1-30",  "amount": 3992,  "count": 2 },
+    { "label": "31–60 days","days": "31-60", "amount": 750,   "count": 1 },
+    { "label": "61–90 days","days": "61-90", "amount": 200,   "count": 1 },
+    { "label": "90+ days",  "days": "90+",   "amount": 58,    "count": 1 }
+  ],
+  "top_vendors": [
+    { "name": "LinkedIn Marketing",     "balance": 6200,  "due_date": "2026-07-05", "status": "scheduled" },
+    { "name": "Salesforce CRM",         "balance": 5400,  "due_date": "2026-07-10", "status": "current" },
+    { "name": "AWS Cloud Services",     "balance": 4100,  "due_date": "2026-07-01", "status": "overdue" },
+    { "name": "Design Agency Retainer", "balance": 3200,  "due_date": "2026-05-31", "status": "overdue" },
+    { "name": "Zoom Communications",    "balance": 2100,  "due_date": "2026-07-15", "status": "current" }
+  ],
+  "ap_history": [18000, 19000, 20000, 19000, 21000, 20000, 19000, 21000, 20000, 21000, 20000, 21000]
+}

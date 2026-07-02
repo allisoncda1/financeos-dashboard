@@ -1,0 +1,41 @@
+{
+  "entity_slug": "Smile_More",
+  "as_of": "2026-06-30",
+  "monthly_pl": [
+    { "month": "2026-01", "revenue": 23000, "cogs": 10800, "gross_profit": 12200, "opex": 8200, "net_income": 4000 },
+    { "month": "2026-02", "revenue": 24500, "cogs": 11600, "gross_profit": 12900, "opex": 8800, "net_income": 4100 },
+    { "month": "2026-03", "revenue": 26000, "cogs": 12300, "gross_profit": 13700, "opex": 9800, "net_income": 3900 },
+    { "month": "2026-04", "revenue": 28500, "cogs": 13500, "gross_profit": 15000, "opex": 10800, "net_income": 4200 },
+    { "month": "2026-05", "revenue": 27800, "cogs": 13200, "gross_profit": 14600, "opex": 9800, "net_income": 4800 },
+    { "month": "2026-06", "revenue": 28700, "cogs": 13600, "gross_profit": 15100, "opex": 9600, "net_income": 5500 }
+  ],
+  "ytd_summary": {
+    "revenue": 158500,
+    "cogs": 75000,
+    "gross_profit": 83500,
+    "opex": 57000,
+    "net_income": 26500
+  },
+  "balance_sheet": {
+    "as_of": "2026-06-30",
+    "assets": {
+      "cash": 87300,
+      "accounts_receivable": 32700,
+      "prepaid_expenses": 4800,
+      "equipment_net": 47200,
+      "total": 172000
+    },
+    "liabilities": {
+      "accounts_payable": 16600,
+      "accrued_liabilities": 7400,
+      "deferred_revenue": 2000,
+      "notes_payable": 19600,
+      "total": 45600
+    },
+    "equity": {
+      "paid_in_capital": 60000,
+      "retained_earnings": 66400,
+      "total": 126400
+    }
+  }
+}

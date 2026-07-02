@@ -1,0 +1,20 @@
+{
+  "entity_slug": "Smile_More",
+  "as_of": "2026-06-30",
+  "open_ap": 16600,
+  "aging": [
+    { "label": "Current",   "days": "0",     "amount": 13200, "count": 5 },
+    { "label": "1–30 days", "days": "1-30",  "amount": 3400,  "count": 2 },
+    { "label": "31–60 days","days": "31-60", "amount": 0,     "count": 0 },
+    { "label": "61–90 days","days": "61-90", "amount": 0,     "count": 0 },
+    { "label": "90+ days",  "days": "90+",   "amount": 0,     "count": 0 }
+  ],
+  "top_vendors": [
+    { "name": "Dentsply Sirona Supplies", "balance": 5200,  "due_date": "2026-07-08", "status": "scheduled" },
+    { "name": "Patterson Dental",         "balance": 4100,  "due_date": "2026-07-12", "status": "current" },
+    { "name": "Henry Schein Inc.",        "balance": 3600,  "due_date": "2026-07-15", "status": "current" },
+    { "name": "Carestream Dental",        "balance": 2400,  "due_date": "2026-07-20", "status": "current" },
+    { "name": "Office Depot Medical",     "balance": 1300,  "due_date": "2026-07-10", "status": "current" }
+  ],
+  "ap_history": [13000, 14000, 15000, 14000, 16000, 15000, 15000, 16000, 15000, 17000, 16000, 16600]
+}
