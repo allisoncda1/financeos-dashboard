@@ -148,6 +148,16 @@ export function Sidebar() {
           />
         </Section>
 
+        {/* SECTION 4b — REPORTS */}
+        <Section label="Reports">
+          <NavItem
+            icon={FileText}
+            label="Report Center"
+            href="/reports"
+            active={pathname.startsWith("/reports")}
+          />
+        </Section>
+
         {/* SECTION 5 — CONTROL */}
         <Section label="Control">
           <NavItem
