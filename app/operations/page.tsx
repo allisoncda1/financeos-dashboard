@@ -1,5 +1,5 @@
 import { getMockData, getCustomers, getVendors, getBanking } from "@/lib/mock";
-import { ENTITY_SLUGS, type EntitySlug } from "@/lib/types";
+import { ENTITY_SLUGS, type EntitySlug } from "@/lib/entities";
 import { generateOperationItems } from "@/lib/operations";
 import { OperationsInbox } from "@/components/operations/OperationsInbox";
 import { Inbox } from "lucide-react";

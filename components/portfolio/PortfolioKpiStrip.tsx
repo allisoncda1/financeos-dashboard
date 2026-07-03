@@ -6,7 +6,7 @@ import {
 import { KpiCard, type KpiCardData } from "@/components/dashboard/KpiCard";
 import { StaggerContainer, StaggerItem, MotionCard } from "@/components/motion";
 import type { DashboardData } from "@/lib/types";
-import { ENTITY_SLUGS } from "@/lib/types";
+import { ENTITY_SLUGS } from "@/lib/entities";
 import { computeHealthScore } from "@/lib/briefing";
 
 function fmt(n: number): string {

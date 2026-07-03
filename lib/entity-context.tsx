@@ -1,9 +1,10 @@
 "use client";
 
 import { createContext, useContext, useState, useEffect, type ReactNode } from "react";
-import { ENTITY_SLUGS, ENTITY_CONFIG, type EntitySlug } from "@/lib/types";
+import { ENTITY_SLUGS, AGENCY_SLUGS, type EntitySlug } from "@/lib/entities";
 
-export const AGENCY_ENTITIES: EntitySlug[] = ["T3_Marketing", "TopMrktr", "Smile_More"];
+/** @deprecated Use AGENCY_SLUGS from lib/entities instead */
+export const AGENCY_ENTITIES: EntitySlug[] = AGENCY_SLUGS;
 export const ALL_ENTITIES: EntitySlug[] = [...ENTITY_SLUGS];
 
 const LS_KEY = "financeos_entity_selection";
@@ -52,7 +53,7 @@ export function EntitySelectionProvider({ children }: { children: ReactNode }) {
           : [...selected, slug]
       ),
       selectAll: () => save(ALL_ENTITIES),
-      setAgency: () => save(AGENCY_ENTITIES),
+      setAgency: () => save(AGENCY_SLUGS),
       isSelected: (slug) => selected.includes(slug),
     }}>
       {children}

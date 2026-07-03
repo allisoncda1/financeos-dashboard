@@ -1,5 +1,5 @@
 import { notFound } from "next/navigation";
-import { ENTITY_SLUGS, type EntitySlug } from "@/lib/types";
+import { ENTITY_SLUGS, type EntitySlug } from "@/lib/entities";
 import { getVendors } from "@/lib/mock";
 import { PageHeader } from "@/components/shared/PageHeader";
 import { AgingTable } from "@/components/shared/AgingTable";

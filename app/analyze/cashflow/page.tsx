@@ -2,7 +2,7 @@
 
 import { useMemo } from "react";
 import { getMockData, getFinancials, getBanking } from "@/lib/mock";
-import { ENTITY_SLUGS, ENTITY_CONFIG, type EntitySlug } from "@/lib/types";
+import { ENTITY_SLUGS, ENTITY_CONFIG, type EntitySlug } from "@/lib/entities";
 import { useEntitySelection } from "@/lib/entity-context";
 import { Droplets } from "lucide-react";
 

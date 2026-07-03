@@ -1,6 +1,6 @@
 import Link from "next/link";
 import type { PortfolioSummary, EntityMetrics, Anomaly, EntitySlug } from "@/lib/types";
-import { ENTITY_CONFIG, ENTITY_SLUGS } from "@/lib/types";
+import { ENTITY_CONFIG, ENTITY_SLUGS } from "@/lib/entities";
 
 type Props = {
   portfolio: PortfolioSummary;

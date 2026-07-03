@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { getMockData } from "@/lib/mock";
-import { ENTITY_SLUGS, ENTITY_CONFIG } from "@/lib/types";
+import { ENTITY_SLUGS, ENTITY_CONFIG } from "@/lib/entities";
 import { CheckCircle2, XCircle, AlertCircle, Info } from "lucide-react";
 
 // 10 rules × description + what triggers a failure

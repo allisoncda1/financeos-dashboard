@@ -1,6 +1,6 @@
 import { notFound } from "next/navigation";
 import { getMockData } from "@/lib/mock";
-import { ENTITY_CONFIG, ENTITY_SLUGS, type EntitySlug } from "@/lib/types";
+import { ENTITY_CONFIG, ENTITY_SLUGS, type EntitySlug } from "@/lib/entities";
 import {
   TrendingUp, DollarSign, Briefcase, Building2, Timer,
 } from "lucide-react";

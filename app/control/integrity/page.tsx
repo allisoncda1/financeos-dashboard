@@ -1,5 +1,5 @@
 import { getMockData } from "@/lib/mock";
-import { ENTITY_SLUGS, ENTITY_CONFIG } from "@/lib/types";
+import { ENTITY_SLUGS, ENTITY_CONFIG } from "@/lib/entities";
 import { computeHealthScore } from "@/lib/briefing";
 import { ShieldCheck, CheckCircle2, XCircle, AlertCircle, Clock, Database, RefreshCw, HardDrive, Archive, History } from "lucide-react";
 

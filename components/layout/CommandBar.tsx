@@ -9,6 +9,7 @@ import {
   ShieldCheck, CheckCircle2, Inbox, TrendingUp, Car,
   Users, DollarSign, Settings, X, ArrowRight,
 } from "lucide-react";
+import { ENTITY_REGISTRY } from "@/lib/entities";
 
 type LucideIcon = ComponentType<{ className?: string }>;
 
@@ -28,11 +29,16 @@ const COMMANDS: Command[] = [
   { id: "operations",  label: "Operations Inbox",         desc: "Items requiring action",              icon: Inbox,           href: "/operations",            category: "Navigate" },
   { id: "reports",     label: "Report Center",            desc: "Generate PDF, Excel, board packages", icon: FileText,        href: "/reports",               category: "Navigate" },
 
-  // Entities
-  { id: "cardealer",   label: "CarDealer.ai",             desc: "Entity Overview · Accrual basis",     icon: Car,             href: "/entity/CarDealer_ai",   category: "Entities", color: "#10B981" },
-  { id: "t3",          label: "T3 Marketing",             desc: "Entity Overview · Cash basis",        icon: Car,             href: "/entity/T3_Marketing",   category: "Entities", color: "#F59E0B" },
-  { id: "topmrktr",    label: "TopMrktr",                 desc: "Entity Overview · Accrual basis",     icon: Car,             href: "/entity/TopMrktr",       category: "Entities", color: "#8B5CF6" },
-  { id: "smilemore",   label: "Smile More",               desc: "Entity Overview · Accrual basis",     icon: Car,             href: "/entity/Smile_More",     category: "Entities", color: "#3B82F6" },
+  // Entities — derived from registry (no hardcoding)
+  ...ENTITY_REGISTRY.map(e => ({
+    id: e.slug.toLowerCase(),
+    label: e.displayName,
+    desc: `Entity Overview · ${e.accountingBasis} basis`,
+    icon: Car,
+    href: `/entity/${e.slug}`,
+    category: "Entities",
+    color: e.primaryColor,
+  })),
 
   // Analyze
   { id: "performance", label: "Entity Performance",       desc: "Compare all entities side by side",   icon: BarChart3,       href: "/analyze/performance",   category: "Analyze" },

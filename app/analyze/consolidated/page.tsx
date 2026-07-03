@@ -2,8 +2,7 @@
 
 import { useState, useMemo } from "react";
 import { getMockData, getFinancials } from "@/lib/mock";
-import { ENTITY_SLUGS, ENTITY_CONFIG, type EntitySlug } from "@/lib/types";
-import { ENTITY_META } from "@/lib/entities";
+import { ENTITY_SLUGS, ENTITY_CONFIG, ENTITY_META, type EntitySlug } from "@/lib/entities";
 import { EntityLogo } from "@/components/ui/EntityLogo";
 import { useEntitySelection } from "@/lib/entity-context";
 import { Layers, ChevronUp, ChevronDown, Minus } from "lucide-react";

@@ -2,7 +2,7 @@
 
 import { useMemo, useState } from "react";
 import { getMockData, getFinancials } from "@/lib/mock";
-import { ENTITY_SLUGS, ENTITY_CONFIG, type EntitySlug } from "@/lib/types";
+import { ENTITY_SLUGS, ENTITY_CONFIG, type EntitySlug } from "@/lib/entities";
 import { useEntitySelection } from "@/lib/entity-context";
 import { computeHealthScore } from "@/lib/briefing";
 import { TrendingUp, TrendingDown, Minus, ChevronUp, ChevronDown } from "lucide-react";

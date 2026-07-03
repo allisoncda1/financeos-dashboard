@@ -4,7 +4,7 @@ import { useState, useRef, useEffect } from "react";
 import { usePathname } from "next/navigation";
 import { Menu, ChevronDown, Check, Users } from "lucide-react";
 import { useEntitySelection } from "@/lib/entity-context";
-import { ENTITY_CONFIG, ENTITY_SLUGS } from "@/lib/types";
+import { ENTITY_META, ENTITY_SLUGS, AGENCY_SLUGS, findEntity } from "@/lib/entities";
 import { motion, AnimatePresence } from "framer-motion";
 
 const ease = [0.16, 1, 0.3, 1] as [number, number, number, number];
@@ -38,12 +38,14 @@ export function GlobalHeader({ onMenuToggle }: { onMenuToggle: () => void }) {
   const title =
     BREADCRUMBS[pathname] ??
     (pathname.startsWith("/entity/")
-      ? (ENTITY_CONFIG[pathname.replace("/entity/", "") as keyof typeof ENTITY_CONFIG]?.name ?? "Entity Overview")
+      ? (findEntity(pathname.split("/")[2])?.displayName ?? "Entity Overview")
       : "FinanceOS");
 
   const showFilter = ENTITY_FILTER_PAGES.some(p => pathname.startsWith(p));
   const allSelected = selected.length === ENTITY_SLUGS.length;
-  const agencySelected = selected.length === 3 && !selected.includes("CarDealer_ai");
+  const agencySelected = selected.length === AGENCY_SLUGS.length &&
+    AGENCY_SLUGS.every(s => selected.includes(s)) &&
+    !ENTITY_SLUGS.filter(s => !AGENCY_SLUGS.includes(s)).some(s => selected.includes(s));
 
   useEffect(() => {
     const handler = (e: MouseEvent) => {
@@ -83,14 +85,14 @@ export function GlobalHeader({ onMenuToggle }: { onMenuToggle: () => void }) {
           >
             <Users className="w-3.5 h-3.5 flex-shrink-0" />
             <span className="hidden sm:block">
-              {allSelected ? "All 4" : `${selected.length} of 4`}
+              {allSelected ? `All ${ENTITY_SLUGS.length}` : `${selected.length} of ${ENTITY_SLUGS.length}`}
             </span>
             <span className="flex items-center gap-0.5">
               {ENTITY_SLUGS.map(slug => (
                 <span
                   key={slug}
                   className="w-2 h-2 rounded-full flex-shrink-0 transition-opacity"
-                  style={{ background: ENTITY_CONFIG[slug].color, opacity: isSelected(slug) ? 1 : 0.2 }}
+                  style={{ background: ENTITY_META[slug].color, opacity: isSelected(slug) ? 1 : 0.2 }}
                 />
               ))}
             </span>
@@ -118,11 +120,11 @@ export function GlobalHeader({ onMenuToggle }: { onMenuToggle: () => void }) {
                     className={`flex-1 py-1.5 rounded-lg text-[11px] font-semibold transition-colors ${
                       agencySelected ? "bg-violet-100 text-violet-700" : "bg-gray-100 text-gray-600 hover:bg-gray-200"
                     }`}
-                  >Agency only (3)</button>
+                  >Agency only ({AGENCY_SLUGS.length})</button>
                 </div>
                 <div className="py-1.5">
                   {ENTITY_SLUGS.map(slug => {
-                    const cfg = ENTITY_CONFIG[slug];
+                    const cfg = ENTITY_META[slug];
                     const checked = isSelected(slug);
                     return (
                       <button

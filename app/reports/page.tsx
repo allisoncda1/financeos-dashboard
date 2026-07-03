@@ -8,8 +8,7 @@ import {
   Package, Clock, CheckCircle2, Lock, ChevronRight,
   FileSpreadsheet,
 } from "lucide-react";
-import { ENTITY_CONFIG, ENTITY_SLUGS } from "@/lib/types";
-import { ENTITY_META } from "@/lib/entities";
+import { ENTITY_CONFIG, ENTITY_SLUGS, ENTITY_META } from "@/lib/entities";
 import { EntityLogo } from "@/components/ui/EntityLogo";
 
 // ── Template definitions ───────────────────────────────────────────────────

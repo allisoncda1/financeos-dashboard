@@ -13,9 +13,21 @@ import {
 import { useEntitySelection } from "@/lib/entity-context";
 import {
   ENTITY_META, ENTITY_META_LIST, PORTFOLIO_META, AGENCY_META,
+  AGENCY_SLUGS, ENTITY_SLUGS,
   type EntitySlug,
 } from "@/lib/entities";
 import { EntityLogo } from "@/components/ui/EntityLogo";
+import { getMockData } from "@/lib/mock";
+import { computeHealthScore, healthLabel } from "@/lib/briefing";
+
+// Pre-compute health scores once at module load (mock data is static)
+const _data = getMockData();
+const HEALTH: Record<EntitySlug, { score: number; label: string }> = Object.fromEntries(
+  ENTITY_SLUGS.map(s => {
+    const score = computeHealthScore(_data.metrics[s]);
+    return [s, { score, label: healthLabel(score) }];
+  })
+) as Record<EntitySlug, { score: number; label: string }>;
 
 type LucideIcon = ComponentType<{ className?: string }>;
 
@@ -36,7 +48,10 @@ export function Sidebar({ onClose }: { onClose?: () => void }) {
   const currentSlug: EntitySlug | null = pathname.startsWith("/entity/")
     ? (pathname.split("/")[2] as EntitySlug)
     : null;
-  const isAgency    = !currentSlug && selected.length === 3 && !selected.includes("CarDealer_ai");
+  const isAgency    = !currentSlug &&
+    selected.length === AGENCY_SLUGS.length &&
+    AGENCY_SLUGS.every(s => selected.includes(s)) &&
+    !ENTITY_SLUGS.filter(s => !AGENCY_SLUGS.includes(s)).some(s => selected.includes(s));
   const isPortfolio = !currentSlug && !isAgency;
 
   const currentMeta = currentSlug
@@ -101,10 +116,10 @@ export function Sidebar({ onClose }: { onClose?: () => void }) {
             </p>
             <p className="text-[9px] leading-tight mt-0.5" style={{ color: MUTED }}>
               {currentSlug
-                ? `${ENTITY_META[currentSlug].basis} · Entity view`
+                ? `${ENTITY_META[currentSlug].basis} · ${HEALTH[currentSlug].label} · ${HEALTH[currentSlug].score}`
                 : isAgency
-                ? "3 agencies · filtered"
-                : "All 4 entities"}
+                ? `${AGENCY_SLUGS.length} agencies · filtered`
+                : `All ${ENTITY_SLUGS.length} entities`}
             </p>
           </div>
 
@@ -141,7 +156,7 @@ export function Sidebar({ onClose }: { onClose?: () => void }) {
                   meta={AGENCY_META}
                   active={isAgency}
                   onSelect={() => handleSelect("agency")}
-                  sub="T3 · TopMrktr · Smile More"
+                  sub={AGENCY_SLUGS.map(s => ENTITY_META[s].shortName).join(" · ")}
                   dark
                 />
               </div>
@@ -154,16 +169,22 @@ export function Sidebar({ onClose }: { onClose?: () => void }) {
                 >
                   Entities
                 </p>
-                {ENTITY_META_LIST.map(meta => (
-                  <WorkspaceItem
-                    key={meta.slug}
-                    meta={meta}
-                    active={currentSlug === meta.slug}
-                    onSelect={() => handleSelect(meta.slug)}
-                    sub={meta.basis}
-                    dark
-                  />
-                ))}
+                {ENTITY_META_LIST.map(meta => {
+                  const h = HEALTH[meta.slug];
+                  const healthColor = h.score >= 85 ? "#34D399" : h.score >= 70 ? "#FBBF24" : "#F87171";
+                  return (
+                    <EntityWorkspaceItem
+                      key={meta.slug}
+                      meta={meta}
+                      active={currentSlug === meta.slug}
+                      onSelect={() => handleSelect(meta.slug)}
+                      basis={meta.basis}
+                      healthLabel={h.label}
+                      healthScore={h.score}
+                      healthColor={healthColor}
+                    />
+                  );
+                })}
               </div>
             </motion.div>
           )}
@@ -240,6 +261,45 @@ function WorkspaceItem({
         {sub && (
           <p className="text-[9px] truncate" style={{ color: "rgba(255,255,255,0.28)" }}>{sub}</p>
         )}
+      </div>
+      {active && <Check className="w-3 h-3 flex-shrink-0 text-emerald-400" />}
+    </button>
+  );
+}
+
+// ── EntityWorkspaceItem — premium card with live health ──────────────────────
+
+function EntityWorkspaceItem({
+  meta, active, onSelect, basis, healthLabel, healthScore, healthColor,
+}: {
+  meta: { name: string; shortName: string; color: string; logoPath: string | null; initials: string };
+  active: boolean;
+  onSelect: () => void;
+  basis: string;
+  healthLabel: string;
+  healthScore: number;
+  healthColor: string;
+}) {
+  return (
+    <button
+      onClick={onSelect}
+      className="w-full flex items-center gap-2.5 px-3 py-2 transition-colors text-left group"
+      style={{ background: active ? "rgba(255,255,255,0.08)" : "transparent" }}
+      onMouseEnter={e => { if (!active) (e.currentTarget as HTMLElement).style.background = "rgba(255,255,255,0.04)"; }}
+      onMouseLeave={e => { (e.currentTarget as HTMLElement).style.background = active ? "rgba(255,255,255,0.08)" : "transparent"; }}
+    >
+      <EntityLogo entity={meta} size={28} rounded="md" dark />
+      <div className="flex-1 min-w-0 text-left">
+        <p className="text-[11px] font-semibold truncate leading-tight" style={{ color: active ? "#FFFFFF" : "rgba(255,255,255,0.75)" }}>
+          {meta.name}
+        </p>
+        <p className="text-[9px] truncate mt-0.5" style={{ color: "rgba(255,255,255,0.30)" }}>
+          {basis}
+          <span className="mx-1">·</span>
+          <span style={{ color: healthColor }}>{healthLabel}</span>
+          <span className="mx-1" style={{ color: "rgba(255,255,255,0.20)" }}>·</span>
+          <span style={{ color: healthColor }}>{healthScore}</span>
+        </p>
       </div>
       {active && <Check className="w-3 h-3 flex-shrink-0 text-emerald-400" />}
     </button>

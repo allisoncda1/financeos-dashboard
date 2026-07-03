@@ -1,6 +1,6 @@
 import { getMockData } from "@/lib/mock";
 import { generateBriefing, generatePriorities } from "@/lib/briefing";
-import { ENTITY_SLUGS } from "@/lib/types";
+import { ENTITY_SLUGS } from "@/lib/entities";
 import { AIBriefingPanel } from "@/components/portfolio/AIBriefingPanel";
 import { PortfolioKpiStrip } from "@/components/portfolio/PortfolioKpiStrip";
 import { TodaysPriorities } from "@/components/portfolio/TodaysPriorities";

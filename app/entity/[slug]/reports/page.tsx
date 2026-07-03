@@ -1,7 +1,7 @@
 import { notFound } from "next/navigation";
-import { ENTITY_SLUGS, type EntitySlug } from "@/lib/types";
+import { ENTITY_SLUGS, type EntitySlug } from "@/lib/entities";
 import { getMockData } from "@/lib/mock";
-import { ENTITY_CONFIG } from "@/lib/types";
+import { ENTITY_CONFIG } from "@/lib/entities";
 import { PageHeader } from "@/components/shared/PageHeader";
 import { FileText, BarChart3, Users, ShoppingBag, Layers, Download } from "lucide-react";
 

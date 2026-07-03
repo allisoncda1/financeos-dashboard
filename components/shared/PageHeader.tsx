@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { ChevronRight } from "lucide-react";
-import type { EntitySlug } from "@/lib/types";
-import { ENTITY_CONFIG } from "@/lib/types";
+import type { EntitySlug } from "@/lib/entities";
+import { ENTITY_CONFIG } from "@/lib/entities";
 
 type Crumb = { label: string; href?: string };
 
