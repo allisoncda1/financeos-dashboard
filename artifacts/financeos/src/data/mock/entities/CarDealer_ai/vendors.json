@@ -1,0 +1,20 @@
+{
+  "entity_slug": "CarDealer_ai",
+  "as_of": "2026-06-30",
+  "open_ap": 32000,
+  "aging": [
+    { "label": "Current",   "days": "0",     "amount": 22000, "count": 7 },
+    { "label": "1–30 days", "days": "1-30",  "amount": 10000, "count": 4 },
+    { "label": "31–60 days","days": "31-60", "amount": 0,     "count": 0 },
+    { "label": "61–90 days","days": "61-90", "amount": 0,     "count": 0 },
+    { "label": "90+ days",  "days": "90+",   "amount": 0,     "count": 0 }
+  ],
+  "top_vendors": [
+    { "name": "AutoParts Wholesale Inc.", "balance": 9400,  "due_date": "2026-07-10", "status": "scheduled" },
+    { "name": "DealerTech Software",      "balance": 7200,  "due_date": "2026-07-05", "status": "scheduled" },
+    { "name": "FleetGuard Insurance",     "balance": 6800,  "due_date": "2026-07-15", "status": "current" },
+    { "name": "National Logistics LLC",   "balance": 5100,  "due_date": "2026-07-08", "status": "current" },
+    { "name": "Office Depot Business",    "balance": 3500,  "due_date": "2026-07-12", "status": "current" }
+  ],
+  "ap_history": [28000, 30000, 31000, 29000, 32000, 31000, 30000, 33000, 31000, 32000, 31000, 32000]
+}

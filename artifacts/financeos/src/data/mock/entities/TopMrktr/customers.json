@@ -1,0 +1,20 @@
+{
+  "entity_slug": "TopMrktr",
+  "as_of": "2026-06-30",
+  "open_ar": 43700,
+  "aging": [
+    { "label": "Current",   "days": "0",     "amount": 28000, "count": 8 },
+    { "label": "1–30 days", "days": "1-30",  "amount": 13471, "count": 4 },
+    { "label": "31–60 days","days": "31-60", "amount": 1500,  "count": 1 },
+    { "label": "61–90 days","days": "61-90", "amount": 500,   "count": 1 },
+    { "label": "90+ days",  "days": "90+",   "amount": 229,   "count": 1 }
+  ],
+  "top_customers": [
+    { "name": "Vantage Marketing LLC",  "balance": 12400, "last_payment_date": "2026-06-25", "dso_days": 41, "status": "current" },
+    { "name": "Crestline Brands",       "balance": 9800,  "last_payment_date": "2026-06-18", "dso_days": 38, "status": "current" },
+    { "name": "BlueSky Digital Group",  "balance": 8200,  "last_payment_date": "2026-06-10", "dso_days": 46, "status": "current" },
+    { "name": "Horizon Retail Network", "balance": 6100,  "last_payment_date": "2026-05-20", "dso_days": 62, "status": "overdue" },
+    { "name": "Stratos Media Inc.",     "balance": 3900,  "last_payment_date": "2026-06-22", "dso_days": 29, "status": "current" }
+  ],
+  "dso_history": [44, 42, 45, 47, 44, 46, 43, 45, 47, 46, 45, 46]
+}
