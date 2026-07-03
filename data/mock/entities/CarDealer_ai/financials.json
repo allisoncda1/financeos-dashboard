@@ -1,0 +1,41 @@
+{
+  "entity_slug": "CarDealer_ai",
+  "as_of": "2026-06-30",
+  "monthly_pl": [
+    { "month": "2026-01", "revenue": 75000, "cogs": 30800, "gross_profit": 44200, "opex": 22000, "net_income": 22200 },
+    { "month": "2026-02", "revenue": 78000, "cogs": 32000, "gross_profit": 46000, "opex": 23000, "net_income": 23000 },
+    { "month": "2026-03", "revenue": 81000, "cogs": 33300, "gross_profit": 47700, "opex": 24000, "net_income": 23700 },
+    { "month": "2026-04", "revenue": 84000, "cogs": 34500, "gross_profit": 49500, "opex": 24300, "net_income": 25200 },
+    { "month": "2026-05", "revenue": 83200, "cogs": 34200, "gross_profit": 49000, "opex": 23800, "net_income": 25200 },
+    { "month": "2026-06", "revenue": 84000, "cogs": 35200, "gross_profit": 48800, "opex": 23800, "net_income": 25000 }
+  ],
+  "ytd_summary": {
+    "revenue": 485200,
+    "cogs": 200000,
+    "gross_profit": 285200,
+    "opex": 140900,
+    "net_income": 144300
+  },
+  "balance_sheet": {
+    "as_of": "2026-06-30",
+    "assets": {
+      "cash": 312000,
+      "accounts_receivable": 87400,
+      "prepaid_expenses": 18600,
+      "equipment_net": 137400,
+      "total": 555400
+    },
+    "liabilities": {
+      "accounts_payable": 32000,
+      "accrued_liabilities": 24000,
+      "deferred_revenue": 12000,
+      "notes_payable": 53000,
+      "total": 121000
+    },
+    "equity": {
+      "paid_in_capital": 200000,
+      "retained_earnings": 234400,
+      "total": 434400
+    }
+  }
+}

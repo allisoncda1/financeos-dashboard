@@ -1,0 +1,9 @@
+[
+  {
+    "rule": "8a",
+    "severity": "warning",
+    "description": "DSO exceeds 60-day target — review AR aging for overdue invoices",
+    "amount": 32700,
+    "period": "2026-06"
+  }
+]

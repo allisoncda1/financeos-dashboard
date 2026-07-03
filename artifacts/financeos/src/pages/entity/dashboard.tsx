@@ -1,6 +1,6 @@
 import { useParams } from "wouter";
 import NotFound from "@/pages/not-found";
-import { getMockData } from "@/lib/mock";
+import { useDashboardData } from "@/hooks/useApi";
 import { ENTITY_CONFIG, ENTITY_SLUGS, type EntitySlug } from "@/lib/entities";
 import {
   TrendingUp, DollarSign, Briefcase, Building2, Timer,

@@ -1,7 +1,7 @@
 import { useParams } from "wouter";
 import NotFound from "@/pages/not-found";
 import { ENTITY_SLUGS, type EntitySlug } from "@/lib/entities";
-import { getFinancials } from "@/lib/mock";
+import { useEntityFinancials } from "@/hooks/useApi";
 import { PageHeader } from "@/components/shared/PageHeader";
 import { TabSwitcher } from "@/components/shared/TabSwitcher";
 

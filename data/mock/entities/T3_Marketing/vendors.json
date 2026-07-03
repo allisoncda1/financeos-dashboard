@@ -1,0 +1,20 @@
+{
+  "entity_slug": "T3_Marketing",
+  "as_of": "2026-06-30",
+  "open_ap": 28000,
+  "aging": [
+    { "label": "Current",   "days": "0",     "amount": 19000, "count": 5 },
+    { "label": "1–30 days", "days": "1-30",  "amount": 9000,  "count": 3 },
+    { "label": "31–60 days","days": "31-60", "amount": 0,     "count": 0 },
+    { "label": "61–90 days","days": "61-90", "amount": 0,     "count": 0 },
+    { "label": "90+ days",  "days": "90+",   "amount": 0,     "count": 0 }
+  ],
+  "top_vendors": [
+    { "name": "Google Ads Platform",   "balance": 8400,  "due_date": "2026-07-07", "status": "scheduled" },
+    { "name": "Meta Business Suite",   "balance": 7200,  "due_date": "2026-07-07", "status": "scheduled" },
+    { "name": "HubSpot CRM",           "balance": 4800,  "due_date": "2026-07-15", "status": "current" },
+    { "name": "Canva for Teams",       "balance": 4200,  "due_date": "2026-07-10", "status": "current" },
+    { "name": "Slack Technologies",    "balance": 3400,  "due_date": "2026-07-20", "status": "current" }
+  ],
+  "ap_history": [24000, 25000, 26000, 27000, 26000, 27000, 26000, 28000, 27000, 28000, 27000, 28000]
+}

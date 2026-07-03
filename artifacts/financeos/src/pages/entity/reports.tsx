@@ -1,7 +1,7 @@
 import { useParams } from "wouter";
 import NotFound from "@/pages/not-found";
 import { ENTITY_SLUGS, type EntitySlug } from "@/lib/entities";
-import { getMockData } from "@/lib/mock";
+import { useDashboardData } from "@/hooks/useApi";
 import { ENTITY_CONFIG } from "@/lib/entities";
 import { PageHeader } from "@/components/shared/PageHeader";
 import { FileText, BarChart3, Users, ShoppingBag, Layers, Download } from "lucide-react";
@@ -38,7 +38,7 @@ export default function ReportsPage() {
   const { slug } = useParams<{ slug: string }>();
   if (!slug || !ENTITY_SLUGS.includes(slug as EntitySlug)) return <NotFound />;
   const eSlug = slug as EntitySlug;
-  const data = getMockData();
+  const data = useDashboardData();
   const cfg = ENTITY_CONFIG[eSlug];
   const asOf = data.freshness.data_as_of;
 

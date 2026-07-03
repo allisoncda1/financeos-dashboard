@@ -1,11 +1,12 @@
-import { getMockData, getCustomers, getVendors, getBanking } from "@/lib/mock";
+import { useDashboardData } from "@/hooks/useApi";
+import { getCustomers, getVendors, getBanking } from "@/lib/mock";
 import { ENTITY_SLUGS, type EntitySlug } from "@/lib/entities";
 import { generateOperationItems } from "@/lib/operations";
 import { OperationsInbox } from "@/components/operations/OperationsInbox";
 import { Inbox } from "lucide-react";
 
 export default function OperationsPage() {
-  const data = getMockData();
+  const data = useDashboardData();
 
   const customersMap = Object.fromEntries(
     ENTITY_SLUGS.map((s) => [s, getCustomers(s)])

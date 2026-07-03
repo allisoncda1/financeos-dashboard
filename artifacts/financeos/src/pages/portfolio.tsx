@@ -1,4 +1,4 @@
-import { getMockData } from "@/lib/mock";
+import { useDashboardData } from "@/hooks/useApi";
 import { generateBriefing, generatePriorities } from "@/lib/briefing";
 import { ENTITY_SLUGS } from "@/lib/entities";
 import { AIBriefingPanel } from "@/components/portfolio/AIBriefingPanel";
@@ -10,7 +10,7 @@ import { PageTransition, StaggerContainer, StaggerItem } from "@/components/moti
 import { RefreshCw } from "lucide-react";
 
 export default function PortfolioPage() {
-  const data = getMockData();
+  const data = useDashboardData();
   const briefing = generateBriefing(data);
   const priorities = generatePriorities(data);
 

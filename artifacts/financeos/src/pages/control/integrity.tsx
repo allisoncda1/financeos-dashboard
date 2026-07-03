@@ -1,4 +1,4 @@
-import { getMockData } from "@/lib/mock";
+import { useDashboardData } from "@/hooks/useApi";
 import { ENTITY_SLUGS, ENTITY_CONFIG } from "@/lib/entities";
 import { computeHealthScore } from "@/lib/briefing";
 import { ShieldCheck, CheckCircle2, XCircle, AlertCircle, Clock, Database, RefreshCw, HardDrive, Archive, History } from "lucide-react";
@@ -26,7 +26,7 @@ function statusStyle(s: string | boolean) {
 }
 
 export default function IntegrityPage() {
-  const data = getMockData();
+  const data = useDashboardData();
   const f = data.freshness;
   const v = data.validation;
 

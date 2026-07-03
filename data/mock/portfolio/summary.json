@@ -1,0 +1,15 @@
+{
+  "as_of": "2026-06-30",
+  "pipeline_run": "2026-07-02T06:00:00-05:00",
+  "entities": ["CarDealer.ai", "T3 Marketing", "TopMrktr", "Smile More"],
+  "entity_count": 4,
+  "portfolio_revenue_ytd": 1243200,
+  "portfolio_cogs_ytd": 254000,
+  "portfolio_gross_profit_ytd": 989200,
+  "portfolio_opex_ytd": 629700,
+  "portfolio_net_income_ytd": 359500,
+  "portfolio_net_margin_pct": 28.9,
+  "portfolio_open_ar": 218600,
+  "portfolio_open_ap": 97600,
+  "portfolio_cash_on_hand": 739800
+}

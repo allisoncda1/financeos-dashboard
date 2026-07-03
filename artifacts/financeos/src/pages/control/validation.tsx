@@ -1,6 +1,6 @@
 
 import { useState } from "react";
-import { getMockData } from "@/lib/mock";
+import { useDashboardData } from "@/hooks/useApi";
 import { ENTITY_SLUGS, ENTITY_CONFIG } from "@/lib/entities";
 import { CheckCircle2, XCircle, AlertCircle, Info } from "lucide-react";
 
@@ -47,7 +47,7 @@ const VALIDATION_HISTORY = [
   { date: "2026-06-26", passed: 39, total: 40 },
 ];
 
-const data = getMockData();
+const data = useDashboardData();
 const matrix = buildMatrix(data);
 
 export default function ValidationPage() {

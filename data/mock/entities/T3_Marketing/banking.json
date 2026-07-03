@@ -1,0 +1,54 @@
+{
+  "entity_slug": "T3_Marketing",
+  "as_of": "2026-06-30",
+  "total_cash": 198400,
+  "reconciliation_status": "clean",
+  "unreconciled_count": 0,
+  "accounts": [
+    {
+      "id": "chase-main",
+      "name": "Chase Business Checking",
+      "institution": "Chase Bank",
+      "account_type": "Checking",
+      "last_four": "4421",
+      "balance": 152600,
+      "color": "#1A56DB",
+      "reconciled": true,
+      "last_reconciled": "2026-06-30"
+    },
+    {
+      "id": "amex-t3",
+      "name": "Amex Business Gold",
+      "institution": "American Express",
+      "account_type": "Credit Card",
+      "last_four": "3390",
+      "balance": 8200,
+      "color": "#016FD0",
+      "reconciled": true,
+      "last_reconciled": "2026-06-30"
+    },
+    {
+      "id": "mercury-t3",
+      "name": "Mercury Operating",
+      "institution": "Mercury Banking",
+      "account_type": "Checking",
+      "last_four": "7751",
+      "balance": 37600,
+      "color": "#5850EC",
+      "reconciled": true,
+      "last_reconciled": "2026-06-30"
+    }
+  ],
+  "transactions": [
+    { "id": "t1",  "account_id": "chase-main", "date": "2026-06-28", "description": "GrowthLab Digital — Invoice #T3-0188",   "amount": 16400,  "category": "Revenue",      "reconciled": true },
+    { "id": "t2",  "account_id": "chase-main", "date": "2026-06-26", "description": "Google Ads Platform — June Spend",       "amount": -8400,  "category": "Media Spend",  "reconciled": true },
+    { "id": "t3",  "account_id": "chase-main", "date": "2026-06-24", "description": "Apex Brands LLC — Invoice #T3-0187",    "amount": 12800,  "category": "Revenue",      "reconciled": true },
+    { "id": "t4",  "account_id": "chase-main", "date": "2026-06-22", "description": "Meta Business Suite — June Spend",      "amount": -7200,  "category": "Media Spend",  "reconciled": true },
+    { "id": "t5",  "account_id": "chase-main", "date": "2026-06-20", "description": "Payroll — June 2026",                   "amount": -28000, "category": "Payroll",      "reconciled": true },
+    { "id": "t6",  "account_id": "chase-main", "date": "2026-06-18", "description": "Momentum Media Group — Invoice #T3-0186","amount": 9600,  "category": "Revenue",      "reconciled": true },
+    { "id": "t7",  "account_id": "chase-main", "date": "2026-06-15", "description": "HubSpot CRM — Monthly",                "amount": -4800,  "category": "SaaS / Tools", "reconciled": true },
+    { "id": "t8",  "account_id": "chase-main", "date": "2026-06-12", "description": "Nexus E-Commerce — Invoice #T3-0185",  "amount": 4900,   "category": "Revenue",      "reconciled": true },
+    { "id": "t9",  "account_id": "amex-t3",    "date": "2026-06-20", "description": "Canva for Teams — Annual",              "amount": -4200,  "category": "SaaS / Tools", "reconciled": true },
+    { "id": "t10", "account_id": "amex-t3",    "date": "2026-06-18", "description": "Slack Technologies — Monthly",          "amount": -3400,  "category": "SaaS / Tools", "reconciled": true }
+  ]
+}
