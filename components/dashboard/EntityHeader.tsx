@@ -19,15 +19,7 @@ export function EntityHeader({ entityName, entityColor, asOf, slug }: Props) {
   return (
     <div className="flex items-start justify-between px-6 pt-5 pb-4 gap-4">
       <div className="flex items-center gap-3 min-w-0">
-        {/* Entity logo */}
-        {meta && (
-          <div
-            className="rounded-xl flex-shrink-0 overflow-hidden flex items-center justify-center"
-            style={{ width: 48, height: 48, background: `${meta.color}12`, border: `1.5px solid ${meta.color}28` }}
-          >
-            <EntityLogo entity={meta} size={40} rounded="lg" />
-          </div>
-        )}
+        {meta && <EntityLogo entity={meta} size={48} rounded="xl" />}
         <div className="min-w-0">
           <h1 className="text-[24px] font-bold text-gray-900 leading-tight">Overview</h1>
           <p className="text-sm text-gray-500 mt-0.5">
