@@ -1,4 +1,5 @@
-import { Settings, User, Shield, Sliders, Bell, Database, Lock, Eye } from "lucide-react";
+import { Settings, User, Shield, Sliders, Bell, Database, Lock, Eye, Cpu } from "lucide-react";
+import { useAiStatus } from "@/hooks/useApi";
 
 const USER_PROFILE = {
   name:  "Allison Fabbri",
@@ -55,6 +56,43 @@ function Toggle({ label, enabled, note }: { label: string; enabled: boolean; not
         <div className={`w-4 h-4 bg-white rounded-full shadow transition-transform ${enabled ? "translate-x-4" : "translate-x-0"}`} />
       </div>
     </div>
+  );
+}
+
+function AiPlatformSection() {
+  const { data, loading, failed } = useAiStatus();
+
+  return (
+    <SectionCard title="AI Platform" icon={Cpu} iconColor="#10B981">
+      {loading && <p className="text-[12px] text-gray-400">Loading AI platform status...</p>}
+      {!loading && failed && (
+        <p className="text-[12px] text-red-500">Could not reach the AI Platform status endpoint.</p>
+      )}
+      {!loading && !failed && data && (
+        <>
+          <SettingRow label="Provider" value={data.provider} disabled={false} />
+          <SettingRow label="Model" value={data.model} disabled={false} />
+          <SettingRow
+            label="Status"
+            value={data.available ? "Active" : "Inactive"}
+            badge={data.available ? "✓" : undefined}
+            disabled={false}
+          />
+          <div className="pt-1 border-t border-gray-100 space-y-2.5">
+            <SettingRow label="Cache size" value={String(data.cacheStats.size)} disabled={false} />
+            <SettingRow label="Cache hits" value={String(data.cacheStats.hits)} disabled={false} />
+            <SettingRow label="Cache misses" value={String(data.cacheStats.misses)} disabled={false} />
+          </div>
+          <div className="mt-2 px-3 py-2.5 bg-emerald-50 border border-emerald-200 rounded-lg">
+            <p className="text-[11px] text-emerald-700 leading-relaxed">
+              Every AI capability runs server-side through this single provider-abstracted service.
+              The frontend never calls an LLM directly, and switching providers requires only a
+              configuration change — no code changes needed.
+            </p>
+          </div>
+        </>
+      )}
+    </SectionCard>
   );
 }
 
@@ -141,6 +179,9 @@ export default function SettingsPage() {
             <SettingRow label="Trigger manual run"   disabled />
             <SettingRow label="Reset pipeline cache" disabled />
           </SectionCard>
+
+          {/* AI Platform */}
+          <AiPlatformSection />
 
           {/* Security */}
           <SectionCard title="Security" icon={Shield} iconColor="#EF4444">

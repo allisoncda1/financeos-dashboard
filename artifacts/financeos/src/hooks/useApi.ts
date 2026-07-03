@@ -3,6 +3,7 @@ import { api } from '@/lib/api';
 import { getMockData, getFinancials, getCustomers, getVendors, getBanking } from '@/lib/mock';
 import type { DashboardData, FinancialsData, CustomersData, VendorsData, BankingData, EntitySlug, BriefingResponse, Alert } from '@/lib/types';
 import type { ReportTemplateSummary, ReportGenerateRequest, BuiltReport } from '@/lib/reportTypes';
+import type { AIStatus } from '@/lib/aiTypes';
 
 export function useDashboardData(): DashboardData {
   const [data, setData] = useState<DashboardData>(getMockData);
@@ -126,4 +127,25 @@ export function useReportGenerator() {
   const reset = useCallback(() => { setReport(null); setError(null); }, []);
 
   return { report, generating, error, generate, reset };
+}
+
+/**
+ * useAiStatus — fetches the AI Platform's status (provider, model, cache
+ * stats) from GET /api/ai/status. Read-only — used to render the Settings
+ * page's AI Platform section.
+ */
+export function useAiStatus(): { data: AIStatus | null; loading: boolean; failed: boolean } {
+  const [data, setData] = useState<AIStatus | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [failed, setFailed] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+    api.aiStatus()
+      .then((res) => { if (!cancelled) { setData(res); setLoading(false); } })
+      .catch(() => { if (!cancelled) { setFailed(true); setLoading(false); } });
+    return () => { cancelled = true; };
+  }, []);
+
+  return { data, loading, failed };
 }
