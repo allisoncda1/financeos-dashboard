@@ -22,7 +22,7 @@ export default function PortfolioPage() {
       {/* ── Main content (scrollable) ─────── */}
       <div className="flex-1 overflow-y-auto bg-[#F4F5F7]">
         <PageTransition>
-        <div className="max-w-[1200px] mx-auto px-6 py-5 space-y-5">
+        <div className="max-w-[1200px] mx-auto px-3 sm:px-6 py-4 sm:py-5 space-y-4 sm:space-y-5">
 
           {/* Header */}
           <div className="flex items-center justify-between">
@@ -56,7 +56,7 @@ export default function PortfolioPage() {
           {/* Entity Cards 2×2 */}
           <div>
             <h2 className="text-[13px] font-semibold text-gray-700 mb-3">Entities</h2>
-            <StaggerContainer className="grid grid-cols-2 gap-4" stagger={0.07} delay={0.1}>
+            <StaggerContainer className="grid grid-cols-1 sm:grid-cols-2 gap-4" stagger={0.07} delay={0.1}>
               {ENTITY_SLUGS.map((slug) => (
                 <StaggerItem key={slug}>
                   <EntityCard

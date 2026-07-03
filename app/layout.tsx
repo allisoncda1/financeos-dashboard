@@ -1,5 +1,5 @@
 import type { Metadata } from "next";
-import { Sidebar } from "@/components/layout/Sidebar";
+import { AppShell } from "@/components/layout/AppShell";
 import { CommandBar } from "@/components/layout/CommandBar";
 import "./globals.css";
 
@@ -11,9 +11,8 @@ export const metadata: Metadata = {
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="en">
-      <body className="flex h-screen overflow-hidden antialiased">
-        <Sidebar />
-        <main className="flex-1 overflow-hidden">{children}</main>
+      <body className="antialiased">
+        <AppShell>{children}</AppShell>
         <CommandBar />
       </body>
     </html>

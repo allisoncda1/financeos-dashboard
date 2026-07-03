@@ -192,13 +192,13 @@ export default function ReportCenterPage() {
 
         {/* ── Left: template gallery ──────────────────────────────────── */}
         <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
-          <div className="flex-1 overflow-y-auto px-6 py-5 space-y-5">
+          <div className="flex-1 overflow-y-auto px-3 sm:px-6 py-4 sm:py-5 space-y-4 sm:space-y-5">
 
             {/* Template gallery */}
             <div>
               <p className="text-[11px] font-semibold text-gray-500 uppercase tracking-widest mb-3">Template Gallery</p>
               <motion.div
-                className="grid grid-cols-3 gap-3"
+                className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3"
                 initial="hidden"
                 animate="show"
                 variants={{ hidden: {}, show: { transition: { staggerChildren: 0.05 } } }}

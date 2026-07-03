@@ -82,7 +82,7 @@ export function PortfolioKpiStrip({ data }: { data: DashboardData }) {
   ];
 
   return (
-    <StaggerContainer className="grid grid-cols-6 gap-3" stagger={0.05}>
+    <StaggerContainer className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-6 gap-3" stagger={0.05}>
       {cards.map((card) => (
         <StaggerItem key={card.label}>
           <MotionCard className="h-full">
