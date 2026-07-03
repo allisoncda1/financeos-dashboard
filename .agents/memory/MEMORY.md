@@ -1,1 +1,2 @@
 - [Vercel/v0 import quirks](vercel-import-quirks.md) — imported v0 code can ship module-level React hook calls and missing imports; sweep all pages before browser verification.
+- [Google Drive OAuth debugging](google-drive-oauth-debugging.md) — silent try/catch fallbacks hide `invalid_grant` refresh-token errors; add temporary logging to confirm root cause before assuming code is broken.
