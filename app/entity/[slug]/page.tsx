@@ -51,6 +51,7 @@ export default async function EntityPage({ params }: Props) {
           entityName={config.name}
           entityColor={config.color}
           asOf={m.as_of}
+          slug={eSlug}
         />
       </div>
 

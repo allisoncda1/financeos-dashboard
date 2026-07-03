@@ -3,6 +3,8 @@
 import { useState, useMemo } from "react";
 import { getMockData, getFinancials } from "@/lib/mock";
 import { ENTITY_SLUGS, ENTITY_CONFIG, type EntitySlug } from "@/lib/types";
+import { ENTITY_META } from "@/lib/entities";
+import { EntityLogo } from "@/components/ui/EntityLogo";
 import { useEntitySelection } from "@/lib/entity-context";
 import { Layers, ChevronUp, ChevronDown, Minus } from "lucide-react";
 
@@ -139,9 +141,9 @@ export default function ConsolidatedPage() {
         {/* Entity chips */}
         <div className="hidden sm:flex items-center gap-1.5 flex-shrink-0">
           {slugs.map(slug => (
-            <span key={slug} className="flex items-center gap-1 px-2 py-0.5 rounded-full text-[9px] font-semibold" style={{ background: `${ENTITY_CONFIG[slug].color}18`, color: ENTITY_CONFIG[slug].color }}>
-              <span className="w-1.5 h-1.5 rounded-full" style={{ background: ENTITY_CONFIG[slug].color }} />
-              {ENTITY_CONFIG[slug].name}
+            <span key={slug} className="flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[9px] font-semibold" style={{ background: `${ENTITY_META[slug].color}18`, color: ENTITY_META[slug].color }}>
+              <EntityLogo entity={ENTITY_META[slug]} size={14} rounded="sm" />
+              {ENTITY_META[slug].name}
             </span>
           ))}
         </div>
@@ -177,7 +179,7 @@ export default function ConsolidatedPage() {
           <div className="flex flex-wrap gap-x-4 gap-y-1.5">
             {[...entityContribs].sort((a, b) => b.m.revenue_ytd - a.m.revenue_ytd).map(({ slug, cfg, m }) => (
               <div key={slug} className="flex items-center gap-1.5">
-                <span className="w-2.5 h-2.5 rounded-sm flex-shrink-0" style={{ background: cfg.color }} />
+                <EntityLogo entity={ENTITY_META[slug]} size={18} rounded="sm" />
                 <span className="text-[11px] text-gray-600">{cfg.name}</span>
                 <span className="text-[11px] font-semibold text-gray-900">{fmt(m.revenue_ytd)}</span>
                 <span className="text-[10px] text-gray-400">{pct((m.revenue_ytd / totalRev) * 100)}</span>
@@ -286,7 +288,7 @@ export default function ConsolidatedPage() {
                     <tr key={row.slug} className="border-t border-gray-50 hover:bg-gray-50 transition-colors">
                       <td className="px-4 py-2.5">
                         <div className="flex items-center gap-2">
-                          <span className="w-2 h-2 rounded-full" style={{ background: cfg.color }} />
+                          <EntityLogo entity={ENTITY_META[row.slug]} size={20} rounded="md" />
                           <span className="text-[12px] font-medium text-gray-800">{cfg.name}</span>
                         </div>
                       </td>

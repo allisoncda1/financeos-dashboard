@@ -9,6 +9,8 @@ import {
   FileSpreadsheet,
 } from "lucide-react";
 import { ENTITY_CONFIG, ENTITY_SLUGS } from "@/lib/types";
+import { ENTITY_META } from "@/lib/entities";
+import { EntityLogo } from "@/components/ui/EntityLogo";
 
 // ── Template definitions ───────────────────────────────────────────────────
 
@@ -373,7 +375,7 @@ export default function ReportCenterPage() {
                           {checked && <CheckCircle2 className="w-3 h-3 text-white" />}
                         </div>
                         <span className="text-[11px] text-gray-700 group-hover:text-gray-900 transition-colors">{cfg.name}</span>
-                        <span className="w-1.5 h-1.5 rounded-full ml-auto flex-shrink-0" style={{ background: cfg.color }} />
+                        <span className="ml-auto flex-shrink-0"><EntityLogo entity={ENTITY_META[slug]} size={16} rounded="sm" /></span>
                       </label>
                     );
                   })}
