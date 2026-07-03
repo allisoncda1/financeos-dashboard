@@ -121,6 +121,10 @@ export async function driveLoadCsv(relativePath: string): Promise<Record<string,
   return data;
 }
 
+export function invalidateCache(): void {
+  cache.clear();
+}
+
 export function driveStatus(): { configured: boolean; cacheSize: number } {
   const configured = Boolean(
     process.env["GOOGLE_CLIENT_ID"] &&

@@ -1,6 +1,7 @@
 import type { DashboardData, FinancialsData, CustomersData, VendorsData, BankingData, EntitySlug, BriefingResponse, Alert } from "./types";
 import type { ReportTemplateSummary, ReportGenerateRequest, BuiltReport } from "./reportTypes";
 import type { AIStatus } from "./aiTypes";
+import type { PipelineStatus } from "./pipelineTypes";
 
 const BASE = "/api";
 
@@ -34,4 +35,5 @@ export const api = {
   reportTemplates:  ()           => get<ReportTemplateSummary[]>("/reports"),
   generateReport:   (req: ReportGenerateRequest) => post<BuiltReport>("/reports/generate", req),
   aiStatus:         ()           => get<AIStatus>("/ai/status"),
+  pipelineStatus:   ()           => get<PipelineStatus>("/pipeline/status"),
 };

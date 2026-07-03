@@ -4,6 +4,7 @@ import { getMockData, getFinancials, getCustomers, getVendors, getBanking } from
 import type { DashboardData, FinancialsData, CustomersData, VendorsData, BankingData, EntitySlug, BriefingResponse, Alert } from '@/lib/types';
 import type { ReportTemplateSummary, ReportGenerateRequest, BuiltReport } from '@/lib/reportTypes';
 import type { AIStatus } from '@/lib/aiTypes';
+import type { PipelineStatus } from '@/lib/pipelineTypes';
 
 export function useDashboardData(): DashboardData {
   const [data, setData] = useState<DashboardData>(getMockData);
@@ -127,6 +128,28 @@ export function useReportGenerator() {
   const reset = useCallback(() => { setReport(null); setError(null); }, []);
 
   return { report, generating, error, generate, reset };
+}
+
+/**
+ * usePipelineStatus — fetches the external pipeline's self-reported status
+ * from GET /api/pipeline/status, once on mount (no polling). Read-only —
+ * FinanceOS never runs or triggers the pipeline, it only displays what it
+ * last reported.
+ */
+export function usePipelineStatus(): { data: PipelineStatus | null; loading: boolean; failed: boolean } {
+  const [data, setData] = useState<PipelineStatus | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [failed, setFailed] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+    api.pipelineStatus()
+      .then((res) => { if (!cancelled) { setData(res); setLoading(false); } })
+      .catch(() => { if (!cancelled) { setFailed(true); setLoading(false); } });
+    return () => { cancelled = true; };
+  }, []);
+
+  return { data, loading, failed };
 }
 
 /**

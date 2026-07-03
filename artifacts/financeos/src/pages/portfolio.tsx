@@ -1,4 +1,5 @@
-import { useDashboardData, useBriefing } from "@/hooks/useApi";
+import { useDashboardData, useBriefing, usePipelineStatus } from "@/hooks/useApi";
+import { format } from "date-fns";
 import { generateBriefing, generatePriorities } from "@/lib/briefing";
 import { adaptLiveBriefing, adaptLivePriorities } from "@/lib/liveBriefing";
 import { ENTITY_SLUGS } from "@/lib/entities";
@@ -13,6 +14,29 @@ import { RefreshCw } from "lucide-react";
 export default function PortfolioPage() {
   const data = useDashboardData();
   const live = useBriefing();
+  const pipeline = usePipelineStatus();
+
+  const lastPipelineRun = pipeline.data?.lastPipelineRun
+    ? (() => {
+        const parsed = new Date(pipeline.data.lastPipelineRun);
+        return Number.isNaN(parsed.getTime()) ? null : format(parsed, "MMM d, yyyy h:mm a");
+      })()
+    : null;
+  const staleStatus = pipeline.failed ? null : pipeline.data?.staleStatus ?? null;
+  const staleDotClass =
+    staleStatus === "fresh"
+      ? "bg-emerald-500"
+      : staleStatus === "amber"
+      ? "bg-amber-500"
+      : staleStatus === "red"
+      ? "bg-red-500"
+      : "bg-gray-300";
+  const staleLabel =
+    staleStatus === "red"
+      ? "Data may be stale"
+      : staleStatus
+      ? null
+      : "Status unknown";
 
   // Deterministic AI CFO briefing (Sprint 13) — falls back to the local,
   // metrics-derived briefing if /api/briefing hasn't loaded yet or failed.
@@ -36,8 +60,17 @@ export default function PortfolioPage() {
           <div className="flex items-center justify-between">
             <div>
               <h1 className="text-[20px] font-bold text-gray-900">Portfolio Overview</h1>
-              <p className="text-[12px] text-gray-500 mt-0.5">
-                4 entities · Data as of {data.freshness.data_as_of}
+              <p className="text-[12px] text-gray-500 mt-0.5 flex items-center gap-1.5">
+                <span>
+                  4 entities · Data as of {lastPipelineRun ?? data.freshness.data_as_of}
+                </span>
+                <span
+                  className={`inline-block w-1.5 h-1.5 rounded-full ${staleDotClass}`}
+                  title={staleLabel ?? undefined}
+                />
+                {staleLabel && (
+                  <span className="text-gray-400">{staleLabel}</span>
+                )}
               </p>
             </div>
             <div className="flex items-center gap-2">

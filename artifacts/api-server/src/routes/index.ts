@@ -8,6 +8,7 @@ import briefingRouter from "./briefing";
 import rulesRouter from "./rules";
 import reportsRouter from "./reports";
 import aiRouter from "./ai";
+import pipelineRouter from "./pipeline";
 
 const router: IRouter = Router();
 
@@ -20,5 +21,6 @@ router.use(briefingRouter);
 router.use(rulesRouter);
 router.use(reportsRouter);
 router.use("/ai", aiRouter);
+router.use("/pipeline", pipelineRouter);
 
 export default router;
