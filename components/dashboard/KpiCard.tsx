@@ -15,7 +15,7 @@ export type KpiCardData = {
 
 export function KpiCard({ label, value, delta, positive, icon: Icon, iconBg, compare = "vs prev month" }: KpiCardData) {
   return (
-    <div className="bg-white rounded-xl border border-gray-100 p-4 shadow-sm flex flex-col gap-3">
+    <div className="bg-white rounded-xl border border-gray-100 p-4 shadow-sm flex flex-col gap-3 h-full">
       <div className="flex items-start gap-3">
         <div
           className="w-10 h-10 rounded-full flex items-center justify-center flex-shrink-0"

@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { motion } from "framer-motion";
 import type { ComponentType } from "react";
 import {
   BarChart3, LayoutDashboard, Inbox, TrendingUp, FileText,
@@ -252,22 +253,26 @@ function NavItem({
   return (
     <Link
       href={href}
-      className={`flex items-center gap-2.5 px-2.5 py-1.5 rounded-lg text-[11px] w-full font-medium transition-all ${
+      className={`relative flex items-center gap-2.5 px-2.5 py-1.5 rounded-lg text-[11px] w-full font-medium transition-colors ${
         active ? "" : "hover:bg-white/5 hover:text-white/90"
       }`}
-      style={
-        active
-          ? { background: "rgba(16,185,129,0.12)", color: "#FFFFFF", borderLeft: "2px solid #10B981" }
-          : { color: "rgba(255,255,255,0.55)" }
-      }
+      style={{ color: active ? "#FFFFFF" : "rgba(255,255,255,0.55)" }}
     >
+      {active && (
+        <motion.span
+          layoutId="nav-active-bg"
+          className="absolute inset-0 rounded-lg"
+          style={{ background: "rgba(16,185,129,0.12)", borderLeft: "2px solid #10B981" }}
+          transition={{ duration: 0.18, ease: [0.16, 1, 0.3, 1] }}
+        />
+      )}
       <span style={{ color: active ? "#34D399" : "rgba(255,255,255,0.45)", display: "contents" }}>
-        <Icon className="w-3.5 h-3.5 flex-shrink-0" />
+        <Icon className="w-3.5 h-3.5 flex-shrink-0 relative z-10" />
       </span>
-      <span className="flex-1 truncate">{label}</span>
+      <span className="flex-1 truncate relative z-10">{label}</span>
       {badge !== undefined && (
         <span
-          className="text-[9px] font-bold rounded-full px-1.5 py-0.5 flex-shrink-0 leading-none"
+          className="text-[9px] font-bold rounded-full px-1.5 py-0.5 flex-shrink-0 leading-none relative z-10"
           style={{
             background: badgeColor ? `${badgeColor}22` : "rgba(239,68,68,0.2)",
             color: badgeColor ?? "#EF4444",

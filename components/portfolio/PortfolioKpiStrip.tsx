@@ -1,7 +1,10 @@
+"use client";
+
 import {
   DollarSign, TrendingUp, Landmark, Receipt, Clock, Activity,
 } from "lucide-react";
 import { KpiCard, type KpiCardData } from "@/components/dashboard/KpiCard";
+import { StaggerContainer, StaggerItem, MotionCard } from "@/components/motion";
 import type { DashboardData } from "@/lib/types";
 import { ENTITY_SLUGS } from "@/lib/types";
 import { computeHealthScore } from "@/lib/briefing";
@@ -79,10 +82,14 @@ export function PortfolioKpiStrip({ data }: { data: DashboardData }) {
   ];
 
   return (
-    <div className="grid grid-cols-6 gap-3">
+    <StaggerContainer className="grid grid-cols-6 gap-3" stagger={0.05}>
       {cards.map((card) => (
-        <KpiCard key={card.label} {...card} />
+        <StaggerItem key={card.label}>
+          <MotionCard className="h-full">
+            <KpiCard {...card} />
+          </MotionCard>
+        </StaggerItem>
       ))}
-    </div>
+    </StaggerContainer>
   );
 }

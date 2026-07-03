@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { motion } from "framer-motion";
 import {
   FileText, Download, Eye, Calendar, Building2,
   BarChart3, TrendingUp, Users, Landmark, Briefcase,
@@ -196,19 +197,31 @@ export default function ReportCenterPage() {
             {/* Template gallery */}
             <div>
               <p className="text-[11px] font-semibold text-gray-500 uppercase tracking-widest mb-3">Template Gallery</p>
-              <div className="grid grid-cols-3 gap-3">
+              <motion.div
+                className="grid grid-cols-3 gap-3"
+                initial="hidden"
+                animate="show"
+                variants={{ hidden: {}, show: { transition: { staggerChildren: 0.05 } } }}
+              >
                 {TEMPLATES.map((t) => {
                   const Icon = t.icon;
                   const isSelected = selectedTemplate === t.id;
                   return (
-                    <button
+                    <motion.button
                       key={t.id}
                       onClick={() => setSelectedTemplate(t.id)}
-                      className={`text-left p-4 rounded-xl border-2 transition-all group ${
+                      className={`text-left p-4 rounded-xl border-2 transition-colors group ${
                         isSelected
                           ? "border-violet-400 bg-violet-50/60 shadow-sm"
-                          : "border-gray-200 bg-white hover:border-gray-300 hover:shadow-sm"
+                          : "border-gray-200 bg-white"
                       }`}
+                      variants={{
+                        hidden: { opacity: 0, y: 8 },
+                        show:   { opacity: 1, y: 0, transition: { duration: 0.2, ease: [0.16, 1, 0.3, 1] } },
+                      }}
+                      whileHover={{ y: -2, boxShadow: "0 4px 16px rgba(0,0,0,0.07)" }}
+                      whileTap={{ scale: 0.99 }}
+                      transition={{ duration: 0.15, ease: [0.16, 1, 0.3, 1] }}
                     >
                       <div className="flex items-start justify-between mb-3">
                         <div
@@ -237,10 +250,10 @@ export default function ReportCenterPage() {
                           <span key={f} className="text-[9px] font-semibold text-gray-400 bg-gray-100 px-1.5 py-0.5 rounded">{f}</span>
                         ))}
                       </div>
-                    </button>
+                    </motion.button>
                   );
                 })}
-              </div>
+              </motion.div>
             </div>
 
             {/* Recent reports for selected template */}

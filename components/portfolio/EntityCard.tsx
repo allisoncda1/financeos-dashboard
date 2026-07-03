@@ -1,4 +1,7 @@
+"use client";
+
 import Link from "next/link";
+import { motion } from "framer-motion";
 import { ArrowUpRight, CheckCircle2, AlertCircle } from "lucide-react";
 import type { EntitySlug, EntityMetrics } from "@/lib/types";
 import { ENTITY_CONFIG } from "@/lib/types";
@@ -31,9 +34,14 @@ export function EntityCard({ slug, metrics: m, validationPassed }: Props) {
     score >= 85 ? "#10B981" : score >= 70 ? "#F59E0B" : "#EF4444";
 
   return (
+    <motion.div
+      whileHover={{ y: -2, boxShadow: "0 6px 20px rgba(0,0,0,0.07)" }}
+      whileTap={{ scale: 0.99 }}
+      transition={{ duration: 0.15, ease: [0.16, 1, 0.3, 1] }}
+    >
     <Link
       href={`/entity/${slug}`}
-      className="block bg-white rounded-xl border border-gray-200 hover:border-gray-300 hover:shadow-sm transition-all group overflow-hidden"
+      className="block bg-white rounded-xl border border-gray-200 hover:border-gray-300 transition-colors group overflow-hidden"
       style={{ borderLeft: `3px solid ${cfg.color}` }}
     >
       {/* Header */}
@@ -89,6 +97,7 @@ export function EntityCard({ slug, metrics: m, validationPassed }: Props) {
         </span>
       </div>
     </Link>
+    </motion.div>
   );
 }
 

@@ -2,6 +2,7 @@
 
 import { useEffect, useState, useCallback, useRef, Fragment } from "react";
 import { useRouter } from "next/navigation";
+import { motion, AnimatePresence, useReducedMotion } from "framer-motion";
 import type { ComponentType } from "react";
 import {
   Search, LayoutDashboard, BarChart3, FileText, Clock,
@@ -107,8 +108,6 @@ export function CommandBar() {
     }
   };
 
-  if (!open) return null;
-
   // Group results by category
   const isSearching = query.trim().length > 0;
   const grouped: Record<string, Command[]> = {};
@@ -128,18 +127,30 @@ export function CommandBar() {
     items: items.map((item) => ({ item, idx: flatIndex++ })),
   }));
 
+  const reduced = useReducedMotion();
+
   return (
+    <AnimatePresence>
+      {open && (
     <>
       {/* Backdrop */}
-      <div
+      <motion.div
         className="fixed inset-0 z-50 bg-black/30 backdrop-blur-sm"
         onClick={() => setOpen(false)}
+        initial={{ opacity: 0 }}
+        animate={{ opacity: 1 }}
+        exit={{ opacity: 0 }}
+        transition={{ duration: 0.15 }}
       />
 
       {/* Panel */}
-      <div
+      <motion.div
         className="fixed z-50 top-[14vh] left-1/2 -translate-x-1/2 w-full max-w-[560px] bg-white rounded-2xl shadow-2xl border border-gray-200 overflow-hidden"
         onClick={(e) => e.stopPropagation()}
+        initial={reduced ? { opacity: 0 } : { opacity: 0, y: -10, scale: 0.98 }}
+        animate={{ opacity: 1, y: 0, scale: 1 }}
+        exit={reduced   ? { opacity: 0 } : { opacity: 0, y: -6,  scale: 0.98 }}
+        transition={{ duration: 0.18, ease: [0.16, 1, 0.3, 1] }}
       >
         {/* Search row */}
         <div className="flex items-center gap-3 px-4 py-3.5 border-b border-gray-100">
@@ -239,8 +250,10 @@ export function CommandBar() {
           <Hint keys={["ESC"]} label="close" />
           <span className="ml-auto text-[10px] text-gray-400">FinanceOS ⌘K</span>
         </div>
-      </div>
+      </motion.div>
     </>
+      )}
+    </AnimatePresence>
   );
 }
 

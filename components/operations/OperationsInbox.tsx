@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useMemo } from "react";
 import Link from "next/link";
+import { motion, AnimatePresence, useReducedMotion } from "framer-motion";
 import {
   Search, X, ArrowUpRight, ChevronRight,
   AlertCircle, AlertTriangle, Info,
@@ -9,6 +10,8 @@ import {
 } from "lucide-react";
 import type { OperationItem, OperationSeverity, OperationType, OperationStatus } from "@/lib/operations";
 import { TYPE_LABEL } from "@/lib/operations";
+
+const ease = [0.16, 1, 0.3, 1] as [number, number, number, number];
 
 const LS_KEY = "financeos_op_statuses";
 
@@ -52,6 +55,8 @@ export function OperationsInbox({ items }: { items: OperationItem[] }) {
   const [statuses, setStatuses] = useState<Record<string, OperationStatus>>({});
   const [filters, setFilters] = useState<Filters>(DEFAULT_FILTERS);
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [toastMsg, setToastMsg] = useState<string | null>(null);
+  const reduced = useReducedMotion();
 
   useEffect(() => {
     try {
@@ -68,6 +73,10 @@ export function OperationsInbox({ items }: { items: OperationItem[] }) {
       try { localStorage.setItem(LS_KEY, JSON.stringify(next)); } catch {}
       return next;
     });
+    if (status === "resolved") {
+      setToastMsg("Marked as Resolved");
+      setTimeout(() => setToastMsg(null), 2000);
+    }
   };
 
   // Derived filter options
@@ -235,19 +244,28 @@ export function OperationsInbox({ items }: { items: OperationItem[] }) {
               </button>
             </div>
           ) : (
-            <div className="divide-y divide-gray-100">
+            <motion.div
+              className="divide-y divide-gray-100"
+              initial="hidden"
+              animate="show"
+              variants={{ hidden: {}, show: { transition: { staggerChildren: 0.04 } } }}
+            >
               {filtered.map((item) => {
                 const status = getStatus(item.id);
                 const ss = STATUS_STYLE[status];
                 const isSelected = item.id === selectedId;
                 const isResolved = status === "resolved";
                 return (
-                  <button
+                  <motion.button
                     key={item.id}
                     onClick={() => setSelectedId(isSelected ? null : item.id)}
                     className={`w-full text-left px-4 py-3 transition-colors flex items-start gap-3 ${
                       isSelected ? "bg-emerald-50 border-l-2 border-emerald-500" : "hover:bg-gray-50 border-l-2 border-transparent"
                     } ${isResolved ? "opacity-50" : ""}`}
+                    variants={reduced ? undefined : {
+                      hidden: { opacity: 0, x: -6 },
+                      show:   { opacity: 1, x: 0, transition: { duration: 0.18, ease } },
+                    }}
                   >
                     {/* Severity indicator */}
                     <div className="flex-shrink-0 mt-0.5">
@@ -290,19 +308,23 @@ export function OperationsInbox({ items }: { items: OperationItem[] }) {
                         )}
                       </div>
                     </div>
-                  </button>
+                  </motion.button>
                 );
               })}
-            </div>
+            </motion.div>
           )}
         </div>
       </div>
 
       {/* ── Detail Panel ──────────────────────────────────────────────────── */}
-      <aside
-        className={`flex-shrink-0 bg-white border-l border-gray-200 overflow-y-auto flex flex-col transition-all duration-200 ${
-          selected ? "w-[340px]" : "w-0 border-l-0"
-        }`}
+      <AnimatePresence>
+      {selected && (
+      <motion.aside
+        className="flex-shrink-0 bg-white border-l border-gray-200 overflow-y-auto flex flex-col w-[340px]"
+        initial={reduced ? { opacity: 0 } : { opacity: 0, x: 20 }}
+        animate={{ opacity: 1, x: 0 }}
+        exit={reduced    ? { opacity: 0 } : { opacity: 0, x: 20 }}
+        transition={{ duration: 0.2, ease }}
       >
         {selected && selectedStatus && (
           <>
@@ -427,7 +449,25 @@ export function OperationsInbox({ items }: { items: OperationItem[] }) {
             </div>
           </>
         )}
-      </aside>
+      </motion.aside>
+      )}
+      </AnimatePresence>
+
+      {/* Toast */}
+      <AnimatePresence>
+        {toastMsg && (
+          <motion.div
+            className="fixed bottom-6 left-1/2 -translate-x-1/2 z-[9999] flex items-center gap-2 px-4 py-2.5 rounded-xl shadow-lg bg-emerald-600 text-white text-[13px] font-semibold"
+            initial={reduced ? { opacity: 0 } : { opacity: 0, y: 12, scale: 0.96 }}
+            animate={{ opacity: 1, y: 0, scale: 1 }}
+            exit={reduced    ? { opacity: 0 } : { opacity: 0, y: 8,  scale: 0.97 }}
+            transition={{ duration: 0.2, ease }}
+          >
+            <CheckCircle2 className="w-4 h-4" />
+            {toastMsg}
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }

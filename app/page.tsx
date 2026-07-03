@@ -6,6 +6,7 @@ import { PortfolioKpiStrip } from "@/components/portfolio/PortfolioKpiStrip";
 import { TodaysPriorities } from "@/components/portfolio/TodaysPriorities";
 import { EntityCard } from "@/components/portfolio/EntityCard";
 import { PortfolioTrends } from "@/components/portfolio/PortfolioTrends";
+import { PageTransition, StaggerContainer, StaggerItem } from "@/components/motion";
 import { RefreshCw } from "lucide-react";
 
 export default function PortfolioPage() {
@@ -20,6 +21,7 @@ export default function PortfolioPage() {
 
       {/* ── Main content (scrollable) ─────── */}
       <div className="flex-1 overflow-y-auto bg-[#F4F5F7]">
+        <PageTransition>
         <div className="max-w-[1200px] mx-auto px-6 py-5 space-y-5">
 
           {/* Header */}
@@ -54,16 +56,17 @@ export default function PortfolioPage() {
           {/* Entity Cards 2×2 */}
           <div>
             <h2 className="text-[13px] font-semibold text-gray-700 mb-3">Entities</h2>
-            <div className="grid grid-cols-2 gap-4">
+            <StaggerContainer className="grid grid-cols-2 gap-4" stagger={0.07} delay={0.1}>
               {ENTITY_SLUGS.map((slug) => (
-                <EntityCard
-                  key={slug}
-                  slug={slug}
-                  metrics={data.metrics[slug]}
-                  validationPassed={data.validation.all_passed}
-                />
+                <StaggerItem key={slug}>
+                  <EntityCard
+                    slug={slug}
+                    metrics={data.metrics[slug]}
+                    validationPassed={data.validation.all_passed}
+                  />
+                </StaggerItem>
               ))}
-            </div>
+            </StaggerContainer>
           </div>
 
           {/* Portfolio Trends */}
@@ -72,6 +75,7 @@ export default function PortfolioPage() {
             <PortfolioTrends />
           </div>
         </div>
+        </PageTransition>
       </div>
     </div>
   );
