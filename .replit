@@ -1,0 +1,9 @@
+run = "npx --yes next dev -p 3000"
+entrypoint = "app/page.tsx"
+
+[deployment]
+run = ["sh", "-c", "npx next start -p 3000"]
+
+[[ports]]
+localPort = 3000
+externalPort = 80
