@@ -24,17 +24,19 @@ function loadJson<T>(relativePath: string): T {
   return JSON.parse(fs.readFileSync(filePath, "utf-8")) as T;
 }
 
-export function loadMockData(): DashboardData {
-  const slugs: EntitySlug[] = [
-    "CarDealer_ai",
-    "T3_Marketing",
-    "TopMrktr",
-    "Smile_More",
-  ];
+export const ENTITY_SLUGS: EntitySlug[] = [
+  "CarDealer_ai",
+  "T3_Marketing",
+  "TopMrktr",
+  "Smile_More",
+];
 
+export type EntityDataFile = "financials" | "customers" | "vendors" | "banking";
+
+export function loadMockData(): DashboardData {
   const metrics = {} as DashboardData["metrics"];
   const anomalies = {} as DashboardData["anomalies"];
-  for (const slug of slugs) {
+  for (const slug of ENTITY_SLUGS) {
     metrics[slug] = loadJson(`entities/${slug}/metrics.json`);
     anomalies[slug] = loadJson(`entities/${slug}/anomalies.json`);
   }
@@ -50,4 +52,8 @@ export function loadMockData(): DashboardData {
 
 export function loadValidationSummary(): unknown {
   return loadJson("validation/validation_summary.json");
+}
+
+export function loadEntityFile<T>(slug: EntitySlug, file: EntityDataFile): T {
+  return loadJson<T>(`entities/${slug}/${file}.json`);
 }

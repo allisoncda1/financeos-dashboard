@@ -1,5 +1,5 @@
 import { Router, type IRouter } from "express";
-import { loadMockData } from "../lib/mockData";
+import { loadMockData, loadEntityFile, ENTITY_SLUGS } from "../lib/mockData";
 import type { EntitySlug } from "../lib/types";
 
 const router: IRouter = Router();
@@ -51,5 +51,33 @@ router.get("/model/:slug", (req, res) => {
     });
   }
 });
+
+// GET /api/model/:slug/{financials,customers,vendors,banking} — per-entity detail data
+const ENTITY_FILES = ["financials", "customers", "vendors", "banking"] as const;
+
+for (const file of ENTITY_FILES) {
+  router.get(`/model/:slug/${file}`, (req, res) => {
+    const slug = req.params["slug"] as EntitySlug;
+    if (!ENTITY_SLUGS.includes(slug)) {
+      res.status(404).json({
+        ok: false,
+        error: `Entity "${slug}" not found`,
+        ts: new Date().toISOString(),
+      });
+      return;
+    }
+    try {
+      const data = loadEntityFile(slug, file);
+      res.json({ ok: true, data, ts: new Date().toISOString() });
+    } catch (err) {
+      req.log.error({ err }, `Failed to load ${file} data for ${slug}`);
+      res.status(500).json({
+        ok: false,
+        error: `Failed to load ${file} data`,
+        ts: new Date().toISOString(),
+      });
+    }
+  });
+}
 
 export default router;
