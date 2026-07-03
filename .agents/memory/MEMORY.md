@@ -3,3 +3,4 @@
 - [FinanceOS Drive CSV schemas](financeos-drive-csv-schemas.md) — real Drive CSV headers differ from assumed simplified schemas; always inspect real headers before writing transformers.
 - [FinanceOS entity pages ignore live data](financeos-entity-pages-mock-only.md) — entity/{financials,customers,vendors,banking}.tsx import live-fetch hooks but discard the result and render mock data instead.
 - [Main agent git write restriction](main-agent-git-write-restriction.md) — `git add`/`commit` are blocked for main agent in this env; rely on platform's automatic checkpoint commit at task completion.
+- [LLM structured output sanitization](llm-structured-output-sanitization.md) — prompt-level JSON schemas drift; sanitize LLM output server-side (enum coercion, field filtering) before it reaches typed UI.

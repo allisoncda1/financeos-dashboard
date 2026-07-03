@@ -22,12 +22,14 @@ function parseEntitySlugs(value: unknown): EntitySlug[] | undefined {
 router.get("/status", async (_req, res) => {
   try {
     const provider = getProvider();
+    const available =
+      provider.name !== "claude" || Boolean(process.env["ANTHROPIC_API_KEY"]);
     res.json({
       ok: true,
       data: {
         provider: provider.name,
         model: provider.model,
-        available: true,
+        available,
         cacheStats: getCacheStats(),
         lastRequest: null,
       },

@@ -9,12 +9,19 @@
  * active.
  *
  * MockProvider is fully deterministic — no LLM, no API key, no network
- * call. ClaudeProvider is an intentional stub for a future sprint: it
- * throws until ANTHROPIC_API_KEY + AI_PROVIDER=claude are configured.
+ * call. ClaudeProvider calls the Anthropic API using ANTHROPIC_API_KEY and
+ * is activated by setting AI_PROVIDER=claude.
  */
 
+import Anthropic from "@anthropic-ai/sdk";
 import { generateBriefing } from "./briefing";
 import { num, isKnown, fmtMoney, fmtPct } from "./format";
+import {
+  buildAnalysisPrompt,
+  buildBriefingPrompt,
+  buildQuestionPrompt,
+  buildReportSummaryPrompt,
+} from "./promptBuilder";
 import type { AIContext, AIResponse } from "./types";
 import type { EntityMetrics } from "../lib/types";
 
@@ -159,34 +166,106 @@ export class MockProvider implements AIProvider {
 }
 
 /**
- * ClaudeProvider — intentional stub for a future sprint. All methods throw
- * until ANTHROPIC_API_KEY is set and AI_PROVIDER=claude is configured.
- * Never called unless AI_PROVIDER=claude is explicitly set.
+ * ClaudeProvider — real Anthropic-backed provider. Requires
+ * ANTHROPIC_API_KEY to be set; activated by AI_PROVIDER=claude. Consumes
+ * only the structured AIContext via the promptBuilder templates — never
+ * raw CSV/Drive data. The API key never leaves the server and is never
+ * included in any response or log.
  */
 export class ClaudeProvider implements AIProvider {
   name = "claude";
-  model = "claude-sonnet-4-6";
+  model = "claude-sonnet-4-5";
 
-  private notConfigured(): never {
-    throw new Error(
-      "ClaudeProvider not yet configured — set ANTHROPIC_API_KEY and set AI_PROVIDER=claude in environment",
-    );
+  private client: Anthropic | null = null;
+
+  private getClient(): Anthropic {
+    if (!this.client) {
+      const apiKey = process.env["ANTHROPIC_API_KEY"];
+      if (!apiKey) {
+        throw new Error(
+          "ClaudeProvider not configured — ANTHROPIC_API_KEY is missing from the environment",
+        );
+      }
+      this.client = new Anthropic({ apiKey });
+    }
+    return this.client;
   }
 
-  async generateBriefing(_context: AIContext): Promise<AIResponse> {
-    this.notConfigured();
+  private async complete(prompt: string, maxTokens: number): Promise<{ text: string; tokensUsed: number }> {
+    const message = await this.getClient().messages.create({
+      model: this.model,
+      max_tokens: maxTokens,
+      messages: [{ role: "user", content: prompt }],
+    });
+
+    const text = message.content
+      .filter((block): block is Anthropic.TextBlock => block.type === "text")
+      .map((block) => block.text)
+      .join("\n")
+      .trim();
+
+    return { text, tokensUsed: message.usage.input_tokens + message.usage.output_tokens };
   }
 
-  async summarizeReport(_context: AIContext): Promise<AIResponse> {
-    this.notConfigured();
+  private response(text: string, tokensUsed: number, structured?: unknown): AIResponse {
+    return {
+      content: text,
+      ...(structured !== undefined ? { structured } : {}),
+      provider: this.name,
+      model: this.model,
+      generatedAt: new Date().toISOString(),
+      tokensUsed,
+    };
   }
 
-  async analyzeFinancials(_context: AIContext): Promise<AIResponse> {
-    this.notConfigured();
+  async generateBriefing(context: AIContext): Promise<AIResponse> {
+    const entityNames = Object.values(context.entities)
+      .map((e) => e.metrics.entity)
+      .filter((name): name is string => typeof name === "string" && name.length > 0);
+
+    const prompt = [
+      buildBriefingPrompt(context),
+      "",
+      "Output format: Respond with ONLY a JSON object (no markdown fences, no prose outside the JSON) with exactly these keys:",
+      `{"greeting": "Good morning|afternoon|evening — Weekday, Month Day, Year", "executiveSummary": string[], "highlights": [{"icon": string, "text": string, "sentiment": "positive"|"negative"|"neutral"}], "priorities": [{"title": string, "description": string, "severity": "high"|"medium"|"low", "entity": string, "recommendedAction": string, "status": "New"}], "risks": [{"title": string, "description": string, "severity": "high"|"medium"|"low", "entity": string}], "opportunities": [{"title": string, "description": string, "entity": string}], "confidenceScore": number, "generatedAt": string}`,
+      `Rules: severity must be exactly "high", "medium", or "low" — never "critical" and never a severity prefix in titles. entity must be exactly one of: ${entityNames.join(", ")} (or "Portfolio" for portfolio-level items). Use icon names from: trending-up, trending-down, minus, alert-triangle, alert-circle, award, package, refresh-cw. Set generatedAt to "${new Date().toISOString()}". confidenceScore is 0-100 based on data completeness. If a data field is null, describe it as "not available" — never write the words null, NaN, or undefined in any output text.`,
+    ].join("\n");
+
+    const { text, tokensUsed } = await this.complete(prompt, 4096);
+
+    let structured: unknown;
+    try {
+      const jsonText = text.replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/, "");
+      structured = JSON.parse(jsonText);
+    } catch {
+      structured = undefined;
+    }
+
+    return this.response(text, tokensUsed, structured);
   }
 
-  async answerQuestion(_context: AIContext): Promise<AIResponse> {
-    this.notConfigured();
+  async summarizeReport(context: AIContext): Promise<AIResponse> {
+    const { text, tokensUsed } = await this.complete(buildReportSummaryPrompt(context), 1024);
+    return this.response(text, tokensUsed);
+  }
+
+  async analyzeFinancials(context: AIContext): Promise<AIResponse> {
+    const prompt = [
+      buildAnalysisPrompt(context),
+      "",
+      "Output format: plain bullet points only, one per line, each starting with \"• \". No headings, no horizontal rules, no markdown formatting, no preamble.",
+    ].join("\n");
+    const { text, tokensUsed } = await this.complete(prompt, 2048);
+    const bullets = text
+      .split("\n")
+      .map((line) => line.replace(/^[•\-*]\s*/, "").trim())
+      .filter((line) => line.length > 0 && !/^#|^-{2,}$|^\*{1,2}$/.test(line));
+    return this.response(text, tokensUsed, { bullets });
+  }
+
+  async answerQuestion(context: AIContext): Promise<AIResponse> {
+    const { text, tokensUsed } = await this.complete(buildQuestionPrompt(context), 2048);
+    return this.response(text, tokensUsed);
   }
 }
 
