@@ -4,6 +4,7 @@ import entitiesRouter from "./entities";
 import modelRouter from "./model";
 import validationRouter from "./validation";
 import driveRouter from "./drive";
+import briefingRouter from "./briefing";
 
 const router: IRouter = Router();
 
@@ -12,5 +13,6 @@ router.use(entitiesRouter);
 router.use(modelRouter);
 router.use(validationRouter);
 router.use("/drive", driveRouter);
+router.use(briefingRouter);
 
 export default router;

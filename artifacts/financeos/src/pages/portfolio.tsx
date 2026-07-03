@@ -1,5 +1,6 @@
-import { useDashboardData } from "@/hooks/useApi";
+import { useDashboardData, useBriefing } from "@/hooks/useApi";
 import { generateBriefing, generatePriorities } from "@/lib/briefing";
+import { adaptLiveBriefing, adaptLivePriorities } from "@/lib/liveBriefing";
 import { ENTITY_SLUGS } from "@/lib/entities";
 import { AIBriefingPanel } from "@/components/portfolio/AIBriefingPanel";
 import { PortfolioKpiStrip } from "@/components/portfolio/PortfolioKpiStrip";
@@ -11,8 +12,15 @@ import { RefreshCw } from "lucide-react";
 
 export default function PortfolioPage() {
   const data = useDashboardData();
-  const briefing = generateBriefing(data);
-  const priorities = generatePriorities(data);
+  const live = useBriefing();
+
+  // Deterministic AI CFO briefing (Sprint 13) — falls back to the local,
+  // metrics-derived briefing if /api/briefing hasn't loaded yet or failed.
+  const fallbackBriefing = generateBriefing(data);
+  const fallbackPriorities = generatePriorities(data);
+  const briefing = live.data ? adaptLiveBriefing(live.data, fallbackBriefing.userName) : fallbackBriefing;
+  const priorities = live.data ? adaptLivePriorities(live.data) : fallbackPriorities;
+  const executiveSummary = live.data?.executiveSummary ?? [];
 
   return (
     <div className="flex h-full overflow-hidden">
@@ -46,6 +54,17 @@ export default function PortfolioPage() {
               </kbd>
             </div>
           </div>
+
+          {/* Executive Summary (deterministic AI CFO briefing) */}
+          {executiveSummary.length > 0 && (
+            <div className="bg-white rounded-xl border border-gray-200 px-4 py-3 space-y-1.5">
+              {executiveSummary.map((paragraph, i) => (
+                <p key={i} className="text-[12px] text-gray-600 leading-relaxed">
+                  {paragraph}
+                </p>
+              ))}
+            </div>
+          )}
 
           {/* KPI Strip */}
           <PortfolioKpiStrip data={data} />

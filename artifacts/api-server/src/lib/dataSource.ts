@@ -72,7 +72,15 @@ export async function getEntityMetrics(slug: EntitySlug): Promise<EntityMetrics>
 export async function getEntityAnomalies(slug: EntitySlug): Promise<Anomaly[]> {
   if (USE_DRIVE) {
     try {
-      return await driveLoadJson<Anomaly[]>(`entities/${slug}/anomalies.json`);
+      const raw = await driveLoadJson<unknown>(`entities/${slug}/anomalies.json`);
+      // Some Drive-backed anomaly files wrap the list in an envelope object
+      // (e.g. `{ entity, as_of, count, anomalies: [...] }`) instead of
+      // exposing a bare array. Normalize to the documented Anomaly[] shape.
+      if (Array.isArray(raw)) return raw as Anomaly[];
+      if (raw && typeof raw === "object" && Array.isArray((raw as { anomalies?: unknown }).anomalies)) {
+        return (raw as { anomalies: Anomaly[] }).anomalies;
+      }
+      return [];
     } catch {
       // fall through to mock
     }

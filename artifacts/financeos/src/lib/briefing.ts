@@ -86,11 +86,11 @@ export function healthLabel(score: number): "Excellent" | "Good" | "Needs Attent
 export function generateEntityInsight(m: EntityMetrics): { text: string; type: "positive" | "warning" | "critical" } {
   if (m.dso_days > 60)
     return { text: `DSO at ${m.dso_days}d — exceeds 60-day target`, type: "critical" };
-  if (m.ar_overdue_pct > 15)
+  if (typeof m.ar_overdue_pct === "number" && m.ar_overdue_pct > 15)
     return { text: `${m.ar_overdue_pct.toFixed(1)}% of AR overdue`, type: "warning" };
-  if (m.ap_overdue_pct > 5)
+  if (typeof m.ap_overdue_pct === "number" && m.ap_overdue_pct > 5)
     return { text: `AP overdue approaching threshold (${m.ap_overdue_pct.toFixed(1)}%)`, type: "warning" };
-  if (m.net_margin_pct > 30)
+  if (typeof m.net_margin_pct === "number" && m.net_margin_pct > 30)
     return { text: `Strong net margin at ${m.net_margin_pct.toFixed(1)}%`, type: "positive" };
   return { text: `Revenue YTD ${fmtK(m.revenue_ytd)} — on track`, type: "positive" };
 }

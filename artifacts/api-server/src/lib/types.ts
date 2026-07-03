@@ -240,3 +240,48 @@ export type BankingData = {
   accounts: BankAccount[];
   transactions: BankTransaction[];
 };
+
+// ─── AI CFO Briefing Engine (Sprint 13) ────────────────────────────────────
+// Deterministic — no LLM. Every field is computed from live DashboardData.
+
+export type Sentiment = "positive" | "negative" | "neutral";
+export type Severity = "high" | "medium" | "low";
+
+export type Highlight = {
+  icon: string;
+  text: string;
+  sentiment: Sentiment;
+};
+
+export type Risk = {
+  title: string;
+  description: string;
+  severity: Severity;
+  entity: string;
+};
+
+export type Opportunity = {
+  title: string;
+  description: string;
+  entity: string;
+};
+
+export type Priority = {
+  title: string;
+  description: string;
+  severity: Severity;
+  entity: string;
+  recommendedAction: string;
+  status: "New";
+};
+
+export type BriefingResponse = {
+  greeting: string;
+  executiveSummary: string[];
+  highlights: Highlight[];
+  priorities: Priority[];
+  risks: Risk[];
+  opportunities: Opportunity[];
+  confidenceScore: number;
+  generatedAt: string;
+};

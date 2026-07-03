@@ -8,7 +8,8 @@ import type { DashboardData } from "@/lib/types";
 import { ENTITY_SLUGS } from "@/lib/entities";
 import { computeHealthScore } from "@/lib/briefing";
 
-function fmt(n: number): string {
+function fmt(n: number | null | undefined): string {
+  if (typeof n !== "number" || !Number.isFinite(n)) return "N/A";
   if (n >= 1_000_000) return `$${(n / 1_000_000).toFixed(2)}M`;
   if (n >= 1_000) return `$${(n / 1_000).toFixed(1)}K`;
   return `$${n}`;
@@ -17,8 +18,10 @@ function fmt(n: number): string {
 export function PortfolioKpiStrip({ data }: { data: DashboardData }) {
   const p = data.portfolio;
 
-  const monthlyBurn = p.portfolio_opex_ytd / 6;
-  const runway = monthlyBurn > 0 ? p.portfolio_cash_on_hand / monthlyBurn : 0;
+  const opexYtd = typeof p.portfolio_opex_ytd === "number" ? p.portfolio_opex_ytd : 0;
+  const cashOnHand = typeof p.portfolio_cash_on_hand === "number" ? p.portfolio_cash_on_hand : 0;
+  const monthlyBurn = opexYtd / 6;
+  const runway = monthlyBurn > 0 ? cashOnHand / monthlyBurn : 0;
 
   const scores = ENTITY_SLUGS.map((s) => computeHealthScore(data.metrics[s]));
   const avgHealth = Math.round(scores.reduce((a, b) => a + b, 0) / scores.length);

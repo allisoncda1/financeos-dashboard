@@ -222,3 +222,48 @@ export type DashboardData = {
   metrics: Record<EntitySlug, EntityMetrics>;
   anomalies: Record<EntitySlug, Anomaly[]>;
 };
+
+// ─── AI CFO Briefing Engine (Sprint 13) ────────────────────────────────────
+// Mirrors artifacts/api-server/src/lib/types.ts — deterministic, no LLM.
+
+export type BriefingSentiment = "positive" | "negative" | "neutral";
+export type BriefingSeverity = "high" | "medium" | "low";
+
+export type Highlight = {
+  icon: string;
+  text: string;
+  sentiment: BriefingSentiment;
+};
+
+export type Risk = {
+  title: string;
+  description: string;
+  severity: BriefingSeverity;
+  entity: string;
+};
+
+export type Opportunity = {
+  title: string;
+  description: string;
+  entity: string;
+};
+
+export type Priority = {
+  title: string;
+  description: string;
+  severity: BriefingSeverity;
+  entity: string;
+  recommendedAction: string;
+  status: "New";
+};
+
+export type BriefingResponse = {
+  greeting: string;
+  executiveSummary: string[];
+  highlights: Highlight[];
+  priorities: Priority[];
+  risks: Risk[];
+  opportunities: Opportunity[];
+  confidenceScore: number;
+  generatedAt: string;
+};
