@@ -2,20 +2,34 @@ import { driveLoadCsv } from "../lib/driveLoader";
 import type { EntitySlug, VendorsData, AgingBucket, Vendor } from "../lib/types";
 
 function toNumber(value: unknown): number {
-  if (typeof value === "number" && Number.isFinite(value)) return value;
-  if (typeof value === "string") {
-    const trimmed = value.trim();
-    if (trimmed === "") return 0;
-    const parsed = Number(trimmed);
-    return Number.isFinite(parsed) ? parsed : 0;
+  const parsed = parseFloat(String(value ?? ""));
+  return isNaN(parsed) ? 0 : parsed;
+}
+
+function warnMissingColumns(
+  rows: Record<string, string>[],
+  expectedColumns: string[],
+  source: string,
+): void {
+  if (rows.length === 0) return;
+  const actualColumns = new Set(Object.keys(rows[0] ?? {}));
+  const missing = expectedColumns.filter((col) => !actualColumns.has(col));
+  if (missing.length > 0) {
+    console.warn(
+      `[transformVendors] ${source} is missing expected column(s): ${missing.join(", ")}. Found: ${Array.from(actualColumns).join(", ")}`,
+    );
   }
-  return 0;
 }
 
 /**
  * ap_aging.csv is bill-level (one row per open bill), not pre-aggregated:
  * entity,vendor_name,bill_date,due_date,balance,days_overdue,aging_bucket,txn_type
  * Aging buckets are derived by grouping rows by aging_bucket (e.g. "1-30", "31-60").
+ *
+ * Note: for entities with no open bills (verified against real Drive data,
+ * e.g. CarDealer_ai), this file legitimately has zero data rows. That is not
+ * a column-mapping bug -- it should resolve to a clean empty state, which
+ * the try/catch + map over an empty array already produces.
  */
 type ApAgingRow = {
   vendorName: string;
@@ -25,9 +39,12 @@ type ApAgingRow = {
   dueDate: string;
 };
 
+const AP_AGING_EXPECTED_COLUMNS = ["vendor_name", "balance", "days_overdue", "aging_bucket", "due_date"];
+
 async function loadApAgingRows(slug: EntitySlug): Promise<ApAgingRow[]> {
   try {
     const rows = await driveLoadCsv(`entities/${slug}/ap_aging.csv`);
+    warnMissingColumns(rows, AP_AGING_EXPECTED_COLUMNS, `ap_aging.csv for ${slug}`);
     return rows.map((row) => ({
       vendorName: row["vendor_name"] ?? "",
       balance: toNumber(row["balance"]),
@@ -64,6 +81,7 @@ function toVendorStatus(maxDaysOverdue: number): Vendor["status"] {
 }
 
 const TOP_VENDORS_LIMIT = 10;
+const VENDORS_ENRICHED_EXPECTED_COLUMNS = ["vendor_name", "balance"];
 
 async function loadTopVendors(slug: EntitySlug, agingRows: ApAgingRow[]): Promise<Vendor[]> {
   const infoByVendor = new Map<string, { maxDaysOverdue: number; dueDate: string }>();
@@ -77,6 +95,7 @@ async function loadTopVendors(slug: EntitySlug, agingRows: ApAgingRow[]): Promis
 
   try {
     const rows = await driveLoadCsv(`entities/${slug}/vendors_enriched.csv`);
+    warnMissingColumns(rows, VENDORS_ENRICHED_EXPECTED_COLUMNS, `vendors_enriched.csv for ${slug}`);
     return rows
       .map((row) => {
         const name = row["vendor_name"] ?? "";

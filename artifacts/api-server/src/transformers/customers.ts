@@ -2,14 +2,23 @@ import { driveLoadCsv } from "../lib/driveLoader";
 import type { EntitySlug, CustomersData, AgingBucket, Customer } from "../lib/types";
 
 function toNumber(value: unknown): number {
-  if (typeof value === "number" && Number.isFinite(value)) return value;
-  if (typeof value === "string") {
-    const trimmed = value.trim();
-    if (trimmed === "") return 0;
-    const parsed = Number(trimmed);
-    return Number.isFinite(parsed) ? parsed : 0;
+  const parsed = parseFloat(String(value ?? ""));
+  return isNaN(parsed) ? 0 : parsed;
+}
+
+function warnMissingColumns(
+  rows: Record<string, string>[],
+  expectedColumns: string[],
+  source: string,
+): void {
+  if (rows.length === 0) return;
+  const actualColumns = new Set(Object.keys(rows[0] ?? {}));
+  const missing = expectedColumns.filter((col) => !actualColumns.has(col));
+  if (missing.length > 0) {
+    console.warn(
+      `[transformCustomers] ${source} is missing expected column(s): ${missing.join(", ")}. Found: ${Array.from(actualColumns).join(", ")}`,
+    );
   }
-  return 0;
 }
 
 /**
@@ -24,9 +33,17 @@ type ArAgingRow = {
   bucket: string;
 };
 
+const AR_AGING_EXPECTED_COLUMNS = [
+  "customer_name",
+  "balance",
+  "days_overdue",
+  "aging_bucket",
+];
+
 async function loadArAgingRows(slug: EntitySlug): Promise<ArAgingRow[]> {
   try {
     const rows = await driveLoadCsv(`entities/${slug}/ar_aging.csv`);
+    warnMissingColumns(rows, AR_AGING_EXPECTED_COLUMNS, `ar_aging.csv for ${slug}`);
     return rows.map((row) => ({
       customerName: row["customer_name"] ?? "",
       balance: toNumber(row["balance"]),
@@ -37,6 +54,33 @@ async function loadArAgingRows(slug: EntitySlug): Promise<ArAgingRow[]> {
     console.warn(`[transformCustomers] failed to load ar_aging.csv for ${slug}:`, err);
     return [];
   }
+}
+
+/**
+ * customers_enriched.csv and ar_aging.csv do not contain a pre-computed DSO
+ * (days sales outstanding) figure. We approximate the entity's current DSO
+ * as the balance-weighted average of days_overdue across all open invoices
+ * in ar_aging.csv. Rows with a negative (credit) balance are excluded from
+ * the weighting -- they represent credit memos/overpayments, not amounts a
+ * customer owes, and some are years-old stale credits that would otherwise
+ * skew the average to a nonsensical negative DSO. There is no historical
+ * monthly snapshot data available in Drive, so dso_history is populated as
+ * a flat series using this single current value (rather than fabricating a
+ * fake trend) to keep the frontend sparkline and delta calculations
+ * NaN-free.
+ */
+const DSO_HISTORY_LENGTH = 12;
+
+function computeDsoHistory(agingRows: ArAgingRow[]): number[] {
+  const debitRows = agingRows.filter((row) => row.balance > 0);
+  const totalBalance = debitRows.reduce((sum, row) => sum + row.balance, 0);
+  const currentDso =
+    totalBalance > 0
+      ? Math.round(
+          debitRows.reduce((sum, row) => sum + row.balance * row.daysOverdue, 0) / totalBalance,
+        )
+      : 0;
+  return Array(DSO_HISTORY_LENGTH).fill(currentDso);
 }
 
 function buildAgingBuckets(rows: ArAgingRow[]): AgingBucket[] {
@@ -63,6 +107,7 @@ function toCustomerStatus(maxDaysOverdue: number): Customer["status"] {
 }
 
 const TOP_CUSTOMERS_LIMIT = 10;
+const CUSTOMERS_ENRICHED_EXPECTED_COLUMNS = ["customer_name", "balance"];
 
 async function loadTopCustomers(slug: EntitySlug, agingRows: ArAgingRow[]): Promise<Customer[]> {
   const maxOverdueByCustomer = new Map<string, number>();
@@ -73,6 +118,11 @@ async function loadTopCustomers(slug: EntitySlug, agingRows: ArAgingRow[]): Prom
 
   try {
     const rows = await driveLoadCsv(`entities/${slug}/customers_enriched.csv`);
+    warnMissingColumns(
+      rows,
+      CUSTOMERS_ENRICHED_EXPECTED_COLUMNS,
+      `customers_enriched.csv for ${slug}`,
+    );
     return rows
       .map((row) => {
         const name = row["customer_name"] ?? "";
@@ -99,6 +149,7 @@ export async function transformCustomers(slug: EntitySlug, asOf: string): Promis
   const agingRows = await loadArAgingRows(slug);
   const aging = buildAgingBuckets(agingRows);
   const top_customers = await loadTopCustomers(slug, agingRows);
+  const dso_history = computeDsoHistory(agingRows);
 
   const open_ar = aging.reduce((sum, bucket) => sum + bucket.amount, 0);
 
@@ -108,6 +159,6 @@ export async function transformCustomers(slug: EntitySlug, asOf: string): Promis
     open_ar,
     aging,
     top_customers,
-    dso_history: [],
+    dso_history,
   };
 }

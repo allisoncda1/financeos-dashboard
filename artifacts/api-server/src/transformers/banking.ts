@@ -2,14 +2,23 @@ import { driveLoadCsv } from "../lib/driveLoader";
 import type { EntitySlug, BankingData, BankAccount, BankTransaction } from "../lib/types";
 
 function toNumber(value: unknown): number {
-  if (typeof value === "number" && Number.isFinite(value)) return value;
-  if (typeof value === "string") {
-    const trimmed = value.trim();
-    if (trimmed === "") return 0;
-    const parsed = Number(trimmed);
-    return Number.isFinite(parsed) ? parsed : 0;
+  const parsed = parseFloat(String(value ?? ""));
+  return isNaN(parsed) ? 0 : parsed;
+}
+
+function warnMissingColumns(
+  rows: Record<string, string>[],
+  expectedColumns: string[],
+  source: string,
+): void {
+  if (rows.length === 0) return;
+  const actualColumns = new Set(Object.keys(rows[0] ?? {}));
+  const missing = expectedColumns.filter((col) => !actualColumns.has(col));
+  if (missing.length > 0) {
+    console.warn(
+      `[transformBanking] ${source} is missing expected column(s): ${missing.join(", ")}. Found: ${Array.from(actualColumns).join(", ")}`,
+    );
   }
-  return 0;
 }
 
 function toBoolean(value: unknown): boolean {
@@ -35,9 +44,23 @@ function parseInstitution(accountName: string): string {
  * accounts: entity,account_id,account_name,account_type,account_subtype,active,current_balance
  * Only rows with account_type "Bank" represent real bank accounts.
  */
+const ACCOUNTS_ENRICHED_EXPECTED_COLUMNS = [
+  "account_id",
+  "account_name",
+  "account_type",
+  "account_subtype",
+  "active",
+  "current_balance",
+];
+
 async function loadAccounts(slug: EntitySlug): Promise<BankAccount[]> {
   try {
     const rows = await driveLoadCsv(`entities/${slug}/accounts_enriched.csv`);
+    warnMissingColumns(
+      rows,
+      ACCOUNTS_ENRICHED_EXPECTED_COLUMNS,
+      `accounts_enriched.csv for ${slug}`,
+    );
     return rows
       .filter((row) => (row["account_type"] ?? "").trim() === "Bank")
       .map((row) => {
@@ -67,9 +90,19 @@ async function loadAccounts(slug: EntitySlug): Promise<BankAccount[]> {
  * account_name,product_service_id,product_service_name,customer_id,
  * customer_name,description,line_amount,memo
  */
+const BILL_LINES_EXPECTED_COLUMNS = [
+  "bill_id",
+  "line_num",
+  "account_id",
+  "bill_date",
+  "line_amount",
+  "bill_balance",
+];
+
 async function loadTransactions(slug: EntitySlug): Promise<BankTransaction[]> {
   try {
     const rows = await driveLoadCsv(`entities/${slug}/bill_lines.csv`);
+    warnMissingColumns(rows, BILL_LINES_EXPECTED_COLUMNS, `bill_lines.csv for ${slug}`);
     return rows.map((row) => {
       const billBalance = toNumber(row["bill_balance"]);
       const description =
