@@ -60,6 +60,7 @@ export type PortfolioSummary = {
   portfolio_open_ar: number;
   portfolio_open_ap: number;
   portfolio_cash_on_hand: number;
+  cash_runway_months: number | null;
 };
 
 export type ValidationSummary = {

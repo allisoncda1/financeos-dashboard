@@ -64,6 +64,8 @@ export async function getPortfolioSummary(): Promise<PortfolioSummary> {
       // any live entity metrics.json) renders as "N/A" downstream instead of
       // a misleading "$0" — PortfolioKpiStrip's fmt() already treats
       // non-finite numbers as "N/A", so no frontend change is required.
+      // Note: JSON.stringify() serializes NaN as `null`, so this sentinel
+      // also produces a correct `null` in the actual HTTP response body.
       const sum = (key: keyof EntityMetrics): number => {
         const values = entityMetrics
           .map((m) => m[key])
@@ -73,17 +75,62 @@ export async function getPortfolioSummary(): Promise<PortfolioSummary> {
       };
 
       const revenueYtd = sum("revenue_ytd");
-      const cogsYtd = sum("cogs_ytd");
-      const grossProfitYtd = sum("gross_profit_ytd");
-      const opexYtd = sum("opex_ytd");
-      const netIncomeYtd = sum("net_income_ytd");
-      const cashOnHand = sum("cash_on_hand");
       const openAr = sum("open_ar");
       const openAp = sum("open_ap");
+
+      // net_income_ytd / opex_ytd / cogs_ytd / gross_profit_ytd / cash_on_hand
+      // are not present in any live entity metrics.json, but they ARE already
+      // computed correctly per-entity by transformFinancials() from the real
+      // pnl_current.csv / balance_sheet_current.csv on Drive. Aggregate those
+      // instead of relying on metrics.json for these fields.
+      const asOfIso = portfolioJson.generated_at ?? new Date().toISOString();
+      const financialsResults = await Promise.all(
+        ENTITY_SLUGS.map(async (slug) => {
+          try {
+            return await getEntityFinancials(slug, asOfIso);
+          } catch (err) {
+            console.warn(
+              `[portfolio] failed to load financials for ${slug}, skipping from KPI aggregation:`,
+              err,
+            );
+            return null;
+          }
+        }),
+      );
+      const entityFinancials = financialsResults.filter(
+        (f): f is FinancialsData => f !== null,
+      );
+
+      const sumFinancials = (
+        pick: (f: FinancialsData) => number | undefined | null,
+      ): number => {
+        if (entityFinancials.length === 0) return NaN;
+        return entityFinancials.reduce((total, f) => {
+          const raw = pick(f);
+          const value = typeof raw === "number" && Number.isFinite(raw) ? raw : 0;
+          return total + value;
+        }, 0);
+      };
+
+      const netIncomeYtd = sumFinancials((f) => f.ytd_summary?.net_income);
+      const opexYtd = sumFinancials((f) => f.ytd_summary?.opex);
+      const cogsYtd = sumFinancials((f) => f.ytd_summary?.cogs);
+      const grossProfitYtd = sumFinancials((f) => f.ytd_summary?.gross_profit);
+      const cashOnHand = sumFinancials((f) => f.balance_sheet?.assets?.cash);
+
       const netMarginPct =
         Number.isFinite(netIncomeYtd) && Number.isFinite(revenueYtd) && revenueYtd !== 0
           ? (netIncomeYtd / revenueYtd) * 100
           : NaN;
+
+      const cashRunwayMonths = (() => {
+        if (!Number.isFinite(cashOnHand) || cashOnHand <= 0) return null;
+        if (!Number.isFinite(opexYtd) || opexYtd <= 0) return null;
+        const monthsElapsed = new Date().getMonth() + 1;
+        const monthlyOpex = opexYtd / monthsElapsed;
+        if (!Number.isFinite(monthlyOpex) || monthlyOpex <= 0) return null;
+        return cashOnHand / monthlyOpex;
+      })();
 
       console.log(
         "[portfolio] revenue_ytd — portfolio_totals had:",
@@ -103,24 +150,16 @@ export async function getPortfolioSummary(): Promise<PortfolioSummary> {
         "| aggregated from entity metrics (authoritative):",
         openAp,
       );
-      console.log("[portfolio] cogs_ytd aggregated from entity metrics (not in portfolio_totals):", cogsYtd);
-      console.log(
-        "[portfolio] gross_profit_ytd aggregated from entity metrics (not in portfolio_totals):",
-        grossProfitYtd,
-      );
-      console.log("[portfolio] opex_ytd aggregated from entity metrics (not in portfolio_totals):", opexYtd);
-      console.log(
-        "[portfolio] net_income_ytd aggregated from entity metrics (not in portfolio_totals):",
-        netIncomeYtd,
-      );
-      console.log(
-        "[portfolio] cash_on_hand aggregated from entity metrics (not in portfolio_totals):",
-        cashOnHand,
-      );
+      console.log("[portfolio] cogs_ytd aggregated from financials transformers:", cogsYtd);
+      console.log("[portfolio] gross_profit_ytd aggregated from financials transformers:", grossProfitYtd);
+      console.log("[portfolio] opex_ytd aggregated from financials transformers:", opexYtd);
+      console.log("[portfolio] net_income_ytd aggregated from financials transformers:", netIncomeYtd);
+      console.log("[portfolio] cash_on_hand aggregated from balance sheets:", cashOnHand);
       console.log(
         "[portfolio] net_margin_pct computed as net_income_ytd / revenue_ytd * 100:",
         netMarginPct,
       );
+      console.log("[portfolio] cash_runway_months computed as cash_on_hand / (opex_ytd / months_elapsed):", cashRunwayMonths);
 
       return {
         as_of: portfolioJson.generated_at ?? new Date().toISOString().split("T")[0]!,
@@ -136,12 +175,13 @@ export async function getPortfolioSummary(): Promise<PortfolioSummary> {
         portfolio_open_ar: openAr,
         portfolio_open_ap: openAp,
         portfolio_cash_on_hand: cashOnHand,
+        cash_runway_months: cashRunwayMonths,
       };
     } catch {
       // fall through to mock
     }
   }
-  return loadMockData().portfolio;
+  return { ...loadMockData().portfolio, cash_runway_months: null };
 }
 
 export async function getValidationSummary(): Promise<ValidationSummary> {
