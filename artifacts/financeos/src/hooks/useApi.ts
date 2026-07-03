@@ -1,7 +1,8 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { api } from '@/lib/api';
 import { getMockData, getFinancials, getCustomers, getVendors, getBanking } from '@/lib/mock';
 import type { DashboardData, FinancialsData, CustomersData, VendorsData, BankingData, EntitySlug, BriefingResponse, Alert } from '@/lib/types';
+import type { ReportTemplateSummary, ReportGenerateRequest, BuiltReport } from '@/lib/reportTypes';
 
 export function useDashboardData(): DashboardData {
   const [data, setData] = useState<DashboardData>(getMockData);
@@ -73,4 +74,56 @@ export function useBriefing(): { data: BriefingResponse | null; loading: boolean
   }, []);
 
   return { data, loading, failed };
+}
+
+/**
+ * useReportTemplates — fetches the Report Engine's available template
+ * catalog from GET /api/reports. Returns an empty array until the fetch
+ * resolves so callers never see undefined.
+ */
+export function useReportTemplates(): { data: ReportTemplateSummary[]; loading: boolean; failed: boolean } {
+  const [data, setData] = useState<ReportTemplateSummary[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [failed, setFailed] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+    api.reportTemplates()
+      .then((res) => { if (!cancelled) { setData(res); setLoading(false); } })
+      .catch(() => { if (!cancelled) { setFailed(true); setLoading(false); } });
+    return () => { cancelled = true; };
+  }, []);
+
+  return { data, loading, failed };
+}
+
+/**
+ * useReportGenerator — imperative helper to POST /api/reports/generate.
+ * Tracks in-flight/loading/error state so the Report Center UI can drive
+ * a "Generate" button without duplicating fetch plumbing.
+ */
+export function useReportGenerator() {
+  const [report, setReport] = useState<BuiltReport | null>(null);
+  const [generating, setGenerating] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const generate = useCallback(async (req: ReportGenerateRequest) => {
+    setGenerating(true);
+    setError(null);
+    try {
+      const result = await api.generateReport(req);
+      setReport(result);
+      return result;
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "Failed to generate report";
+      setError(message);
+      throw err;
+    } finally {
+      setGenerating(false);
+    }
+  }, []);
+
+  const reset = useCallback(() => { setReport(null); setError(null); }, []);
+
+  return { report, generating, error, generate, reset };
 }

@@ -1,4 +1,5 @@
 import type { DashboardData, FinancialsData, CustomersData, VendorsData, BankingData, EntitySlug, BriefingResponse, Alert } from "./types";
+import type { ReportTemplateSummary, ReportGenerateRequest, BuiltReport } from "./reportTypes";
 
 const BASE = "/api";
 
@@ -10,6 +11,17 @@ async function get<T>(path: string): Promise<T> {
   return json.data as T;
 }
 
+async function post<T>(path: string, body: unknown): Promise<T> {
+  const res = await fetch(`${BASE}${path}`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  const json = await res.json().catch(() => ({ ok: false, error: `API ${path} → ${res.status}` }));
+  if (!res.ok || !json.ok) throw new Error(json.error ?? `API ${path} → ${res.status}`);
+  return json.data as T;
+}
+
 export const api = {
   model:            ()           => get<DashboardData>("/model"),
   entityFinancials: (s: string)  => get<FinancialsData>(`/model/${s}/financials`),
@@ -18,4 +30,6 @@ export const api = {
   entityBanking:    (s: string)  => get<BankingData>(`/model/${s}/banking`),
   briefing:         ()           => get<BriefingResponse>("/briefing"),
   alerts:           ()           => get<Alert[]>("/alerts"),
+  reportTemplates:  ()           => get<ReportTemplateSummary[]>("/reports"),
+  generateReport:   (req: ReportGenerateRequest) => post<BuiltReport>("/reports/generate", req),
 };

@@ -1,14 +1,16 @@
 
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import { motion } from "framer-motion";
 import {
   FileText, Download, Eye, Calendar, Building2,
   BarChart3, TrendingUp, Users, Landmark, Briefcase,
   Package, Clock, CheckCircle2, Lock, ChevronRight,
-  FileSpreadsheet,
+  FileSpreadsheet, Sparkles, AlertTriangle, Loader2,
 } from "lucide-react";
 import { ENTITY_CONFIG, ENTITY_SLUGS, ENTITY_META } from "@/lib/entities";
 import { EntityLogo } from "@/components/ui/EntityLogo";
+import { useReportTemplates, useReportGenerator } from "@/hooks/useApi";
+import type { EntitySlug } from "@/lib/types";
 
 // ── Template definitions ───────────────────────────────────────────────────
 
@@ -156,10 +158,19 @@ export default function ReportCenterPage() {
   const [selectedTemplate, setSelectedTemplate] = useState<TemplateId>("monthly-close");
   const [period, setPeriod]             = useState("Jun 2026 (Latest)");
   const [selectedEntities, setSelectedEntities] = useState<string[]>([...ENTITY_SLUGS]);
-  const [format, setFormat]             = useState<"PDF" | "Excel">("PDF");
+  const [format, setFormat]             = useState<"json" | "pdf" | "excel" | "html">("json");
   const [previewOpen, setPreviewOpen]   = useState(false);
+  const [resultOpen, setResultOpen]     = useState(false);
+
+  const { data: liveTemplates, loading: templatesLoading } = useReportTemplates();
+  const { report, generating, error: generateError, generate, reset: resetReport } = useReportGenerator();
 
   const template = TEMPLATE_MAP[selectedTemplate];
+
+  const liveTemplate = useMemo(
+    () => liveTemplates.find((t) => t.id === selectedTemplate),
+    [liveTemplates, selectedTemplate]
+  );
 
   const toggleEntity = (slug: string) =>
     setSelectedEntities((prev) =>
@@ -167,6 +178,20 @@ export default function ReportCenterPage() {
     );
 
   const recentForTemplate = RECENT_REPORTS.filter((r) => r.template === selectedTemplate);
+
+  const handleGenerate = async () => {
+    setResultOpen(true);
+    try {
+      await generate({
+        template: selectedTemplate,
+        entities: selectedEntities.length === ENTITY_SLUGS.length ? "all" : (selectedEntities as EntitySlug[]),
+        period,
+        format: "json",
+      });
+    } catch {
+      // error state surfaced via generateError
+    }
+  };
 
   return (
     <div className="h-full flex flex-col overflow-hidden bg-[#F4F5F7]">
@@ -179,11 +204,20 @@ export default function ReportCenterPage() {
           </div>
           <div>
             <h1 className="text-[15px] font-bold text-gray-900">Report Center</h1>
-            <p className="text-[11px] text-gray-400">6 templates · mock data · export stubs only · Phase 2 for live generation</p>
+            <p className="text-[11px] text-gray-400">
+              {templatesLoading
+                ? "Loading templates from Report Engine…"
+                : `${liveTemplates.length || TEMPLATES.length} templates · live JSON generation · PDF/Excel/HTML coming soon`}
+            </p>
           </div>
         </div>
         <div className="flex items-center gap-2">
           <span className="text-[10px] px-2.5 py-1 bg-violet-50 text-violet-700 rounded-full font-semibold">Phase 1</span>
+          {liveTemplate?.enabled && (
+            <span className="text-[10px] px-2.5 py-1 bg-emerald-50 text-emerald-700 rounded-full font-semibold flex items-center gap-1">
+              <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" /> Live
+            </span>
+          )}
           <span className="text-[10px] px-2.5 py-1 bg-gray-100 text-gray-500 rounded-full font-semibold">{RECENT_REPORTS.length} generated</span>
         </div>
       </div>
@@ -386,35 +420,44 @@ export default function ReportCenterPage() {
                   <FileText className="w-3 h-3" /> Output Format
                 </label>
                 <div className="flex gap-2">
-                  {(["PDF", "Excel"] as const).filter((f) => template.formats.includes(f) || f === "PDF").map((f) => {
-                    const available = template.formats.includes(f);
+                  {([
+                    { id: "json" as const, label: "JSON", icon: FileText },
+                    { id: "pdf" as const, label: "PDF", icon: FileText },
+                    { id: "excel" as const, label: "Excel", icon: FileSpreadsheet },
+                  ]).map(({ id, label, icon: Icon }) => {
+                    const available = id === "json";
                     return (
                       <button
-                        key={f}
-                        onClick={() => available && setFormat(f)}
+                        key={id}
+                        onClick={() => available && setFormat(id)}
+                        disabled={!available}
+                        title={available ? undefined : "Coming soon"}
                         className={`flex-1 flex items-center justify-center gap-1.5 py-1.5 rounded-lg border text-[11px] font-semibold transition-colors ${
-                          format === f && available
+                          format === id && available
                             ? "border-violet-400 bg-violet-50 text-violet-700"
                             : available
                             ? "border-gray-200 text-gray-500 hover:border-gray-300"
                             : "border-gray-100 text-gray-300 cursor-not-allowed"
                         }`}
                       >
-                        {f === "PDF" ? <FileText className="w-3 h-3" /> : <FileSpreadsheet className="w-3 h-3" />}
-                        {f}
+                        <Icon className="w-3 h-3" />
+                        {label}
                         {!available && <Lock className="w-2.5 h-2.5" />}
                       </button>
                     );
                   })}
                 </div>
+                {format === "json" && (
+                  <p className="text-[10px] text-gray-400 mt-1.5">PDF, Excel, and HTML renderers are coming soon.</p>
+                )}
               </div>
 
               {/* Data source note */}
-              <div className="flex items-start gap-2 p-2.5 bg-amber-50 border border-amber-200 rounded-lg">
-                <Clock className="w-3.5 h-3.5 text-amber-500 flex-shrink-0 mt-0.5" />
-                <p className="text-[10px] text-amber-700 leading-relaxed">
-                  <span className="font-semibold">Mock data only.</span> Phase 2 will pull live figures from Google Drive.
-                  Exported files will not contain real financial data until Drive integration is complete.
+              <div className="flex items-start gap-2 p-2.5 bg-emerald-50 border border-emerald-200 rounded-lg">
+                <Sparkles className="w-3.5 h-3.5 text-emerald-500 flex-shrink-0 mt-0.5" />
+                <p className="text-[10px] text-emerald-700 leading-relaxed">
+                  <span className="font-semibold">Live data.</span> Reports are generated from the live Report Engine
+                  with figures and branding pulled from the Entity Registry. JSON output only in Phase 1 — PDF/Excel/HTML coming in Sprint 16.
                 </p>
               </div>
             </div>
@@ -463,36 +506,121 @@ export default function ReportCenterPage() {
               )}
             </div>
 
-            {/* Export buttons (stubs) */}
+            {/* Generate */}
             <div className="px-4 py-3 space-y-2">
               <p className="text-[9px] font-semibold text-gray-400 uppercase tracking-widest mb-2">Generate</p>
 
               <button
-                disabled
-                className="w-full flex items-center justify-center gap-2 py-2.5 bg-gray-100 text-gray-400 text-[12px] font-semibold rounded-xl cursor-not-allowed"
-                title="Phase 2 — Drive integration required"
+                onClick={handleGenerate}
+                disabled={generating}
+                className="w-full flex items-center justify-center gap-2 py-2.5 bg-violet-600 hover:bg-violet-700 disabled:bg-violet-300 text-white text-[12px] font-semibold rounded-xl transition-colors"
               >
-                <Download className="w-3.5 h-3.5" />
-                Generate {format}
+                {generating ? (
+                  <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                ) : (
+                  <Sparkles className="w-3.5 h-3.5" />
+                )}
+                {generating ? "Generating…" : "Generate Report (JSON)"}
+              </button>
+
+              <button
+                disabled
+                className="w-full flex items-center justify-center gap-2 py-2 border border-gray-200 text-gray-400 text-[11px] font-medium rounded-xl cursor-not-allowed"
+                title="Coming soon"
+              >
+                <FileSpreadsheet className="w-3 h-3" />
+                PDF / Excel / HTML
                 <Lock className="w-3 h-3 ml-auto" />
               </button>
 
-              {template.formats.length > 1 && (
-                <button
-                  disabled
-                  className="w-full flex items-center justify-center gap-2 py-2 border border-gray-200 text-gray-400 text-[11px] font-medium rounded-xl cursor-not-allowed"
-                  title="Phase 2 — Drive integration required"
-                >
-                  <FileSpreadsheet className="w-3 h-3" />
-                  Generate Both Formats
-                  <Lock className="w-3 h-3 ml-auto" />
-                </button>
-              )}
-
               <p className="text-[10px] text-gray-400 text-center leading-relaxed">
-                Generation requires Drive integration.<br />Coming in Phase 2.
+                Powered by the Report Engine · JSON output only.<br />PDF/Excel/HTML coming soon.
               </p>
             </div>
+
+            {/* Generated report result */}
+            {resultOpen && (
+              <div className="px-4 py-3 border-t border-gray-100 space-y-3">
+                <div className="flex items-center justify-between">
+                  <p className="text-[9px] font-semibold text-gray-400 uppercase tracking-widest">Generated Report</p>
+                  <button
+                    onClick={() => { setResultOpen(false); resetReport(); }}
+                    className="text-[10px] text-gray-400 hover:text-gray-600"
+                  >
+                    Dismiss
+                  </button>
+                </div>
+
+                {generating && (
+                  <div className="flex items-center gap-2 text-[11px] text-gray-400 py-3">
+                    <Loader2 className="w-3.5 h-3.5 animate-spin" /> Assembling report from live data…
+                  </div>
+                )}
+
+                {generateError && !generating && (
+                  <div className="flex items-start gap-2 p-2.5 bg-red-50 border border-red-200 rounded-lg">
+                    <AlertTriangle className="w-3.5 h-3.5 text-red-500 flex-shrink-0 mt-0.5" />
+                    <p className="text-[10px] text-red-700 leading-relaxed">{generateError}</p>
+                  </div>
+                )}
+
+                {report && !generating && (
+                  <div className="space-y-3">
+                    {/* Branding */}
+                    <div className="p-2.5 bg-gray-50 border border-gray-200 rounded-lg">
+                      <p className="text-[9px] font-semibold text-gray-400 uppercase tracking-widest mb-1.5">Branding</p>
+                      <div className="flex items-center gap-1.5 flex-wrap">
+                        {report.branding.mode === "single" && report.branding.primaryEntity ? (
+                          <span
+                            className="text-[10px] font-semibold px-2 py-1 rounded-full"
+                            style={{ background: `${report.branding.primaryEntity.primaryColor}1A`, color: report.branding.primaryEntity.primaryColor }}
+                          >
+                            {report.branding.primaryEntity.name}
+                          </span>
+                        ) : (
+                          <span className="text-[10px] font-semibold px-2 py-1 rounded-full bg-violet-50 text-violet-700">
+                            FinanceOS Consolidated
+                          </span>
+                        )}
+                        {report.branding.entities.map((e) => (
+                          <span key={e.slug} className="text-[9px] text-gray-500 bg-white border border-gray-200 px-1.5 py-0.5 rounded">
+                            {e.name}
+                          </span>
+                        ))}
+                      </div>
+                    </div>
+
+                    {/* Executive summary */}
+                    {Boolean((report.sections as Record<string, { executiveSummary?: string[] }>)["executive_summary"]) && (
+                      <div className="p-2.5 bg-gray-50 border border-gray-200 rounded-lg">
+                        <p className="text-[9px] font-semibold text-gray-400 uppercase tracking-widest mb-1.5">Executive Summary</p>
+                        <ul className="space-y-1">
+                          {(report.sections as Record<string, { executiveSummary?: string[] }>)["executive_summary"]?.executiveSummary?.map((line, i) => (
+                            <li key={i} className="text-[10px] text-gray-600 leading-relaxed flex gap-1.5">
+                              <span className="text-gray-300">•</span>{line}
+                            </li>
+                          ))}
+                        </ul>
+                      </div>
+                    )}
+
+                    {/* Portfolio KPIs */}
+                    {Boolean((report.sections as Record<string, unknown>)["portfolio_kpis"]) && (
+                      <div className="p-2.5 bg-gray-50 border border-gray-200 rounded-lg">
+                        <p className="text-[9px] font-semibold text-gray-400 uppercase tracking-widest mb-1.5">Portfolio KPIs</p>
+                        <pre className="text-[9px] text-gray-500 whitespace-pre-wrap break-words leading-relaxed max-h-40 overflow-y-auto">
+                          {JSON.stringify((report.sections as Record<string, unknown>)["portfolio_kpis"], null, 2)}
+                        </pre>
+                      </div>
+                    )}
+
+                    <p className="text-[9px] text-gray-400 text-center">
+                      {report.reportId} · confidence {report.metadata.confidenceScore}% · {report.metadata.entityCount} {report.metadata.entityCount === 1 ? "entity" : "entities"}
+                    </p>
+                  </div>
+                )}
+              </div>
+            )}
           </div>
         </aside>
       </div>
