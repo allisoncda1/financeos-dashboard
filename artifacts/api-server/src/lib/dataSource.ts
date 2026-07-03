@@ -59,11 +59,18 @@ export async function getPortfolioSummary(): Promise<PortfolioSummary> {
         (m): m is EntityMetrics => m !== null,
       );
 
-      const sum = (key: keyof EntityMetrics): number =>
-        entityMetrics.reduce(
-          (total, m) => total + (typeof m[key] === "number" ? (m[key] as number) : 0),
-          0,
-        );
+      // Returns NaN (not 0) when zero entities report a finite value for
+      // `key`, so genuinely-missing data (e.g. cash_on_hand isn't present in
+      // any live entity metrics.json) renders as "N/A" downstream instead of
+      // a misleading "$0" — PortfolioKpiStrip's fmt() already treats
+      // non-finite numbers as "N/A", so no frontend change is required.
+      const sum = (key: keyof EntityMetrics): number => {
+        const values = entityMetrics
+          .map((m) => m[key])
+          .filter((v): v is number => typeof v === "number" && Number.isFinite(v));
+        if (values.length === 0) return NaN;
+        return values.reduce((total, v) => total + v, 0);
+      };
 
       const revenueYtd = sum("revenue_ytd");
       const cogsYtd = sum("cogs_ytd");
@@ -73,7 +80,10 @@ export async function getPortfolioSummary(): Promise<PortfolioSummary> {
       const cashOnHand = sum("cash_on_hand");
       const openAr = sum("open_ar");
       const openAp = sum("open_ap");
-      const netMarginPct = revenueYtd !== 0 ? (netIncomeYtd / revenueYtd) * 100 : 0;
+      const netMarginPct =
+        Number.isFinite(netIncomeYtd) && Number.isFinite(revenueYtd) && revenueYtd !== 0
+          ? (netIncomeYtd / revenueYtd) * 100
+          : NaN;
 
       console.log(
         "[portfolio] revenue_ytd — portfolio_totals had:",
