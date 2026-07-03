@@ -2,7 +2,6 @@ import { useParams } from "wouter";
 import NotFound from "@/pages/not-found";
 import { ENTITY_SLUGS, type EntitySlug } from "@/lib/entities";
 import { useEntityBanking } from "@/hooks/useApi";
-import { getBanking } from "@/lib/mock";
 import { PageHeader } from "@/components/shared/PageHeader";
 import { CheckCircle2, AlertTriangle, XCircle } from "lucide-react";
 
@@ -21,7 +20,7 @@ export default function BankingPage() {
   const { slug } = useParams<{ slug: string }>();
   if (!slug || !ENTITY_SLUGS.includes(slug as EntitySlug)) return <NotFound />;
   const eSlug = slug as EntitySlug;
-  const bank = getBanking(eSlug);
+  const bank = useEntityBanking(eSlug);
 
   const statusConfig = {
     clean:       { icon: CheckCircle2, color: "text-emerald-600", bg: "bg-emerald-50", border: "border-emerald-200", label: "All Reconciled", sub: "No unreconciled items" },

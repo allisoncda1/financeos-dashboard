@@ -2,7 +2,6 @@ import { useParams } from "wouter";
 import NotFound from "@/pages/not-found";
 import { ENTITY_SLUGS, type EntitySlug } from "@/lib/entities";
 import { useEntityCustomers } from "@/hooks/useApi";
-import { getCustomers } from "@/lib/mock";
 import { PageHeader } from "@/components/shared/PageHeader";
 import { AgingTable } from "@/components/shared/AgingTable";
 import { SparklineChart } from "@/components/shared/SparklineChart";
@@ -28,7 +27,7 @@ export default function CustomersPage() {
   const { slug } = useParams<{ slug: string }>();
   if (!slug || !ENTITY_SLUGS.includes(slug as EntitySlug)) return <NotFound />;
   const eSlug = slug as EntitySlug;
-  const cust = getCustomers(eSlug);
+  const cust = useEntityCustomers(eSlug);
 
   const overdueBuckets = cust.aging.slice(2);
   const overdueAmt = overdueBuckets.reduce((s, b) => s + b.amount, 0);

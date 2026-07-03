@@ -2,7 +2,6 @@ import { useParams } from "wouter";
 import NotFound from "@/pages/not-found";
 import { ENTITY_SLUGS, type EntitySlug } from "@/lib/entities";
 import { useEntityFinancials } from "@/hooks/useApi";
-import { getFinancials } from "@/lib/mock";
 import { PageHeader } from "@/components/shared/PageHeader";
 import { TabSwitcher } from "@/components/shared/TabSwitcher";
 
@@ -37,12 +36,13 @@ export default function FinancialsPage() {
   const { slug } = useParams<{ slug: string }>();
   if (!slug || !ENTITY_SLUGS.includes(slug as EntitySlug)) return <NotFound />;
   const eSlug = slug as EntitySlug;
-  const fin = getFinancials(eSlug);
+  const fin = useEntityFinancials(eSlug);
   const ytd = fin.ytd_summary;
   const bs = fin.balance_sheet;
 
   const grossMargin = ytd.revenue > 0 ? (ytd.gross_profit / ytd.revenue) * 100 : 0;
   const netMargin   = ytd.revenue > 0 ? (ytd.net_income  / ytd.revenue) * 100 : 0;
+  const displayMonths = fin.monthly_pl.slice(0, MONTHS.length);
 
   const plPanel = (
     <div className="px-6 py-5 space-y-5">
@@ -90,7 +90,7 @@ export default function FinancialsPage() {
                     <td className={`px-4 py-2.5 text-[12px] ${row.bold ? "font-bold text-gray-900" : "text-gray-600"}`}>
                       {row.label}
                     </td>
-                    {fin.monthly_pl.map((mp) => (
+                    {displayMonths.map((mp) => (
                       <td
                         key={mp.month}
                         className={`px-3 py-2.5 text-right text-[12px] ${

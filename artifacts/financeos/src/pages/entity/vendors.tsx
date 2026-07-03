@@ -2,7 +2,6 @@ import { useParams } from "wouter";
 import NotFound from "@/pages/not-found";
 import { ENTITY_SLUGS, type EntitySlug } from "@/lib/entities";
 import { useEntityVendors } from "@/hooks/useApi";
-import { getVendors } from "@/lib/mock";
 import { PageHeader } from "@/components/shared/PageHeader";
 import { AgingTable } from "@/components/shared/AgingTable";
 import { SparklineChart } from "@/components/shared/SparklineChart";
@@ -28,7 +27,7 @@ export default function VendorsPage() {
   const { slug } = useParams<{ slug: string }>();
   if (!slug || !ENTITY_SLUGS.includes(slug as EntitySlug)) return <NotFound />;
   const eSlug = slug as EntitySlug;
-  const vend = getVendors(eSlug);
+  const vend = useEntityVendors(eSlug);
 
   const overdueBuckets = vend.aging.slice(2);
   const overdueAmt = overdueBuckets.reduce((s, b) => s + b.amount, 0);
