@@ -17,6 +17,20 @@ function requireEnv(name: string): string {
   return value;
 }
 
+/**
+ * Accepts a bare Drive ID, a URL fragment like "/folders/<id>" or "folders/<id>",
+ * or a full Drive URL, and returns the bare ID.
+ */
+function normalizeDriveId(raw: string): string {
+  const trimmed = raw.trim();
+  const idParam = trimmed.match(/[?&]id=([a-zA-Z0-9_-]+)/);
+  if (idParam?.[1]) return idParam[1];
+  const match = trimmed.match(/(?:folders|drives|d)\/([a-zA-Z0-9_-]+)/);
+  if (match?.[1]) return match[1];
+  const lastSegment = trimmed.split("/").filter(Boolean).pop() ?? trimmed;
+  return (lastSegment.split("?")[0] as string).split("#")[0] as string;
+}
+
 async function findChildIdByName(
   parentId: string,
   name: string,
@@ -44,8 +58,8 @@ async function findChildIdByName(
 }
 
 async function resolveFileId(relativePath: string): Promise<string> {
-  const sharedDriveId = requireEnv("GOOGLE_SHARED_DRIVE_ID");
-  const rootFolderId = requireEnv("FINANCEOS_DATA_MODEL_FOLDER_ID");
+  const sharedDriveId = normalizeDriveId(requireEnv("GOOGLE_SHARED_DRIVE_ID"));
+  const rootFolderId = normalizeDriveId(requireEnv("FINANCEOS_DATA_MODEL_FOLDER_ID"));
 
   const segments = relativePath.split("/").filter(Boolean);
   let currentParentId = rootFolderId;
