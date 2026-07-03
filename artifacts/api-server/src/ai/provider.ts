@@ -15,6 +15,7 @@
 
 import Anthropic from "@anthropic-ai/sdk";
 import { generateBriefing } from "./briefing";
+import { recordUsage } from "./cache";
 import { num, isKnown, fmtMoney, fmtPct } from "./format";
 import {
   buildAnalysisPrompt,
@@ -22,8 +23,36 @@ import {
   buildQuestionPrompt,
   buildReportSummaryPrompt,
 } from "./promptBuilder";
-import type { AIContext, AIResponse } from "./types";
+import type { AICapability, AIContext, AIOptions, AIResponse } from "./types";
 import type { EntityMetrics } from "../lib/types";
+
+// Env-configurable generation settings — never logged, only used to shape
+// provider requests. Read once at startup; defaults keep MockProvider and
+// existing behavior unchanged if unset. Falls back to defaults on invalid
+// (NaN/out-of-range) values so a bad env var can't silently break requests.
+const parsedMaxTokens = parseInt(process.env["AI_MAX_TOKENS"] ?? "1500", 10);
+const MAX_TOKENS = Number.isFinite(parsedMaxTokens) && parsedMaxTokens > 0 ? parsedMaxTokens : 1500;
+
+const parsedTemperature = parseFloat(process.env["AI_TEMPERATURE"] ?? "0.3");
+const TEMPERATURE =
+  Number.isFinite(parsedTemperature) && parsedTemperature >= 0 && parsedTemperature <= 1
+    ? parsedTemperature
+    : 0.3;
+
+export function getAIOptions(): Required<Pick<AIOptions, "maxTokens" | "temperature">> {
+  return { maxTokens: MAX_TOKENS, temperature: TEMPERATURE };
+}
+
+/**
+ * logAndRecordUsage — the single place every provider call funnels through
+ * for cost tracking. Logs only capability/provider/token-count metadata —
+ * never prompt content, context data, or API keys.
+ */
+function logAndRecordUsage(capability: AICapability, provider: string, tokensUsed: number): void {
+  // eslint-disable-next-line no-console
+  console.log(`[ai] request: capability=${capability} provider=${provider} tokens=${tokensUsed}`);
+  recordUsage(capability, tokensUsed);
+}
 
 export interface AIProvider {
   name: string;
@@ -48,13 +77,17 @@ export class MockProvider implements AIProvider {
     // build a full BriefingResponse from live data — MockProvider reuses it
     // rather than re-implementing the same prose logic.
     const briefing = await generateBriefing();
-    return {
-      content: briefing.executiveSummary.join("\n\n"),
+    const content = briefing.executiveSummary.join("\n\n");
+    const response: AIResponse = {
+      content,
       structured: briefing,
       provider: this.name,
       model: this.model,
       generatedAt: new Date().toISOString(),
+      tokensUsed: Math.ceil(content.length / 4),
     };
+    logAndRecordUsage("briefing", this.name, response.tokensUsed ?? 0);
+    return response;
   }
 
   async summarizeReport(context: AIContext): Promise<AIResponse> {
@@ -76,12 +109,15 @@ export class MockProvider implements AIProvider {
         `${critical > 0 ? `${critical} high-priority alert${critical === 1 ? "" : "s"} currently need attention.` : "No high-priority alerts are currently outstanding."}`;
     }
 
-    return {
+    const response: AIResponse = {
       content,
       provider: this.name,
       model: this.model,
       generatedAt: new Date().toISOString(),
+      tokensUsed: Math.ceil(content.length / 4),
     };
+    logAndRecordUsage("report-summary", this.name, response.tokensUsed ?? 0);
+    return response;
   }
 
   async analyzeFinancials(context: AIContext): Promise<AIResponse> {
@@ -89,12 +125,16 @@ export class MockProvider implements AIProvider {
     const bullets: string[] = [];
 
     if (metrics.length === 0) {
-      return {
-        content: "No entity financial data is currently available for analysis.",
+      const content = "No entity financial data is currently available for analysis.";
+      const response: AIResponse = {
+        content,
         provider: this.name,
         model: this.model,
         generatedAt: new Date().toISOString(),
+        tokensUsed: Math.ceil(content.length / 4),
       };
+      logAndRecordUsage("financials-analysis", this.name, response.tokensUsed ?? 0);
+      return response;
     }
 
     const byRevenue = [...metrics].filter((m) => isKnown(m.revenue_ytd)).sort((a, b) => b.revenue_ytd - a.revenue_ytd);
@@ -122,13 +162,17 @@ export class MockProvider implements AIProvider {
     const profitable = metrics.filter((m) => isKnown(m.net_income_ytd) && m.net_income_ytd > 0).length;
     bullets.push(`${profitable} of ${metrics.length} entities are profitable YTD.`);
 
-    return {
-      content: bullets.map((b) => `• ${b}`).join("\n"),
+    const content = bullets.map((b) => `• ${b}`).join("\n");
+    const response: AIResponse = {
+      content,
       structured: { bullets },
       provider: this.name,
       model: this.model,
       generatedAt: new Date().toISOString(),
+      tokensUsed: Math.ceil(content.length / 4),
     };
+    logAndRecordUsage("financials-analysis", this.name, response.tokensUsed ?? 0);
+    return response;
   }
 
   async answerQuestion(context: AIContext): Promise<AIResponse> {
@@ -156,12 +200,15 @@ export class MockProvider implements AIProvider {
       }
     }
 
-    return {
+    const response: AIResponse = {
       content,
       provider: this.name,
       model: this.model,
       generatedAt: new Date().toISOString(),
+      tokensUsed: Math.ceil(content.length / 4),
     };
+    logAndRecordUsage("question", this.name, response.tokensUsed ?? 0);
+    return response;
   }
 }
 
@@ -191,10 +238,18 @@ export class ClaudeProvider implements AIProvider {
     return this.client;
   }
 
-  private async complete(prompt: string, maxTokens: number): Promise<{ text: string; tokensUsed: number }> {
+  private async complete(prompt: string, defaultMaxTokens: number): Promise<{ text: string; tokensUsed: number }> {
+    // AI_MAX_TOKENS/AI_TEMPERATURE are read into getAIOptions() and exposed
+    // via /api/ai/status + /api/ai/usage for operational visibility now.
+    // They are intentionally NOT used to override each capability's
+    // hand-tuned max_tokens here yet — briefing alone needs ~4096 tokens
+    // for its structured JSON, so a single global cap would truncate it.
+    // Wiring a per-capability-aware cap is left for a follow-up.
+    const { temperature } = getAIOptions();
     const message = await this.getClient().messages.create({
       model: this.model,
-      max_tokens: maxTokens,
+      max_tokens: defaultMaxTokens,
+      temperature,
       messages: [{ role: "user", content: prompt }],
     });
 
@@ -241,12 +296,16 @@ export class ClaudeProvider implements AIProvider {
       structured = undefined;
     }
 
-    return this.response(text, tokensUsed, structured);
+    const response = this.response(text, tokensUsed, structured);
+    logAndRecordUsage("briefing", this.name, tokensUsed);
+    return response;
   }
 
   async summarizeReport(context: AIContext): Promise<AIResponse> {
     const { text, tokensUsed } = await this.complete(buildReportSummaryPrompt(context), 1024);
-    return this.response(text, tokensUsed);
+    const response = this.response(text, tokensUsed);
+    logAndRecordUsage("report-summary", this.name, tokensUsed);
+    return response;
   }
 
   async analyzeFinancials(context: AIContext): Promise<AIResponse> {
@@ -260,12 +319,16 @@ export class ClaudeProvider implements AIProvider {
       .split("\n")
       .map((line) => line.replace(/^[•\-*]\s*/, "").trim())
       .filter((line) => line.length > 0 && !/^#|^-{2,}$|^\*{1,2}$/.test(line));
-    return this.response(text, tokensUsed, { bullets });
+    const response = this.response(text, tokensUsed, { bullets });
+    logAndRecordUsage("financials-analysis", this.name, tokensUsed);
+    return response;
   }
 
   async answerQuestion(context: AIContext): Promise<AIResponse> {
     const { text, tokensUsed } = await this.complete(buildQuestionPrompt(context), 2048);
-    return this.response(text, tokensUsed);
+    const response = this.response(text, tokensUsed);
+    logAndRecordUsage("question", this.name, tokensUsed);
+    return response;
   }
 }
 

@@ -1,8 +1,8 @@
 import { Router, type IRouter } from "express";
 import { buildAIContext } from "../ai/context";
-import { getCacheStats, getCached, setCached } from "../ai/cache";
+import { getCacheStats, getCached, getUsageStats, setCached, withDedupe } from "../ai/cache";
 import { formatAnalysisResponse, formatBriefingResponse } from "../ai/formatter";
-import { getProvider } from "../ai/provider";
+import { getAIOptions, getProvider } from "../ai/provider";
 import { ENTITY_SLUGS, type EntitySlug } from "../lib/types";
 
 const router: IRouter = Router();
@@ -24,6 +24,7 @@ router.get("/status", async (_req, res) => {
     const provider = getProvider();
     const available =
       provider.name !== "claude" || Boolean(process.env["ANTHROPIC_API_KEY"]);
+    const { maxTokens, temperature } = getAIOptions();
     res.json({
       ok: true,
       data: {
@@ -32,6 +33,8 @@ router.get("/status", async (_req, res) => {
         available,
         cacheStats: getCacheStats(),
         lastRequest: null,
+        maxTokens,
+        temperature,
       },
       ts: new Date().toISOString(),
     });
@@ -40,19 +43,58 @@ router.get("/status", async (_req, res) => {
   }
 });
 
-// GET /api/ai/briefing — the AI Platform's briefing capability. Cached 15 min.
+// GET /api/ai/usage — cost/usage tracking for the AI Platform. Never
+// exposes API keys, prompts, or raw context data — token counts and
+// request counters only.
+router.get("/usage", async (_req, res) => {
+  try {
+    const provider = getProvider();
+    const usage = getUsageStats();
+    const { maxTokens, temperature } = getAIOptions();
+    res.json({
+      ok: true,
+      data: {
+        provider: provider.name,
+        model: provider.model,
+        dailyRequests: usage.dailyRequests,
+        dailyTokensUsed: usage.dailyTokensUsed,
+        estimatedDailyCostUsd: Number(usage.estimatedDailyCostUsd.toFixed(4)),
+        totalRequests: usage.totalRequests,
+        totalTokensUsed: usage.totalTokensUsed,
+        requestsByCapability: usage.requestsByCapability,
+        cacheStats: getCacheStats(),
+        resetDate: usage.resetDate,
+        maxTokens,
+        temperature,
+      },
+      ts: new Date().toISOString(),
+    });
+  } catch (err) {
+    res.status(500).json({ ok: false, error: "Failed to load AI usage", ts: new Date().toISOString() });
+  }
+});
+
+// GET /api/ai/briefing — the AI Platform's briefing capability. Cached 15
+// min; concurrent in-flight requests are deduplicated via withDedupe.
 router.get("/briefing", async (req, res) => {
   try {
     const cacheKey = "briefing";
     const cached = getCached(cacheKey);
     if (cached) {
+      // eslint-disable-next-line no-console
+      console.log("[ai] cache hit: briefing");
       res.json({ ok: true, data: formatBriefingResponse(cached), ts: new Date().toISOString() });
       return;
     }
 
-    const context = await buildAIContext();
-    const response = await getProvider().generateBriefing(context);
-    setCached(cacheKey, response);
+    // eslint-disable-next-line no-console
+    console.log("[ai] cache miss: briefing");
+    const response = await withDedupe(cacheKey, async () => {
+      const context = await buildAIContext();
+      const result = await getProvider().generateBriefing(context);
+      setCached(cacheKey, result);
+      return result;
+    });
 
     res.json({ ok: true, data: formatBriefingResponse(response), ts: new Date().toISOString() });
   } catch (err) {
