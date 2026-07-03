@@ -1,22 +1,19 @@
-import { useDashboardData } from "@/hooks/useApi";
+import { useDashboardData, useAllEntityFinancials } from "@/hooks/useApi";
 
 import { useState, useMemo } from "react";
-import { getMockData, getFinancials } from "@/lib/mock";
 import { ENTITY_SLUGS, ENTITY_CONFIG, ENTITY_META, type EntitySlug } from "@/lib/entities";
 import { EntityLogo } from "@/components/ui/EntityLogo";
 import { useEntitySelection } from "@/lib/entity-context";
 import { Layers, ChevronUp, ChevronDown, Minus } from "lucide-react";
 
-const ALL_FINS = Object.fromEntries(ENTITY_SLUGS.map(s => [s, getFinancials(s)])) as Record<EntitySlug, ReturnType<typeof getFinancials>>;
-const DATA = getMockData();
-const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun"];
-
 type SortDir = "asc" | "desc" | null;
 
 function fmt(n: number) {
-  if (n >= 1_000_000) return `$${(n / 1_000_000).toFixed(2)}M`;
-  if (n >= 1_000) return `$${(n / 1_000).toFixed(0)}K`;
-  return `$${n}`;
+  const sign = n < 0 ? "-" : "";
+  const abs = Math.abs(n);
+  if (abs >= 1_000_000) return `${sign}$${(abs / 1_000_000).toFixed(2)}M`;
+  if (abs >= 1_000) return `${sign}$${(abs / 1_000).toFixed(0)}K`;
+  return `${sign}$${Math.round(abs)}`;
 }
 function pct(n: number) { return `${n.toFixed(1)}%`; }
 
@@ -43,19 +40,35 @@ function SortIcon({ dir }: { dir: SortDir }) {
 
 export default function ConsolidatedPage() {
   const { selected } = useEntitySelection();
+  const data = useDashboardData();
+  const allFins = useAllEntityFinancials();
   const [sortKey, setSortKey] = useState<NumericEntityKey | null>(null);
   const [sortDir, setSortDir] = useState<SortDir>(null);
 
   const slugs = useMemo(() => ENTITY_SLUGS.filter(s => selected.includes(s)), [selected]);
 
-  const consolidatedMonthly = useMemo(() => MONTHS.map((_, i) => {
-    const revenue      = slugs.reduce((s, slug) => s + ALL_FINS[slug].monthly_pl[i].revenue, 0);
-    const cogs         = slugs.reduce((s, slug) => s + ALL_FINS[slug].monthly_pl[i].cogs, 0);
-    const gross_profit = slugs.reduce((s, slug) => s + ALL_FINS[slug].monthly_pl[i].gross_profit, 0);
-    const opex         = slugs.reduce((s, slug) => s + ALL_FINS[slug].monthly_pl[i].opex, 0);
-    const net_income   = slugs.reduce((s, slug) => s + ALL_FINS[slug].monthly_pl[i].net_income, 0);
-    return { month: MONTHS[i], revenue, cogs, gross_profit, opex, net_income };
-  }), [slugs]);
+  const byMonth = useMemo(() => {
+    const maps: Record<string, Map<string, (typeof allFins)[keyof typeof allFins]["monthly_pl"][number]>> = {};
+    for (const slug of slugs) {
+      maps[slug] = new Map(allFins[slug].monthly_pl.map(p => [p.month, p]));
+    }
+    return maps;
+  }, [slugs, allFins]);
+
+  const months = useMemo(() => {
+    const set = new Set<string>();
+    for (const slug of slugs) for (const p of allFins[slug].monthly_pl) set.add(p.month);
+    return [...set].sort();
+  }, [slugs, allFins]);
+
+  const consolidatedMonthly = useMemo(() => months.map(label => {
+    const revenue      = slugs.reduce((s, slug) => s + (byMonth[slug].get(label)?.revenue ?? 0), 0);
+    const cogs         = slugs.reduce((s, slug) => s + (byMonth[slug].get(label)?.cogs ?? 0), 0);
+    const gross_profit = slugs.reduce((s, slug) => s + (byMonth[slug].get(label)?.gross_profit ?? 0), 0);
+    const opex         = slugs.reduce((s, slug) => s + (byMonth[slug].get(label)?.opex ?? 0), 0);
+    const net_income   = slugs.reduce((s, slug) => s + (byMonth[slug].get(label)?.net_income ?? 0), 0);
+    return { month: label, revenue, cogs, gross_profit, opex, net_income };
+  }), [months, slugs, byMonth]);
 
   const ytd = useMemo(() => ({
     revenue:      consolidatedMonthly.reduce((s, m) => s + m.revenue, 0),
@@ -70,21 +83,21 @@ export default function ConsolidatedPage() {
   const opexPct        = ytd.revenue > 0 ? (ytd.opex         / ytd.revenue) * 100 : 0;
   const cogsPct        = ytd.revenue > 0 ? (ytd.cogs         / ytd.revenue) * 100 : 0;
 
-  const totalAssets      = slugs.reduce((s, slug) => s + ALL_FINS[slug].balance_sheet.assets.total, 0);
-  const totalLiabilities = slugs.reduce((s, slug) => s + ALL_FINS[slug].balance_sheet.liabilities.total, 0);
-  const totalEquity      = slugs.reduce((s, slug) => s + ALL_FINS[slug].balance_sheet.equity.total, 0);
-  const totalCash        = slugs.reduce((s, slug) => s + ALL_FINS[slug].balance_sheet.assets.cash, 0);
-  const totalAR          = slugs.reduce((s, slug) => s + ALL_FINS[slug].balance_sheet.assets.accounts_receivable, 0);
-  const totalAP          = slugs.reduce((s, slug) => s + ALL_FINS[slug].balance_sheet.liabilities.accounts_payable, 0);
+  const totalAssets      = slugs.reduce((s, slug) => s + allFins[slug].balance_sheet.assets.total, 0);
+  const totalLiabilities = slugs.reduce((s, slug) => s + allFins[slug].balance_sheet.liabilities.total, 0);
+  const totalEquity      = slugs.reduce((s, slug) => s + allFins[slug].balance_sheet.equity.total, 0);
+  const totalCash        = slugs.reduce((s, slug) => s + allFins[slug].balance_sheet.assets.cash, 0);
+  const totalAR          = slugs.reduce((s, slug) => s + allFins[slug].balance_sheet.assets.accounts_receivable, 0);
+  const totalAP          = slugs.reduce((s, slug) => s + allFins[slug].balance_sheet.liabilities.accounts_payable, 0);
 
   const entityContribs = useMemo(() =>
-    slugs.map(slug => ({ slug, cfg: ENTITY_CONFIG[slug], m: DATA.metrics[slug] })),
-    [slugs]
+    slugs.map(slug => ({ slug, cfg: ENTITY_CONFIG[slug], m: data.metrics[slug] })),
+    [slugs, data]
   );
   const totalRev = entityContribs.reduce((s, e) => s + e.m.revenue_ytd, 0);
 
   const entityRows: EntityRow[] = useMemo(() => slugs.map(slug => {
-    const m = DATA.metrics[slug];
+    const m = data.metrics[slug];
     return {
       slug,
       revenue: m.revenue_ytd, cogs: m.cogs_ytd, gross_profit: m.gross_profit_ytd,
@@ -133,7 +146,7 @@ export default function ConsolidatedPage() {
           <div className="min-w-0">
             <h1 className="text-[14px] sm:text-[15px] font-bold text-gray-900 truncate">Consolidated Financials</h1>
             <p className="text-[10px] sm:text-[11px] text-gray-400 truncate">
-              {slugs.length} {slugs.length === 1 ? "entity" : "entities"} · YTD Jan–Jun 2026 · mock data
+              {slugs.length} {slugs.length === 1 ? "entity" : "entities"} · YTD {months.length > 0 ? `${months[0]} – ${months[months.length - 1]}` : ""}
             </p>
           </div>
         </div>
@@ -190,7 +203,7 @@ export default function ConsolidatedPage() {
         {/* Consolidated P&L — sticky header, horizontal scroll */}
         <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
           <div className="px-4 py-3 border-b border-gray-100">
-            <h3 className="text-[13px] font-semibold text-gray-900">Consolidated P&L — Jan–Jun 2026</h3>
+            <h3 className="text-[13px] font-semibold text-gray-900">Consolidated P&L{months.length > 0 ? ` — ${months[0]} – ${months[months.length - 1]}` : ""}</h3>
             <p className="text-[11px] text-gray-400">{slugs.length} {slugs.length === 1 ? "entity" : "entities"} aggregated</p>
           </div>
           <div className="overflow-x-auto">
@@ -198,7 +211,7 @@ export default function ConsolidatedPage() {
               <thead className="sticky top-0 z-10 bg-white">
                 <tr className="border-b border-gray-100">
                   <th className="text-left px-4 py-2.5 text-[10px] font-semibold text-gray-400 uppercase tracking-wide w-32">Line Item</th>
-                  {MONTHS.map(m => (
+                  {months.map(m => (
                     <th key={m} className="text-right px-3 py-2.5 text-[10px] font-semibold text-gray-400 uppercase tracking-wide">{m}</th>
                   ))}
                   <th className="text-right px-4 py-2.5 text-[10px] font-semibold text-gray-600 uppercase tracking-wide bg-gray-50">YTD</th>

@@ -206,10 +206,67 @@ export async function getDataFreshness(): Promise<DataFreshness> {
   return loadMockData().freshness;
 }
 
+/**
+ * Drive metrics.json only carries AR/AP-side fields (open_ar, dso_days,
+ * ar_90plus, …). The income-statement and balance-sheet fields the frontend
+ * renders (net_income_ytd, cash_on_hand, margins, …) are NOT in that file —
+ * they are derived from the real financials CSVs, exactly like the portfolio
+ * summary does. This merges both sources into a complete EntityMetrics.
+ */
+type RawDriveMetrics = Partial<EntityMetrics> & { ar_90plus?: number; ap_90plus?: number };
+
+async function enrichMetricsFromFinancials(slug: EntitySlug, raw: RawDriveMetrics): Promise<EntityMetrics> {
+  let fin: FinancialsData | null = null;
+  try {
+    fin = await getEntityFinancials(slug, raw.as_of ?? new Date().toISOString());
+  } catch (err) {
+    console.warn(`[dataSource] failed to derive P&L metrics for ${slug} from financials:`, err);
+  }
+
+  const ytd = fin?.ytd_summary;
+  const bs = fin?.balance_sheet;
+
+  const revenueYtd = raw.revenue_ytd ?? ytd?.revenue ?? 0;
+  const cogsYtd = raw.cogs_ytd ?? ytd?.cogs ?? 0;
+  const grossProfitYtd = raw.gross_profit_ytd ?? ytd?.gross_profit ?? 0;
+  const opexYtd = raw.opex_ytd ?? ytd?.opex ?? 0;
+  const netIncomeYtd = raw.net_income_ytd ?? ytd?.net_income ?? 0;
+  const openAr = raw.open_ar ?? 0;
+  const openAp = raw.open_ap ?? 0;
+
+  return {
+    entity: raw.entity ?? slug,
+    slug,
+    basis: raw.basis ?? "Accrual",
+    as_of: raw.as_of ?? fin?.as_of ?? new Date().toISOString().slice(0, 10),
+    pipeline_run: raw.pipeline_run ?? raw.as_of ?? new Date().toISOString(),
+    revenue_ytd: revenueYtd,
+    cogs_ytd: cogsYtd,
+    gross_profit_ytd: grossProfitYtd,
+    gross_margin_pct: raw.gross_margin_pct ?? (revenueYtd > 0 ? Number(((grossProfitYtd / revenueYtd) * 100).toFixed(1)) : 0),
+    opex_ytd: opexYtd,
+    net_income_ytd: netIncomeYtd,
+    net_margin_pct: raw.net_margin_pct ?? (revenueYtd > 0 ? Number(((netIncomeYtd / revenueYtd) * 100).toFixed(1)) : 0),
+    total_assets: raw.total_assets ?? bs?.assets.total ?? 0,
+    total_liabilities: raw.total_liabilities ?? bs?.liabilities.total ?? 0,
+    total_equity: raw.total_equity ?? bs?.equity.total ?? 0,
+    open_ar: openAr,
+    open_ap: openAp,
+    dso_days: raw.dso_days ?? 0,
+    dpo_days: raw.dpo_days ?? 0,
+    cash_on_hand: raw.cash_on_hand ?? bs?.assets.cash ?? 0,
+    // metrics.json exposes 90+ day buckets, not a full overdue split — use
+    // them as the overdue share when the precomputed pct is absent.
+    ar_overdue_pct: raw.ar_overdue_pct ?? (openAr > 0 ? Number((((raw.ar_90plus ?? 0) / openAr) * 100).toFixed(1)) : 0),
+    ap_overdue_pct: raw.ap_overdue_pct ?? (openAp > 0 ? Number((((raw.ap_90plus ?? 0) / openAp) * 100).toFixed(1)) : 0),
+  };
+}
+
 export async function getEntityMetrics(slug: EntitySlug): Promise<EntityMetrics> {
   if (USE_DRIVE) {
     try {
-      return await driveLoadJson<EntityMetrics>(`entities/${slug}/metrics.json`);
+      const raw = await driveLoadJson<RawDriveMetrics>(`entities/${slug}/metrics.json`);
+      return await enrichMetricsFromFinancials(slug, raw);
     } catch {
       // fall through to mock
     }

@@ -1,7 +1,6 @@
 import { useParams } from "wouter";
 import NotFound from "@/pages/not-found";
 import { useDashboardData } from "@/hooks/useApi";
-import { getMockData } from "@/lib/mock";
 import { ENTITY_CONFIG, ENTITY_SLUGS, type EntitySlug } from "@/lib/entities";
 import {
   TrendingUp, DollarSign, Briefcase, Building2, Timer,
@@ -19,9 +18,9 @@ import { CashFlowChart }  from "@/components/dashboard/CashFlowChart";
 
 export default function EntityPage() {
   const { slug } = useParams<{ slug: string }>();
+  const data = useDashboardData();
   if (!slug || !ENTITY_SLUGS.includes(slug as EntitySlug)) return <NotFound />;
 
-  const data     = getMockData();
   const eSlug    = slug as EntitySlug;
   const config   = ENTITY_CONFIG[eSlug];
   const m        = data.metrics[eSlug];
@@ -31,7 +30,7 @@ export default function EntityPage() {
   const totalExpenses   = m.cogs_ytd + m.opex_ytd;
   const monthsElapsed   = 6; // Jan–Jun YTD
   const monthlyBurn     = m.opex_ytd / monthsElapsed;
-  const runway          = m.cash_on_hand / monthlyBurn;
+  const runway          = monthlyBurn > 0 && m.cash_on_hand > 0 ? m.cash_on_hand / monthlyBurn : null;
   const healthScore     = data.validation.all_passed ? 92 : 74;
   const netCashApprox   = m.cash_on_hand;
   const cashInApprox    = Math.round(m.revenue_ytd / monthsElapsed);
@@ -99,7 +98,7 @@ export default function EntityPage() {
           />
           <KpiCard
             label="RUNWAY"
-            value={`${runway.toFixed(1)} Months`}
+            value={runway === null ? "—" : `${runway.toFixed(1)} Months`}
             delta="+0.7"
             positive={true}
             icon={Timer}

@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { api } from '@/lib/api';
 import { getMockData, getFinancials, getCustomers, getVendors, getBanking } from '@/lib/mock';
+import { ENTITY_SLUGS } from '@/lib/entities';
 import type { DashboardData, FinancialsData, CustomersData, VendorsData, BankingData, EntitySlug, BriefingResponse, Alert } from '@/lib/types';
 import type { ReportTemplateSummary, ReportGenerateRequest, BuiltReport } from '@/lib/reportTypes';
 import type { AIStatus } from '@/lib/aiTypes';
@@ -15,6 +16,27 @@ export function useDashboardData(): DashboardData {
 export function useEntityFinancials(slug: EntitySlug): FinancialsData {
   const [data, setData] = useState<FinancialsData>(() => getFinancials(slug));
   useEffect(() => { api.entityFinancials(slug).then(setData).catch(() => {}); }, [slug]);
+  return data;
+}
+
+/**
+ * useAllEntityFinancials — fetches live financials for every entity in
+ * parallel. Starts from mock data (same pattern as the other hooks) and
+ * swaps in the live API results once all fetches resolve.
+ */
+export function useAllEntityFinancials(): Record<EntitySlug, FinancialsData> {
+  const [data, setData] = useState<Record<EntitySlug, FinancialsData>>(() =>
+    Object.fromEntries(ENTITY_SLUGS.map(s => [s, getFinancials(s)])) as Record<EntitySlug, FinancialsData>
+  );
+  useEffect(() => {
+    let cancelled = false;
+    Promise.all(ENTITY_SLUGS.map(s => api.entityFinancials(s).then(f => [s, f] as const)))
+      .then(entries => {
+        if (!cancelled) setData(Object.fromEntries(entries) as Record<EntitySlug, FinancialsData>);
+      })
+      .catch(() => {});
+    return () => { cancelled = true; };
+  }, []);
   return data;
 }
 

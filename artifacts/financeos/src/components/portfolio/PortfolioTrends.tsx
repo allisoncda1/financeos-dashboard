@@ -1,9 +1,7 @@
+import { useMemo } from "react";
 import { SparklineChart } from "@/components/shared/SparklineChart";
-
-// 12-month mock trend data (Jul'25 – Jun'26)
-const REVENUE_DATA = [95200, 108400, 112000, 98700, 115600, 122300, 118900, 131200, 119800, 126500, 138200, 156400];
-const CASH_DATA    = [520000, 534000, 548000, 541000, 559000, 572000, 565000, 588000, 601000, 614000, 628000, 739800];
-const INCOME_DATA  = [22100, 26400, 28800, 21300, 31200, 33700, 29800, 36500, 31200, 34800, 40100, 43600];
+import { useAllEntityFinancials } from "@/hooks/useApi";
+import { ENTITY_SLUGS } from "@/lib/entities";
 
 function pctChange(data: number[]): number {
   const first = data[0];
@@ -12,9 +10,11 @@ function pctChange(data: number[]): number {
 }
 
 function fmt(n: number): string {
-  if (n >= 1_000_000) return `$${(n / 1_000_000).toFixed(2)}M`;
-  if (n >= 1_000) return `$${(n / 1_000).toFixed(1)}K`;
-  return `$${n}`;
+  const sign = n < 0 ? "-" : "";
+  const abs = Math.abs(n);
+  if (abs >= 1_000_000) return `${sign}$${(abs / 1_000_000).toFixed(2)}M`;
+  if (abs >= 1_000) return `${sign}$${(abs / 1_000).toFixed(1)}K`;
+  return `${sign}$${Math.round(abs)}`;
 }
 
 type TrendCardProps = {
@@ -22,9 +22,10 @@ type TrendCardProps = {
   value: string;
   data: number[];
   color: string;
+  period: string;
 };
 
-function TrendCard({ label, value, data, color }: TrendCardProps) {
+function TrendCard({ label, value, data, color, period }: TrendCardProps) {
   const pct = pctChange(data);
   const positive = pct >= 0;
   return (
@@ -32,36 +33,65 @@ function TrendCard({ label, value, data, color }: TrendCardProps) {
       <div className="flex items-center justify-between mb-1">
         <p className="text-[11px] font-medium text-gray-500">{label}</p>
         <span className={`text-[10px] font-semibold ${positive ? "text-emerald-600" : "text-red-500"}`}>
-          {positive ? "+" : ""}{pct.toFixed(1)}% 12M
+          {positive ? "+" : ""}{pct.toFixed(1)}%
         </span>
       </div>
       <p className="text-[20px] font-bold text-gray-900 mb-3">{value}</p>
       <SparklineChart data={data} color={color} height={44} />
-      <p className="text-[9px] text-gray-300 mt-1.5">Jul 2025 – Jun 2026</p>
+      <p className="text-[9px] text-gray-300 mt-1.5">{period}</p>
     </div>
   );
 }
 
 export function PortfolioTrends() {
+  const allFins = useAllEntityFinancials();
+
+  const { months, revenue, grossProfit, netIncome } = useMemo(() => {
+    const set = new Set<string>();
+    for (const slug of ENTITY_SLUGS) for (const p of allFins[slug].monthly_pl) set.add(p.month);
+    const monthLabels = [...set].sort();
+    const byMonth: Record<string, Map<string, (typeof allFins)[keyof typeof allFins]["monthly_pl"][number]>> = {};
+    for (const slug of ENTITY_SLUGS) {
+      byMonth[slug] = new Map(allFins[slug].monthly_pl.map(p => [p.month, p]));
+    }
+    const sumAt = (key: "revenue" | "gross_profit" | "net_income") =>
+      monthLabels.map(label =>
+        ENTITY_SLUGS.reduce((s, slug) => s + (byMonth[slug].get(label)?.[key] ?? 0), 0)
+      );
+    return {
+      months: monthLabels,
+      revenue: sumAt("revenue"),
+      grossProfit: sumAt("gross_profit"),
+      netIncome: sumAt("net_income"),
+    };
+  }, [allFins]);
+
+  if (months.length === 0) return null;
+
+  const period = `${months[0]} – ${months[months.length - 1]} · all entities`;
+
   return (
     <div className="grid grid-cols-3 gap-4">
       <TrendCard
         label="Revenue Trend"
-        value={fmt(REVENUE_DATA[REVENUE_DATA.length - 1])}
-        data={REVENUE_DATA}
+        value={fmt(revenue[revenue.length - 1])}
+        data={revenue}
         color="#10B981"
+        period={period}
       />
       <TrendCard
-        label="Cash Trend"
-        value={fmt(CASH_DATA[CASH_DATA.length - 1])}
-        data={CASH_DATA}
+        label="Gross Profit Trend"
+        value={fmt(grossProfit[grossProfit.length - 1])}
+        data={grossProfit}
         color="#3B82F6"
+        period={period}
       />
       <TrendCard
         label="Net Income Trend"
-        value={fmt(INCOME_DATA[INCOME_DATA.length - 1])}
-        data={INCOME_DATA}
+        value={fmt(netIncome[netIncome.length - 1])}
+        data={netIncome}
         color="#8B5CF6"
+        period={period}
       />
     </div>
   );

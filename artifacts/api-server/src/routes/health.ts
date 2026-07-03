@@ -1,5 +1,7 @@
 import { Router, type IRouter } from "express";
 import { HealthCheckResponse } from "@workspace/api-zod";
+import { USE_DRIVE } from "../lib/dataSource";
+import { getProvider } from "../ai/provider";
 
 const router: IRouter = Router();
 
@@ -8,16 +10,17 @@ router.get("/healthz", (_req, res) => {
   res.json(data);
 });
 
-// GET /api/health — detailed health info (ported from original server)
+// GET /api/health — detailed health info reflecting the real runtime state
 router.get("/health", (_req, res) => {
+  const provider = getProvider();
   res.json({
     ok: true,
     data: {
       status: "healthy",
       version: "1.0.0",
-      phase: "1 — mock data",
-      dataSource: "local mock JSON",
-      drive: "not connected",
+      dataSource: USE_DRIVE ? "google-drive" : "local mock JSON",
+      drive: USE_DRIVE ? "connected" : "not connected",
+      aiProvider: provider.name,
       uptime: Math.round(process.uptime()),
     },
     ts: new Date().toISOString(),
