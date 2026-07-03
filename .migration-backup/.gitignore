@@ -1,29 +1,49 @@
-# Dependencies
-node_modules/
-.pnp
-.pnp.js
+# See https://docs.github.com/en/get-started/getting-started-with-git/ignoring-files for more about ignoring files.
 
-# Next.js build output
-.next/
-out/
+# compiled output
+dist
+tmp
+out-tsc
+*.tsbuildinfo
+.expo
+.expo-shared
 
-# Secrets — NEVER commit any of these
-.env
-.env.local
-.env*.local
-*.json.secret
+# dependencies
+node_modules
 
-# OS
+# IDEs and editors
+/.idea
+.project
+.classpath
+.c9/
+*.launch
+.settings/
+*.sublime-workspace
+
+# IDE - VSCode
+.vscode/*
+!.vscode/settings.json
+!.vscode/tasks.json
+!.vscode/launch.json
+!.vscode/extensions.json
+
+# misc
+/.sass-cache
+/connect.lock
+/coverage
+/libpeerconnection.log
+npm-debug.log
+yarn-error.log
+testem.log
+/typings
+
+# System Files
 .DS_Store
 Thumbs.db
 
-# Vercel / Replit
-.vercel
-.replit.secrets
+.cursor/rules/nx-rules.mdc
+.github/instructions/nx.instructions.md
 
-# TypeScript
-*.tsbuildinfo
-next-env.d.ts
-
-# NOTE: data/mock/ is safe to commit — it contains only invented fake data.
-# NEVER add real financial data files to data/mock/ or anywhere in this repo.
+# Replit
+.cache/
+.local/

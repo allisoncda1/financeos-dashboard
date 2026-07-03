@@ -2,6 +2,7 @@ import { useParams } from "wouter";
 import NotFound from "@/pages/not-found";
 import { ENTITY_SLUGS, type EntitySlug } from "@/lib/entities";
 import { useEntityBanking } from "@/hooks/useApi";
+import { getBanking } from "@/lib/mock";
 import { PageHeader } from "@/components/shared/PageHeader";
 import { CheckCircle2, AlertTriangle, XCircle } from "lucide-react";
 

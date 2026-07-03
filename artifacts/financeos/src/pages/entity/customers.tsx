@@ -2,6 +2,7 @@ import { useParams } from "wouter";
 import NotFound from "@/pages/not-found";
 import { ENTITY_SLUGS, type EntitySlug } from "@/lib/entities";
 import { useEntityCustomers } from "@/hooks/useApi";
+import { getCustomers } from "@/lib/mock";
 import { PageHeader } from "@/components/shared/PageHeader";
 import { AgingTable } from "@/components/shared/AgingTable";
 import { SparklineChart } from "@/components/shared/SparklineChart";

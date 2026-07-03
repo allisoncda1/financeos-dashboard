@@ -1,0 +1,54 @@
+{
+  "entity_slug": "Smile_More",
+  "as_of": "2026-06-30",
+  "total_cash": 87300,
+  "reconciliation_status": "clean",
+  "unreconciled_count": 0,
+  "accounts": [
+    {
+      "id": "chase-sm",
+      "name": "Chase Business Checking",
+      "institution": "Chase Bank",
+      "account_type": "Checking",
+      "last_four": "3309",
+      "balance": 65200,
+      "color": "#1A56DB",
+      "reconciled": true,
+      "last_reconciled": "2026-06-30"
+    },
+    {
+      "id": "amex-sm",
+      "name": "Amex Business Card",
+      "institution": "American Express",
+      "account_type": "Credit Card",
+      "last_four": "7723",
+      "balance": 4600,
+      "color": "#016FD0",
+      "reconciled": true,
+      "last_reconciled": "2026-06-30"
+    },
+    {
+      "id": "mercury-sm",
+      "name": "Mercury Reserve",
+      "institution": "Mercury Banking",
+      "account_type": "Savings",
+      "last_four": "1147",
+      "balance": 17500,
+      "color": "#5850EC",
+      "reconciled": true,
+      "last_reconciled": "2026-06-30"
+    }
+  ],
+  "transactions": [
+    { "id": "t1",  "account_id": "chase-sm", "date": "2026-06-28", "description": "Sunrise Dental Partners — Invoice #SM-0211", "amount": 9200,   "category": "Revenue",      "reconciled": true },
+    { "id": "t2",  "account_id": "chase-sm", "date": "2026-06-26", "description": "Dentsply Sirona — Supplies Order",           "amount": -5200,  "category": "COGS",         "reconciled": true },
+    { "id": "t3",  "account_id": "chase-sm", "date": "2026-06-24", "description": "Bright Smiles Clinic — Invoice #SM-0210",   "amount": 7400,   "category": "Revenue",      "reconciled": true },
+    { "id": "t4",  "account_id": "chase-sm", "date": "2026-06-22", "description": "Patterson Dental — Monthly Order",          "amount": -4100,  "category": "COGS",         "reconciled": true },
+    { "id": "t5",  "account_id": "chase-sm", "date": "2026-06-20", "description": "Payroll — June 2026",                       "amount": -18000, "category": "Payroll",      "reconciled": true },
+    { "id": "t6",  "account_id": "chase-sm", "date": "2026-06-18", "description": "Valley Orthodontics — Invoice #SM-0209",    "amount": 6100,   "category": "Revenue",      "reconciled": true },
+    { "id": "t7",  "account_id": "chase-sm", "date": "2026-06-15", "description": "Henry Schein Inc. — Supplies",              "amount": -3600,  "category": "COGS",         "reconciled": true },
+    { "id": "t8",  "account_id": "chase-sm", "date": "2026-06-12", "description": "Family Smiles of Austin — Invoice #SM-0208","amount": 3800,   "category": "Revenue",      "reconciled": true },
+    { "id": "t9",  "account_id": "amex-sm",  "date": "2026-06-20", "description": "Carestream Dental — Equipment Lease",       "amount": -2400,  "category": "Equipment",    "reconciled": true },
+    { "id": "t10", "account_id": "amex-sm",  "date": "2026-06-10", "description": "Office Depot Medical — Supplies",           "amount": -1300,  "category": "Office",       "reconciled": true }
+  ]
+}

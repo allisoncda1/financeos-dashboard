@@ -1,7 +1,7 @@
 import { useDashboardData } from "@/hooks/useApi";
 
 import { useState, useMemo } from "react";
-import { getFinancials } from "@/lib/mock";
+import { getMockData, getFinancials } from "@/lib/mock";
 import { ENTITY_SLUGS, ENTITY_CONFIG, ENTITY_META, type EntitySlug } from "@/lib/entities";
 import { EntityLogo } from "@/components/ui/EntityLogo";
 import { useEntitySelection } from "@/lib/entity-context";

@@ -1,6 +1,6 @@
 kind = "web"
 previewPath = "/"
-title = "FinanceOS Dashboard"
+title = "FinanceOS"
 version = "1.0.0"
 id = "artifacts/financeos"
 router = "path"

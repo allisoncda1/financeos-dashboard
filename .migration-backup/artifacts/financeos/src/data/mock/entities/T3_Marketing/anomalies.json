@@ -1,0 +1,9 @@
+[
+  {
+    "rule": "8a",
+    "severity": "warning",
+    "description": "AR balance increased 23% MoM without corresponding revenue increase",
+    "amount": 12600,
+    "period": "2026-06"
+  }
+]

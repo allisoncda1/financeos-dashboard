@@ -1,0 +1,1 @@
+- [Vercel/v0 import quirks](vercel-import-quirks.md) — imported v0 code can ship module-level React hook calls and missing imports; sweep all pages before browser verification.

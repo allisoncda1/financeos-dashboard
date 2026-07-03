@@ -1,0 +1,9 @@
+[
+  {
+    "rule": "7",
+    "severity": "warning",
+    "description": "AP overdue balance exceeds 30-day threshold",
+    "amount": 950,
+    "period": "2026-06"
+  }
+]
