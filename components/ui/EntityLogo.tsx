@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import type { LogoSource } from "@/lib/entities";
 
 type Rounded = "sm" | "md" | "lg" | "xl" | "full";
@@ -23,6 +23,7 @@ type Props = {
  */
 export function EntityLogo({ entity, size = 28, rounded = "lg", className = "", dark = false }: Props) {
   const [imgError, setImgError] = useState(false);
+  useEffect(() => { setImgError(false); }, [entity.logoPath]);
   const showImg = !!entity.logoPath && !imgError;
   const roundedClass = `rounded-${rounded}`;
 
