@@ -1,2 +1,4 @@
 - [Vercel/v0 import quirks](vercel-import-quirks.md) — imported v0 code can ship module-level React hook calls and missing imports; sweep all pages before browser verification.
 - [Google Drive OAuth debugging](google-drive-oauth-debugging.md) — silent try/catch fallbacks hide `invalid_grant` refresh-token errors; add temporary logging to confirm root cause before assuming code is broken.
+- [FinanceOS Drive CSV schemas](financeos-drive-csv-schemas.md) — real Drive CSV headers differ from assumed simplified schemas; always inspect real headers before writing transformers.
+- [FinanceOS entity pages ignore live data](financeos-entity-pages-mock-only.md) — entity/{financials,customers,vendors,banking}.tsx import live-fetch hooks but discard the result and render mock data instead.
