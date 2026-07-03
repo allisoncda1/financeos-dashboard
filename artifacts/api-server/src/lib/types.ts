@@ -122,3 +122,121 @@ export type ApiResponse<T> = {
   error: string;
   ts: string;
 };
+
+export type AgingBucket = {
+  label: string;
+  days: string;
+  amount: number;
+  count: number;
+};
+
+export type Customer = {
+  name: string;
+  balance: number;
+  last_payment_date: string;
+  dso_days: number;
+  status: "current" | "overdue" | "late";
+};
+
+export type CustomersData = {
+  entity_slug: string;
+  as_of: string;
+  open_ar: number;
+  aging: AgingBucket[];
+  top_customers: Customer[];
+  dso_history: number[];
+};
+
+export type Vendor = {
+  name: string;
+  balance: number;
+  due_date: string;
+  status: "current" | "overdue" | "scheduled";
+};
+
+export type VendorsData = {
+  entity_slug: string;
+  as_of: string;
+  open_ap: number;
+  aging: AgingBucket[];
+  top_vendors: Vendor[];
+  ap_history: number[];
+};
+
+export type MonthlyPL = {
+  month: string;
+  revenue: number;
+  cogs: number;
+  gross_profit: number;
+  opex: number;
+  net_income: number;
+};
+
+export type BalanceSheet = {
+  as_of: string;
+  assets: {
+    cash: number;
+    accounts_receivable: number;
+    prepaid_expenses: number;
+    equipment_net: number;
+    total: number;
+  };
+  liabilities: {
+    accounts_payable: number;
+    accrued_liabilities: number;
+    deferred_revenue: number;
+    notes_payable: number;
+    total: number;
+  };
+  equity: {
+    paid_in_capital: number;
+    retained_earnings: number;
+    total: number;
+  };
+};
+
+export type FinancialsData = {
+  entity_slug: string;
+  as_of: string;
+  monthly_pl: MonthlyPL[];
+  ytd_summary: {
+    revenue: number;
+    cogs: number;
+    gross_profit: number;
+    opex: number;
+    net_income: number;
+  };
+  balance_sheet: BalanceSheet;
+};
+
+export type BankAccount = {
+  id: string;
+  name: string;
+  institution: string;
+  account_type: string;
+  last_four: string;
+  balance: number;
+  color: string;
+  reconciled: boolean;
+  last_reconciled: string;
+};
+
+export type BankTransaction = {
+  id: string;
+  account_id: string;
+  date: string;
+  description: string;
+  amount: number;
+  category: string;
+  reconciled: boolean;
+};
+
+export type BankingData = {
+  entity_slug: string;
+  as_of: string;
+  total_cash: number;
+  reconciliation_status: "clean" | "pending" | "needs_review";
+  unreconciled_count: number;
+  accounts: BankAccount[];
+  transactions: BankTransaction[];
+};

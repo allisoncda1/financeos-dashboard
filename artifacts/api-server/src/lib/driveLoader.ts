@@ -1,3 +1,4 @@
+import { parse } from "csv-parse/sync";
 import { getDrive } from "./driveClient";
 
 const CACHE_TTL_MS = 5 * 60 * 1000;
@@ -72,14 +73,24 @@ async function resolveFileId(relativePath: string): Promise<string> {
   return currentParentId;
 }
 
-async function downloadJsonFile(fileId: string): Promise<unknown> {
+async function downloadRawFile(fileId: string): Promise<string> {
   const drive = getDrive();
   const res = await drive.files.get(
     { fileId, alt: "media", supportsAllDrives: true },
     { responseType: "text" },
   );
-  const raw = res.data as unknown as string;
+  return res.data as unknown as string;
+}
+
+async function downloadJsonFile(fileId: string): Promise<unknown> {
+  const raw = await downloadRawFile(fileId);
   return JSON.parse(raw);
+}
+
+async function downloadCsvFile(fileId: string): Promise<Record<string, string>[]> {
+  const raw = await downloadRawFile(fileId);
+  const records: unknown = parse(raw, { columns: true, skip_empty_lines: true });
+  return records as Record<string, string>[];
 }
 
 export async function driveLoadJson<T>(relativePath: string): Promise<T> {
@@ -94,6 +105,20 @@ export async function driveLoadJson<T>(relativePath: string): Promise<T> {
 
   cache.set(relativePath, { value: data, expiresAt: now + CACHE_TTL_MS });
   return data as T;
+}
+
+export async function driveLoadCsv(relativePath: string): Promise<Record<string, string>[]> {
+  const cached = cache.get(relativePath);
+  const now = Date.now();
+  if (cached && cached.expiresAt > now) {
+    return cached.value as Record<string, string>[];
+  }
+
+  const fileId = await resolveFileId(relativePath);
+  const data = await downloadCsvFile(fileId);
+
+  cache.set(relativePath, { value: data, expiresAt: now + CACHE_TTL_MS });
+  return data;
 }
 
 export function driveStatus(): { configured: boolean; cacheSize: number } {

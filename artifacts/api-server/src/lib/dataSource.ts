@@ -1,5 +1,9 @@
 import { driveLoadJson } from "./driveLoader";
 import { loadMockData, loadEntityFile, loadValidationSummary, type EntityDataFile } from "./mockData";
+import { transformFinancials } from "../transformers/financials";
+import { transformCustomers } from "../transformers/customers";
+import { transformVendors } from "../transformers/vendors";
+import { transformBanking } from "../transformers/banking";
 import type {
   PortfolioSummary,
   ValidationSummary,
@@ -7,6 +11,10 @@ import type {
   EntityMetrics,
   Anomaly,
   EntitySlug,
+  FinancialsData,
+  CustomersData,
+  VendorsData,
+  BankingData,
 } from "./types";
 
 export const USE_DRIVE = Boolean(
@@ -72,13 +80,62 @@ export async function getEntityAnomalies(slug: EntitySlug): Promise<Anomaly[]> {
   return loadMockData().anomalies[slug] ?? [];
 }
 
-export async function getEntityFile<T>(slug: EntitySlug, file: EntityDataFile): Promise<T> {
+export async function getEntityFinancials(slug: EntitySlug, asOf: string): Promise<FinancialsData> {
   if (USE_DRIVE) {
     try {
-      return await driveLoadJson<T>(`entities/${slug}/${file}.json`);
-    } catch {
-      // fall through to mock
+      return await transformFinancials(slug, asOf);
+    } catch (err) {
+      console.warn(`[dataSource] failed to transform financials for ${slug}, falling back to mock:`, err);
     }
   }
-  return loadEntityFile<T>(slug, file);
+  return loadEntityFile<FinancialsData>(slug, "financials");
+}
+
+export async function getEntityCustomers(slug: EntitySlug, asOf: string): Promise<CustomersData> {
+  if (USE_DRIVE) {
+    try {
+      return await transformCustomers(slug, asOf);
+    } catch (err) {
+      console.warn(`[dataSource] failed to transform customers for ${slug}, falling back to mock:`, err);
+    }
+  }
+  return loadEntityFile<CustomersData>(slug, "customers");
+}
+
+export async function getEntityVendors(slug: EntitySlug, asOf: string): Promise<VendorsData> {
+  if (USE_DRIVE) {
+    try {
+      return await transformVendors(slug, asOf);
+    } catch (err) {
+      console.warn(`[dataSource] failed to transform vendors for ${slug}, falling back to mock:`, err);
+    }
+  }
+  return loadEntityFile<VendorsData>(slug, "vendors");
+}
+
+export async function getEntityBanking(slug: EntitySlug, asOf: string): Promise<BankingData> {
+  if (USE_DRIVE) {
+    try {
+      return await transformBanking(slug, asOf);
+    } catch (err) {
+      console.warn(`[dataSource] failed to transform banking for ${slug}, falling back to mock:`, err);
+    }
+  }
+  return loadEntityFile<BankingData>(slug, "banking");
+}
+
+export async function getEntityFile<T>(slug: EntitySlug, file: EntityDataFile): Promise<T> {
+  const asOf = new Date().toISOString();
+  switch (file) {
+    case "financials":
+      return (await getEntityFinancials(slug, asOf)) as unknown as T;
+    case "customers":
+      return (await getEntityCustomers(slug, asOf)) as unknown as T;
+    case "vendors":
+      return (await getEntityVendors(slug, asOf)) as unknown as T;
+    case "banking":
+      return (await getEntityBanking(slug, asOf)) as unknown as T;
+    default:
+      return loadEntityFile<T>(slug, file);
+  }
 }

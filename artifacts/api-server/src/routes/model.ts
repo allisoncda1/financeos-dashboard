@@ -6,7 +6,10 @@ import {
   getDataFreshness,
   getEntityMetrics,
   getEntityAnomalies,
-  getEntityFile,
+  getEntityFinancials,
+  getEntityCustomers,
+  getEntityVendors,
+  getEntityBanking,
 } from "../lib/dataSource";
 import type { EntitySlug } from "../lib/types";
 
@@ -73,9 +76,14 @@ router.get("/model/:slug", async (req, res) => {
 });
 
 // GET /api/model/:slug/{financials,customers,vendors,banking} — per-entity detail data
-const ENTITY_FILES = ["financials", "customers", "vendors", "banking"] as const;
+const ENTITY_FILE_LOADERS = {
+  financials: getEntityFinancials,
+  customers: getEntityCustomers,
+  vendors: getEntityVendors,
+  banking: getEntityBanking,
+} as const;
 
-for (const file of ENTITY_FILES) {
+for (const file of Object.keys(ENTITY_FILE_LOADERS) as (keyof typeof ENTITY_FILE_LOADERS)[]) {
   router.get(`/model/:slug/${file}`, async (req, res) => {
     const slug = req.params["slug"] as EntitySlug;
     if (!ENTITY_SLUGS.includes(slug)) {
@@ -87,7 +95,9 @@ for (const file of ENTITY_FILES) {
       return;
     }
     try {
-      const data = await getEntityFile(slug, file);
+      const metrics = await getEntityMetrics(slug);
+      const loader = ENTITY_FILE_LOADERS[file];
+      const data = await loader(slug, metrics.as_of);
       res.json({ ok: true, data, ts: new Date().toISOString() });
     } catch (err) {
       req.log.error({ err }, `Failed to load ${file} data for ${slug}`);
