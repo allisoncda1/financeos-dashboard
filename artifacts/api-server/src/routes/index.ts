@@ -5,6 +5,7 @@ import modelRouter from "./model";
 import validationRouter from "./validation";
 import driveRouter from "./drive";
 import briefingRouter from "./briefing";
+import rulesRouter from "./rules";
 
 const router: IRouter = Router();
 
@@ -14,5 +15,6 @@ router.use(modelRouter);
 router.use(validationRouter);
 router.use("/drive", driveRouter);
 router.use(briefingRouter);
+router.use(rulesRouter);
 
 export default router;

@@ -267,3 +267,22 @@ export type BriefingResponse = {
   confidenceScore: number;
   generatedAt: string;
 };
+
+// ─── Rules Engine alerts (Sprint 14) ────────────────────────────────────────
+// Mirrors artifacts/api-server/src/rules/evaluator.ts Alert type.
+
+export type AlertSeverity = "critical" | "high" | "medium" | "low" | "info";
+export type AlertCategory = "receivables" | "payables" | "cash" | "revenue" | "validation" | "portfolio";
+
+export type Alert = {
+  id: string;
+  ruleId: string;
+  entity: string;
+  severity: AlertSeverity;
+  category: AlertCategory;
+  title: string;
+  description: string;
+  recommendedAction: string;
+  createdAt: string;
+  status: "active";
+};

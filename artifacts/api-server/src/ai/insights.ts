@@ -1,12 +1,16 @@
 /**
- * AI CFO Briefing Engine — Highlights, Risks & Opportunities.
+ * AI CFO Briefing Engine — Highlights.
  *
  * Deterministic, pure functions over live DashboardData. No LLM.
  * Every sentence produced here must cite a real number from `data`.
+ *
+ * Risks, priorities, and opportunities are no longer generated here — they
+ * come exclusively from the Rules Engine (see ../rules/engine.ts) so alert
+ * logic has a single source of truth. See generateBriefing() in ./briefing.ts.
  */
 
-import type { DashboardData, Highlight, Opportunity, Risk } from "../lib/types";
-import { fmtMoney, fmtPct, isKnown, num, safeFreshness, safeValidation } from "./format";
+import type { DashboardData, Highlight } from "../lib/types";
+import { fmtMoney, fmtPct, safeFreshness, safeValidation } from "./format";
 import {
   getCashTrend,
   getHighestGrowthEntity,
@@ -104,127 +108,6 @@ export function generateHighlights(data: DashboardData): Highlight[] {
   });
 
   return highlights.slice(0, 8);
-}
-
-// ── Risks ───────────────────────────────────────────────────────────────────
-
-export function generateRisks(data: DashboardData): Risk[] {
-  const { metrics, validation } = data;
-  const risks: Risk[] = [];
-
-  for (const m of Object.values(metrics)) {
-    if (isKnown(m.dso_days) && m.dso_days > 45) {
-      risks.push({
-        title: `${m.entity} — DSO at ${m.dso_days} days`,
-        description: `Days Sales Outstanding is ${m.dso_days} days, above the 45-day threshold, with ${fmtMoney(m.open_ar)} in open receivables.`,
-        severity: "high",
-        entity: m.entity,
-      });
-    }
-
-    if (isKnown(m.ar_overdue_pct) && m.ar_overdue_pct > 20) {
-      risks.push({
-        title: `${m.entity} — ${fmtPct(m.ar_overdue_pct)} of AR overdue`,
-        description: `${fmtMoney((num(m.open_ar) * m.ar_overdue_pct) / 100)} of ${fmtMoney(m.open_ar)} in receivables is overdue, exceeding the 20% threshold.`,
-        severity: "high",
-        entity: m.entity,
-      });
-    }
-
-    if (isKnown(m.net_margin_pct) && m.net_margin_pct < 5) {
-      risks.push({
-        title: `${m.entity} — net margin at ${fmtPct(m.net_margin_pct)}`,
-        description: `Net margin of ${fmtPct(m.net_margin_pct)} on ${fmtMoney(m.revenue_ytd)} revenue YTD is below the 5% healthy-margin threshold.`,
-        severity: "medium",
-        entity: m.entity,
-      });
-    }
-
-    if (isKnown(m.cash_on_hand) && m.cash_on_hand < 50_000) {
-      risks.push({
-        title: `${m.entity} — cash on hand at ${fmtMoney(m.cash_on_hand)}`,
-        description: `Cash on hand of ${fmtMoney(m.cash_on_hand)} is below the $50,000 minimum runway threshold.`,
-        severity: "high",
-        entity: m.entity,
-      });
-    }
-
-    if (isKnown(m.ap_overdue_pct) && m.ap_overdue_pct > 25) {
-      risks.push({
-        title: `${m.entity} — ${fmtPct(m.ap_overdue_pct)} of AP overdue`,
-        description: `${fmtMoney((num(m.open_ap) * m.ap_overdue_pct) / 100)} of ${fmtMoney(m.open_ap)} in payables is overdue, exceeding the 25% threshold.`,
-        severity: "medium",
-        entity: m.entity,
-      });
-    }
-  }
-
-  const riskValidation = safeValidation(validation);
-  if (riskValidation.failed > 0) {
-    risks.push({
-      title: `${riskValidation.failed} validation check${riskValidation.failed > 1 ? "s" : ""} failed`,
-      description: `${riskValidation.failed} of ${riskValidation.totalChecks} data validation rules failed as of ${riskValidation.runDate} — underlying figures require review.`,
-      severity: "medium",
-      entity: "Portfolio",
-    });
-  }
-
-  const order = { high: 0, medium: 1, low: 2 };
-  risks.sort((a, b) => order[a.severity] - order[b.severity]);
-
-  return risks;
-}
-
-// ── Opportunities ────────────────────────────────────────────────────────────
-
-export function generateOpportunities(data: DashboardData): Opportunity[] {
-  const { metrics, validation } = data;
-  const opportunities: Opportunity[] = [];
-
-  for (const m of Object.values(metrics)) {
-    if (isKnown(m.cash_on_hand) && m.cash_on_hand > 200_000) {
-      opportunities.push({
-        title: `${m.entity} — strong cash position`,
-        description: `${fmtMoney(m.cash_on_hand)} in cash on hand exceeds the $200,000 threshold, providing room to invest, pay down liabilities, or fund growth.`,
-        entity: m.entity,
-      });
-    }
-
-    if (isKnown(m.gross_margin_pct) && m.gross_margin_pct > 60) {
-      opportunities.push({
-        title: `${m.entity} — high gross margin`,
-        description: `Gross margin of ${fmtPct(m.gross_margin_pct)} on ${fmtMoney(m.revenue_ytd)} revenue YTD leaves room to reinvest in growth while preserving profitability.`,
-        entity: m.entity,
-      });
-    }
-
-    if (isKnown(m.net_margin_pct) && m.net_margin_pct > 20) {
-      opportunities.push({
-        title: `${m.entity} — strong net margin`,
-        description: `Net margin of ${fmtPct(m.net_margin_pct)} on ${fmtMoney(m.revenue_ytd)} revenue YTD is well above the 20% benchmark for healthy profitability.`,
-        entity: m.entity,
-      });
-    }
-
-    if (isKnown(m.revenue_ytd) && m.revenue_ytd > 0 && isKnown(m.open_ap) && m.open_ap / m.revenue_ytd < 0.05) {
-      opportunities.push({
-        title: `${m.entity} — low vendor exposure`,
-        description: `Open payables of ${fmtMoney(m.open_ap)} are just ${fmtPct((m.open_ap / m.revenue_ytd) * 100)} of YTD revenue, indicating disciplined vendor management.`,
-        entity: m.entity,
-      });
-    }
-  }
-
-  const oppValidation = safeValidation(validation);
-  if (oppValidation.allPassed) {
-    opportunities.push({
-      title: "Portfolio data integrity is fully validated",
-      description: `All ${oppValidation.totalChecks} validation checks passed as of ${oppValidation.runDate} — leadership can act on these figures with confidence.`,
-      entity: "Portfolio",
-    });
-  }
-
-  return opportunities;
 }
 
 function daysSince(isoDate: string): number {

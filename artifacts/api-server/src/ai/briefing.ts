@@ -12,11 +12,62 @@ import {
   getValidationSummary,
   getEntityMetrics,
 } from "../lib/dataSource";
-import { ENTITY_SLUGS, type BriefingResponse, type DashboardData } from "../lib/types";
+import {
+  ENTITY_SLUGS,
+  type BriefingResponse,
+  type DashboardData,
+  type Opportunity,
+  type Priority,
+  type Risk,
+} from "../lib/types";
 import { fmtMoney, fmtPct, isKnown, num, safeFreshness, safeValidation } from "./format";
-import { generateHighlights, generateRisks, generateOpportunities } from "./insights";
-import { generatePriorities } from "./priorities";
+import { generateHighlights } from "./insights";
 import { getCashTrend, getLargestOverdueAR, getRevenueChange } from "./trends";
+import { RulesEngine } from "../rules/engine";
+import type { Alert } from "../rules/engine";
+
+const ALERT_SEVERITY_TO_RISK_SEVERITY: Record<Alert["severity"], Risk["severity"]> = {
+  critical: "high",
+  high: "high",
+  medium: "medium",
+  low: "low",
+  info: "low",
+};
+
+function alertsToRisks(alerts: Alert[]): Risk[] {
+  return alerts
+    .filter((a) => a.severity === "critical" || a.severity === "high")
+    .map((a) => ({
+      title: a.title,
+      description: a.description,
+      severity: ALERT_SEVERITY_TO_RISK_SEVERITY[a.severity],
+      entity: a.entity,
+    }));
+}
+
+function alertsToPriorities(alerts: Alert[]): Priority[] {
+  return alerts
+    .filter((a) => a.severity === "medium")
+    .map((a) => ({
+      title: a.title,
+      description: a.description,
+      severity: "medium" as const,
+      entity: a.entity,
+      recommendedAction: a.recommendedAction,
+      status: "New" as const,
+    }))
+    .slice(0, 6);
+}
+
+function alertsToOpportunities(alerts: Alert[]): Opportunity[] {
+  return alerts
+    .filter((a) => a.severity === "low" || a.severity === "info")
+    .map((a) => ({
+      title: a.title,
+      description: a.description,
+      entity: a.entity,
+    }));
+}
 
 function getGreeting(): string {
   const hour = new Date().getHours();
@@ -147,14 +198,15 @@ function daysSince(isoDate: string): number {
 
 export async function generateBriefing(): Promise<BriefingResponse> {
   const data = await loadDashboardData();
+  const alerts = await RulesEngine.run();
 
   return {
     greeting: getGreeting(),
     executiveSummary: buildExecutiveSummary(data),
     highlights: generateHighlights(data),
-    priorities: generatePriorities(data),
-    risks: generateRisks(data),
-    opportunities: generateOpportunities(data),
+    priorities: alertsToPriorities(alerts),
+    risks: alertsToRisks(alerts),
+    opportunities: alertsToOpportunities(alerts),
     confidenceScore: computeConfidenceScore(data),
     generatedAt: new Date().toISOString(),
   };

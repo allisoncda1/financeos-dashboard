@@ -1,4 +1,4 @@
-import type { DashboardData, FinancialsData, CustomersData, VendorsData, BankingData, EntitySlug, BriefingResponse } from "./types";
+import type { DashboardData, FinancialsData, CustomersData, VendorsData, BankingData, EntitySlug, BriefingResponse, Alert } from "./types";
 
 const BASE = "/api";
 
@@ -17,4 +17,5 @@ export const api = {
   entityVendors:    (s: string)  => get<VendorsData>(`/model/${s}/vendors`),
   entityBanking:    (s: string)  => get<BankingData>(`/model/${s}/banking`),
   briefing:         ()           => get<BriefingResponse>("/briefing"),
+  alerts:           ()           => get<Alert[]>("/alerts"),
 };

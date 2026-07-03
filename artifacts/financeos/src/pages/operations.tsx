@@ -1,26 +1,13 @@
-import { useDashboardData } from "@/hooks/useApi";
-import { getCustomers, getVendors, getBanking } from "@/lib/mock";
-import { ENTITY_SLUGS, type EntitySlug } from "@/lib/entities";
-import { generateOperationItems } from "@/lib/operations";
+import { useDashboardData, useAlerts } from "@/hooks/useApi";
+import { alertsToOperationItems } from "@/lib/operations";
 import { OperationsInbox } from "@/components/operations/OperationsInbox";
 import { Inbox } from "lucide-react";
 
 export default function OperationsPage() {
   const data = useDashboardData();
+  const { data: alerts, loading } = useAlerts();
 
-  const customersMap = Object.fromEntries(
-    ENTITY_SLUGS.map((s) => [s, getCustomers(s)])
-  ) as Record<EntitySlug, ReturnType<typeof getCustomers>>;
-
-  const vendorsMap = Object.fromEntries(
-    ENTITY_SLUGS.map((s) => [s, getVendors(s)])
-  ) as Record<EntitySlug, ReturnType<typeof getVendors>>;
-
-  const bankingMap = Object.fromEntries(
-    ENTITY_SLUGS.map((s) => [s, getBanking(s)])
-  ) as Record<EntitySlug, ReturnType<typeof getBanking>>;
-
-  const items = generateOperationItems(data, customersMap, vendorsMap, bankingMap);
+  const items = alertsToOperationItems(alerts);
 
   return (
     <div className="h-full flex flex-col overflow-hidden bg-[#F4F5F7]">
@@ -33,7 +20,9 @@ export default function OperationsPage() {
           <div>
             <h1 className="text-[15px] font-bold text-gray-900">Operations Inbox</h1>
             <p className="text-[11px] text-gray-400">
-              {items.length} item{items.length !== 1 ? "s" : ""} · mock data · as of {data.freshness.data_as_of}
+              {loading
+                ? "Loading live alerts…"
+                : `${items.length} item${items.length !== 1 ? "s" : ""} · Rules Engine · as of ${data.freshness.data_as_of}`}
             </p>
           </div>
         </div>

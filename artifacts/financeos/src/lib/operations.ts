@@ -2,7 +2,7 @@
 // Seeds items from mock anomalies, AR/AP flags, banking issues, and customer data.
 // IDs match the `financeos_op_statuses` localStorage key used by TodaysPriorities.
 
-import type { DashboardData, CustomersData, VendorsData, BankingData, EntitySlug } from "./types";
+import type { Alert, AlertCategory, DashboardData, CustomersData, VendorsData, BankingData, EntitySlug } from "./types";
 import { ENTITY_SLUGS, ENTITY_CONFIG } from "./types";
 
 export type OperationSeverity = "high" | "medium" | "low";
@@ -248,4 +248,59 @@ export function generateOperationItems(
   });
 
   return items;
+}
+
+// ── Rules Engine alert adapter (Sprint 14) ──────────────────────────────────
+// Maps live Alert[] (from GET /api/alerts) into the OperationItem shape the
+// existing OperationsInbox component already renders. No new components.
+
+const ALERT_CATEGORY_TO_TYPE: Record<AlertCategory, OperationType> = {
+  receivables: "ar",
+  payables: "ap",
+  cash: "banking",
+  revenue: "anomaly",
+  validation: "validation",
+  portfolio: "anomaly",
+};
+
+const ALERT_CATEGORY_TO_HREF_SEGMENT: Record<AlertCategory, string> = {
+  receivables: "customers",
+  payables: "vendors",
+  cash: "banking",
+  revenue: "financials",
+  validation: "financials",
+  portfolio: "financials",
+};
+
+const ENTITY_NAME_TO_SLUG: Record<string, EntitySlug> = Object.fromEntries(
+  ENTITY_SLUGS.map((slug) => [ENTITY_CONFIG[slug].name, slug])
+);
+
+function alertSeverityToOperationSeverity(severity: Alert["severity"]): OperationSeverity {
+  if (severity === "critical" || severity === "high") return "high";
+  if (severity === "medium") return "medium";
+  return "low";
+}
+
+export function alertsToOperationItems(alerts: Alert[]): OperationItem[] {
+  return alerts.map((alert) => {
+    const entitySlug = ENTITY_NAME_TO_SLUG[alert.entity] ?? null;
+    const entityColor = entitySlug ? ENTITY_CONFIG[entitySlug].color : "#9CA3AF";
+    const hrefSegment = ALERT_CATEGORY_TO_HREF_SEGMENT[alert.category];
+
+    return {
+      id: alert.id,
+      severity: alertSeverityToOperationSeverity(alert.severity),
+      type: ALERT_CATEGORY_TO_TYPE[alert.category],
+      title: alert.title,
+      description: alert.description,
+      entity: alert.entity,
+      entitySlug,
+      entityColor,
+      action: alert.recommendedAction,
+      href: entitySlug ? `/entity/${entitySlug}/${hrefSegment}` : "/operations",
+      flaggedDate: alert.createdAt.slice(0, 10),
+      details: [alert.description, `Recommended action: ${alert.recommendedAction}`],
+    };
+  });
 }
