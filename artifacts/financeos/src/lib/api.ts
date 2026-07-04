@@ -39,6 +39,31 @@ async function post<T>(path: string, body: unknown): Promise<T> {
   return json.data as T;
 }
 
+export type DownloadedFile = { blob: Blob; filename: string };
+
+/**
+ * postForBlob — for binary/text report formats (pdf/excel/html), the server
+ * responds with a raw file body (not the {ok, data} JSON envelope), so this
+ * reads the response as a Blob and extracts the filename from
+ * Content-Disposition instead of parsing JSON.
+ */
+async function postForBlob(path: string, body: unknown): Promise<DownloadedFile> {
+  const res = await fetch(`${BASE}${path}`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  if (!res.ok) {
+    const json = await res.json().catch(() => null);
+    throw new Error(json?.error ?? `API ${path} → ${res.status}`);
+  }
+  const blob = await res.blob();
+  const disposition = res.headers.get("Content-Disposition") ?? "";
+  const match = disposition.match(/filename="?([^"]+)"?/);
+  const filename = match?.[1] ?? "report";
+  return { blob, filename };
+}
+
 export const api = {
   model:            ()           => getSourced<DashboardData>("/model"),
   entityFinancials: (s: string)  => getSourced<FinancialsData>(`/model/${s}/financials`),
@@ -49,6 +74,7 @@ export const api = {
   alerts:           ()           => getSourced<Alert[]>("/alerts"),
   reportTemplates:  ()           => getSourced<ReportTemplateSummary[]>("/reports"),
   generateReport:   (req: ReportGenerateRequest) => post<BuiltReport>("/reports/generate", req),
+  downloadReport:   (req: ReportGenerateRequest) => postForBlob("/reports/generate", req),
   aiStatus:         ()           => getSourced<AIStatus>("/ai/status"),
   pipelineStatus:   ()           => getSourced<PipelineStatus>("/pipeline/status"),
 };

@@ -3,15 +3,18 @@
  *
  * A Renderer takes a fully-assembled BuiltReport and serializes it for a
  * specific output format. The builder never knows which renderer will run;
- * only getRenderer() maps a requested format to its implementation. Phase 1
- * ships only JSON — pdf/excel/html are reserved slots for later sprints.
+ * only getRenderer() maps a requested format to its implementation.
+ * Renderers only transform presentation — they never recalculate data.
  */
 
 import type { BuiltReport } from "./builder";
+import { HtmlRenderer } from "./renderers/html";
+import { PdfRenderer } from "./renderers/pdf";
+import { ExcelRenderer } from "./renderers/excel";
 
 export interface Renderer {
   format: string;
-  render(report: BuiltReport): unknown;
+  render(report: BuiltReport): unknown | Promise<unknown>;
 }
 
 export const JsonRenderer: Renderer = {
@@ -23,20 +26,14 @@ export const JsonRenderer: Renderer = {
 
 const RENDERERS: Record<string, Renderer> = {
   json: JsonRenderer,
-};
-
-const UNIMPLEMENTED_FORMATS: Record<string, string> = {
-  pdf: "PDF renderer not yet implemented — coming in Sprint 16",
-  excel: "Excel renderer not yet implemented — coming in Sprint 16",
-  html: "HTML renderer not yet implemented — coming in Sprint 16",
+  html: HtmlRenderer,
+  pdf: PdfRenderer,
+  excel: ExcelRenderer,
 };
 
 export function getRenderer(format: string): Renderer {
   const renderer = RENDERERS[format];
   if (renderer) return renderer;
 
-  const message = UNIMPLEMENTED_FORMATS[format];
-  if (message) throw new Error(message);
-
-  throw new Error(`Unsupported report format: "${format}"`);
+  throw new Error(`Unsupported format: "${format}"`);
 }

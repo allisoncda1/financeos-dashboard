@@ -12,6 +12,6 @@ export async function generateReport(
   request: ReportRequest,
 ): Promise<{ report: BuiltReport; output: unknown }> {
   const report = await buildReport(request);
-  const output = getRenderer(request.format).render(report);
+  const output = await getRenderer(request.format).render(report);
   return { report, output };
 }

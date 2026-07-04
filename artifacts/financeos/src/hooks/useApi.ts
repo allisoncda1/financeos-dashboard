@@ -189,6 +189,41 @@ export function useReportGenerator() {
 }
 
 /**
+ * useReportDownload — imperative helper to POST /api/reports/generate for
+ * binary/text formats (pdf/excel/html) and trigger a browser file download.
+ * Tracks in-flight/downloading/error state per-format so the Report Center
+ * UI can show a spinner on just the button that was clicked.
+ */
+export function useReportDownload() {
+  const [downloadingFormat, setDownloadingFormat] = useState<ReportGenerateRequest["format"] | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  const download = useCallback(async (req: ReportGenerateRequest) => {
+    setDownloadingFormat(req.format);
+    setError(null);
+    try {
+      const { blob, filename } = await api.downloadReport(req);
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = filename;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      URL.revokeObjectURL(url);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "Failed to download report";
+      setError(message);
+      throw err;
+    } finally {
+      setDownloadingFormat(null);
+    }
+  }, []);
+
+  return { downloadingFormat, error, download };
+}
+
+/**
  * usePipelineStatus — fetches the external pipeline's self-reported status
  * from GET /api/pipeline/status, once on mount (no polling). Read-only —
  * FinanceOS never runs or triggers the pipeline, it only displays what it
