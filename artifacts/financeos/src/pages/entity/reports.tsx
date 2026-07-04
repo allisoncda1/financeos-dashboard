@@ -38,8 +38,15 @@ export default function ReportsPage() {
   const { slug } = useParams<{ slug: string }>();
   if (!slug || !ENTITY_SLUGS.includes(slug as EntitySlug)) return <NotFound />;
   const eSlug = slug as EntitySlug;
-  const data = useDashboardData();
+  const { data, source } = useDashboardData();
   const cfg = ENTITY_CONFIG[eSlug];
+  if (!data) {
+    return (
+      <div className="h-full flex items-center justify-center text-[13px] text-gray-400">
+        {source === "loading" ? "Loading…" : "Data unavailable"}
+      </div>
+    );
+  }
   const asOf = data.freshness.data_as_of;
 
   return (

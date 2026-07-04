@@ -11,6 +11,7 @@ import {
   getEntityVendors,
   getEntityBanking,
 } from "../lib/dataSource";
+import { combineSources, type DataSourceKind } from "../lib/sourceTracker";
 import type { EntitySlug } from "../lib/types";
 
 const router: IRouter = Router();
@@ -24,15 +25,25 @@ router.get("/model", async (req, res) => {
       getDataFreshness(),
     ]);
 
-    const metrics = {} as Record<EntitySlug, Awaited<ReturnType<typeof getEntityMetrics>>>;
-    const anomalies = {} as Record<EntitySlug, Awaited<ReturnType<typeof getEntityAnomalies>>>;
+    const metrics = {} as Record<EntitySlug, unknown>;
+    const anomalies = {} as Record<EntitySlug, unknown>;
+    const sources: DataSourceKind[] = [portfolio.source, validation.source, freshness.source];
     for (const slug of ENTITY_SLUGS) {
-      metrics[slug] = await getEntityMetrics(slug);
-      anomalies[slug] = await getEntityAnomalies(slug);
+      const m = await getEntityMetrics(slug);
+      const a = await getEntityAnomalies(slug);
+      metrics[slug] = m.data;
+      anomalies[slug] = a.data;
+      sources.push(m.source, a.source);
     }
 
-    const data = { portfolio, validation, freshness, metrics, anomalies };
-    res.json({ ok: true, data, ts: new Date().toISOString() });
+    const data = {
+      portfolio: portfolio.data,
+      validation: validation.data,
+      freshness: freshness.data,
+      metrics,
+      anomalies,
+    };
+    res.json({ ok: true, data, source: combineSources(sources), ts: new Date().toISOString() });
   } catch (err) {
     req.log.error({ err }, "Failed to load model data");
     res.status(500).json({
@@ -62,7 +73,8 @@ router.get("/model/:slug", async (req, res) => {
     ]);
     res.json({
       ok: true,
-      data: { metrics, anomalies, freshness },
+      data: { metrics: metrics.data, anomalies: anomalies.data, freshness: freshness.data },
+      source: combineSources([metrics.source, anomalies.source, freshness.source]),
       ts: new Date().toISOString(),
     });
   } catch (err) {
@@ -97,8 +109,13 @@ for (const file of Object.keys(ENTITY_FILE_LOADERS) as (keyof typeof ENTITY_FILE
     try {
       const metrics = await getEntityMetrics(slug);
       const loader = ENTITY_FILE_LOADERS[file];
-      const data = await loader(slug, metrics.as_of);
-      res.json({ ok: true, data, ts: new Date().toISOString() });
+      const result = await loader(slug, metrics.data.as_of);
+      res.json({
+        ok: true,
+        data: result.data,
+        source: combineSources([metrics.source, result.source]),
+        ts: new Date().toISOString(),
+      });
     } catch (err) {
       req.log.error({ err }, `Failed to load ${file} data for ${slug}`);
       res.status(500).json({

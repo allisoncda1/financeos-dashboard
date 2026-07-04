@@ -27,7 +27,14 @@ export default function VendorsPage() {
   const { slug } = useParams<{ slug: string }>();
   if (!slug || !ENTITY_SLUGS.includes(slug as EntitySlug)) return <NotFound />;
   const eSlug = slug as EntitySlug;
-  const vend = useEntityVendors(eSlug);
+  const { data: vend, source } = useEntityVendors(eSlug);
+  if (!vend) {
+    return (
+      <div className="h-full flex items-center justify-center text-[13px] text-gray-400">
+        {source === "loading" ? "Loading…" : "Data unavailable"}
+      </div>
+    );
+  }
 
   const overdueBuckets = vend.aging.slice(2);
   const overdueAmt = overdueBuckets.reduce((s, b) => s + b.amount, 0);

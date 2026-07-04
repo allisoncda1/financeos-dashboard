@@ -36,7 +36,14 @@ export default function FinancialsPage() {
   const { slug } = useParams<{ slug: string }>();
   if (!slug || !ENTITY_SLUGS.includes(slug as EntitySlug)) return <NotFound />;
   const eSlug = slug as EntitySlug;
-  const fin = useEntityFinancials(eSlug);
+  const { data: fin, source } = useEntityFinancials(eSlug);
+  if (!fin) {
+    return (
+      <div className="h-full flex items-center justify-center text-[13px] text-gray-400">
+        {source === "loading" ? "Loading…" : "Data unavailable"}
+      </div>
+    );
+  }
   const ytd = fin.ytd_summary;
   const bs = fin.balance_sheet;
 

@@ -1,5 +1,6 @@
 import { parse } from "csv-parse/sync";
 import { getDrive } from "./driveClient";
+import { reportSource } from "./sourceTracker";
 
 const CACHE_TTL_MS = 5 * 60 * 1000;
 
@@ -97,6 +98,7 @@ export async function driveLoadJson<T>(relativePath: string): Promise<T> {
   const cached = cache.get(relativePath);
   const now = Date.now();
   if (cached && cached.expiresAt > now) {
+    reportSource("cache");
     return cached.value as T;
   }
 
@@ -104,6 +106,7 @@ export async function driveLoadJson<T>(relativePath: string): Promise<T> {
   const data = await downloadJsonFile(fileId);
 
   cache.set(relativePath, { value: data, expiresAt: now + CACHE_TTL_MS });
+  reportSource("live");
   return data as T;
 }
 
@@ -111,6 +114,7 @@ export async function driveLoadCsv(relativePath: string): Promise<Record<string,
   const cached = cache.get(relativePath);
   const now = Date.now();
   if (cached && cached.expiresAt > now) {
+    reportSource("cache");
     return cached.value as Record<string, string>[];
   }
 
@@ -118,6 +122,7 @@ export async function driveLoadCsv(relativePath: string): Promise<Record<string,
   const data = await downloadCsvFile(fileId);
 
   cache.set(relativePath, { value: data, expiresAt: now + CACHE_TTL_MS });
+  reportSource("live");
   return data;
 }
 

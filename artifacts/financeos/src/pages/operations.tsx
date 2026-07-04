@@ -4,10 +4,11 @@ import { OperationsInbox } from "@/components/operations/OperationsInbox";
 import { Inbox } from "lucide-react";
 
 export default function OperationsPage() {
-  const data = useDashboardData();
+  const { data } = useDashboardData();
   const { data: alerts, loading } = useAlerts();
 
   const items = alertsToOperationItems(alerts);
+  const asOfLabel = data?.freshness.data_as_of ?? "—";
 
   return (
     <div className="h-full flex flex-col overflow-hidden bg-[#F4F5F7]">
@@ -22,7 +23,7 @@ export default function OperationsPage() {
             <p className="text-[11px] text-gray-400">
               {loading
                 ? "Loading live alerts…"
-                : `${items.length} item${items.length !== 1 ? "s" : ""} · Rules Engine · as of ${data.freshness.data_as_of}`}
+                : `${items.length} item${items.length !== 1 ? "s" : ""} · Rules Engine · as of ${asOfLabel}`}
             </p>
           </div>
         </div>

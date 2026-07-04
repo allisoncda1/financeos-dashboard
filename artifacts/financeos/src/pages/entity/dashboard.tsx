@@ -18,8 +18,15 @@ import { CashFlowChart }  from "@/components/dashboard/CashFlowChart";
 
 export default function EntityPage() {
   const { slug } = useParams<{ slug: string }>();
-  const data = useDashboardData();
+  const { data, source } = useDashboardData();
   if (!slug || !ENTITY_SLUGS.includes(slug as EntitySlug)) return <NotFound />;
+  if (!data) {
+    return (
+      <div className="h-full flex items-center justify-center text-[13px] text-gray-400">
+        {source === "loading" ? "Loading…" : "Data unavailable"}
+      </div>
+    );
+  }
 
   const eSlug    = slug as EntitySlug;
   const config   = ENTITY_CONFIG[eSlug];

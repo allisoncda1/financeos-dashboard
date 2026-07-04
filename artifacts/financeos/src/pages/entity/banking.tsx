@@ -20,7 +20,14 @@ export default function BankingPage() {
   const { slug } = useParams<{ slug: string }>();
   if (!slug || !ENTITY_SLUGS.includes(slug as EntitySlug)) return <NotFound />;
   const eSlug = slug as EntitySlug;
-  const bank = useEntityBanking(eSlug);
+  const { data: bank, source } = useEntityBanking(eSlug);
+  if (!bank) {
+    return (
+      <div className="h-full flex items-center justify-center text-[13px] text-gray-400">
+        {source === "loading" ? "Loading…" : "Data unavailable"}
+      </div>
+    );
+  }
 
   const statusConfig = {
     clean:       { icon: CheckCircle2, color: "text-emerald-600", bg: "bg-emerald-50", border: "border-emerald-200", label: "All Reconciled", sub: "No unreconciled items" },

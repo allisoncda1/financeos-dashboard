@@ -30,13 +30,19 @@ async function getDashboardData(): Promise<DashboardData> {
   ]);
 
   const metrics = Object.fromEntries(
-    ENTITY_SLUGS.map((slug, i) => [slug, metricsList[i]]),
+    ENTITY_SLUGS.map((slug, i) => [slug, metricsList[i]!.data]),
   ) as DashboardData["metrics"];
   const anomalies = Object.fromEntries(
-    ENTITY_SLUGS.map((slug, i) => [slug, anomaliesList[i]]),
+    ENTITY_SLUGS.map((slug, i) => [slug, anomaliesList[i]!.data]),
   ) as DashboardData["anomalies"];
 
-  return { portfolio, validation, freshness, metrics, anomalies };
+  return {
+    portfolio: portfolio.data,
+    validation: validation.data,
+    freshness: freshness.data,
+    metrics,
+    anomalies,
+  };
 }
 
 class RulesEngineImpl {

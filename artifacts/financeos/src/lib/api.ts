@@ -2,8 +2,15 @@ import type { DashboardData, FinancialsData, CustomersData, VendorsData, Banking
 import type { ReportTemplateSummary, ReportGenerateRequest, BuiltReport } from "./reportTypes";
 import type { AIStatus } from "./aiTypes";
 import type { PipelineStatus } from "./pipelineTypes";
+import type { ApiSource } from "./dataState";
 
 const BASE = "/api";
+
+export type Sourced<T> = { data: T; source: ApiSource };
+
+function normalizeSource(value: unknown): ApiSource {
+  return value === "live" || value === "cache" || value === "mock" ? value : "live";
+}
 
 async function get<T>(path: string): Promise<T> {
   const res = await fetch(`${BASE}${path}`);
@@ -11,6 +18,14 @@ async function get<T>(path: string): Promise<T> {
   const json = await res.json();
   if (!json.ok) throw new Error(json.error ?? "API error");
   return json.data as T;
+}
+
+async function getSourced<T>(path: string): Promise<Sourced<T>> {
+  const res = await fetch(`${BASE}${path}`);
+  if (!res.ok) throw new Error(`API ${path} → ${res.status}`);
+  const json = await res.json();
+  if (!json.ok) throw new Error(json.error ?? "API error");
+  return { data: json.data as T, source: normalizeSource(json.source) };
 }
 
 async function post<T>(path: string, body: unknown): Promise<T> {
@@ -25,11 +40,11 @@ async function post<T>(path: string, body: unknown): Promise<T> {
 }
 
 export const api = {
-  model:            ()           => get<DashboardData>("/model"),
-  entityFinancials: (s: string)  => get<FinancialsData>(`/model/${s}/financials`),
-  entityCustomers:  (s: string)  => get<CustomersData>(`/model/${s}/customers`),
-  entityVendors:    (s: string)  => get<VendorsData>(`/model/${s}/vendors`),
-  entityBanking:    (s: string)  => get<BankingData>(`/model/${s}/banking`),
+  model:            ()           => getSourced<DashboardData>("/model"),
+  entityFinancials: (s: string)  => getSourced<FinancialsData>(`/model/${s}/financials`),
+  entityCustomers:  (s: string)  => getSourced<CustomersData>(`/model/${s}/customers`),
+  entityVendors:    (s: string)  => getSourced<VendorsData>(`/model/${s}/vendors`),
+  entityBanking:    (s: string)  => getSourced<BankingData>(`/model/${s}/banking`),
   briefing:         ()           => get<BriefingResponse>("/briefing"),
   alerts:           ()           => get<Alert[]>("/alerts"),
   reportTemplates:  ()           => get<ReportTemplateSummary[]>("/reports"),

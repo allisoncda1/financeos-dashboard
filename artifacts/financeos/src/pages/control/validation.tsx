@@ -49,11 +49,19 @@ const VALIDATION_HISTORY = [
 ];
 
 export default function ValidationPage() {
-  const data = useDashboardData();
-  const matrix = buildMatrix(data);
+  const { data, source } = useDashboardData();
   const [selectedRule, setSelectedRule] = useState<string | null>(null);
   const [selectedCell, setSelectedCell] = useState<{ slug: string; rule: string } | null>(null);
 
+  if (!data) {
+    return (
+      <div className="h-full flex items-center justify-center text-[13px] text-gray-400">
+        {source === "loading" ? "Loading…" : "Data unavailable"}
+      </div>
+    );
+  }
+
+  const matrix = buildMatrix(data);
   const v = data.validation;
   const passPct = v.total_checks > 0 ? Math.round((v.passed / v.total_checks) * 100) : 0;
 

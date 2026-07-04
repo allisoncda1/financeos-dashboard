@@ -26,7 +26,14 @@ function statusStyle(s: string | boolean) {
 }
 
 export default function IntegrityPage() {
-  const data = useDashboardData();
+  const { data, source } = useDashboardData();
+  if (!data) {
+    return (
+      <div className="h-full flex items-center justify-center text-[13px] text-gray-400">
+        {source === "loading" ? "Loading…" : "Data unavailable"}
+      </div>
+    );
+  }
   const f = data.freshness;
   const v = data.validation;
 

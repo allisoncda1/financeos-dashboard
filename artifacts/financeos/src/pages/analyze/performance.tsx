@@ -43,37 +43,42 @@ type SortKey = "revenue_ytd" | "gross_margin_pct" | "net_margin_pct" | "dso_days
 
 export default function PerformancePage() {
   const { selected } = useEntitySelection();
-  const data = useDashboardData();
-  const allFins = useAllEntityFinancials();
+  const { data, source } = useDashboardData();
+  const { data: allFins } = useAllEntityFinancials();
   const [sortKey, setSortKey] = useState<SortKey | null>(null);
   const [sortDir, setSortDir] = useState<SortDir>(null);
 
   const slugs = useMemo(() => ENTITY_SLUGS.filter(s => selected.includes(s)), [selected]);
 
   const months = useMemo(() => {
+    if (!allFins) return [] as string[];
     const set = new Set<string>();
     for (const slug of slugs) for (const p of allFins[slug].monthly_pl) set.add(p.month);
     return [...set].sort();
   }, [slugs, allFins]);
 
   const byMonth = useMemo(() => {
-    const maps: Record<string, Map<string, (typeof allFins)[keyof typeof allFins]["monthly_pl"][number]>> = {};
+    const maps: Record<string, Map<string, NonNullable<typeof allFins>[keyof NonNullable<typeof allFins>]["monthly_pl"][number]>> = {};
+    if (!allFins) return maps;
     for (const slug of slugs) {
       maps[slug] = new Map(allFins[slug].monthly_pl.map(p => [p.month, p]));
     }
     return maps;
   }, [slugs, allFins]);
 
-  const entities = useMemo(() => slugs.map(slug => {
-    const m = data.metrics[slug];
-    const cfg = ENTITY_CONFIG[slug];
-    const fin = allFins[slug];
-    const health = computeHealthScore(m);
-    const monthlyRevenue = fin.monthly_pl.map(p => p.revenue);
-    const monthlyNet     = fin.monthly_pl.map(p => p.net_income);
-    const revTrend = monthlyRevenue.length >= 2 ? monthlyRevenue[monthlyRevenue.length - 1] - monthlyRevenue[0] : 0;
-    return { slug, m, cfg, health, monthlyRevenue, monthlyNet, revTrend };
-  }), [slugs, data, allFins]);
+  const entities = useMemo(() => {
+    if (!data || !allFins) return [];
+    return slugs.map(slug => {
+      const m = data.metrics[slug];
+      const cfg = ENTITY_CONFIG[slug];
+      const fin = allFins[slug];
+      const health = computeHealthScore(m);
+      const monthlyRevenue = fin.monthly_pl.map(p => p.revenue);
+      const monthlyNet     = fin.monthly_pl.map(p => p.net_income);
+      const revTrend = monthlyRevenue.length >= 2 ? monthlyRevenue[monthlyRevenue.length - 1] - monthlyRevenue[0] : 0;
+      return { slug, m, cfg, health, monthlyRevenue, monthlyNet, revTrend };
+    });
+  }, [slugs, data, allFins]);
 
   const maxRev    = Math.max(1, ...entities.map(e => e.m.revenue_ytd));
   const maxNet    = Math.max(1, ...entities.map(e => e.m.net_income_ytd));
@@ -104,6 +109,14 @@ export default function PerformancePage() {
       return sortDir === "asc" ? av - bv : bv - av;
     });
   }, [entities, sortKey, sortDir]);
+
+  if (!data || !allFins) {
+    return (
+      <div className="h-full flex items-center justify-center text-[13px] text-gray-400">
+        {source === "loading" ? "Loading…" : "Data unavailable"}
+      </div>
+    );
+  }
 
   if (slugs.length === 0) {
     return (

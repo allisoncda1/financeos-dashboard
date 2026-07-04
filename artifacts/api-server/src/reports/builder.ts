@@ -116,9 +116,9 @@ export async function buildReport(request: ReportRequest): Promise<BuiltReport> 
 
   const resolvedEntities = resolveEntities(request.entities);
 
-  const freshness = await getDataFreshness();
+  const freshness = (await getDataFreshness()).data;
 
-  const [portfolio, validation, briefing, alerts, metricsList, anomaliesList, financialsList] =
+  const [portfolioResult, validationResult, briefing, alerts, metricsResults, anomaliesResults, financialsResults] =
     await Promise.all([
       getPortfolioSummary(),
       getValidationSummary(),
@@ -128,6 +128,12 @@ export async function buildReport(request: ReportRequest): Promise<BuiltReport> 
       Promise.all(resolvedEntities.map((slug) => getEntityAnomalies(slug))),
       Promise.all(resolvedEntities.map((slug) => getEntityFinancials(slug, freshness.data_as_of))),
     ]);
+
+  const portfolio = portfolioResult.data;
+  const validation = validationResult.data;
+  const metricsList = metricsResults.map((r) => r.data);
+  const anomaliesList = anomaliesResults.map((r) => r.data);
+  const financialsList = financialsResults.map((r) => r.data);
 
   const entitySet = new Set<string>(resolvedEntities);
   const scopedAlerts = alerts.filter((a) => {

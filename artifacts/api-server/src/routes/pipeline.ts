@@ -3,6 +3,7 @@ import { getDataFreshness } from "../lib/dataSource";
 import { invalidateCache as invalidateDriveCache } from "../lib/driveLoader";
 import { RulesEngine } from "../rules/engine";
 import { invalidateCache as invalidateAiCache } from "../ai/cache";
+import { getSourceSummary } from "../lib/sourceTracker";
 
 const router: IRouter = Router();
 
@@ -20,7 +21,7 @@ function computeStaleStatus(dataAgeHours: number | null): StaleStatus {
 // runs or triggers the pipeline; it only relays what it last wrote.
 router.get("/status", async (_req, res) => {
   try {
-    const freshness = await getDataFreshness();
+    const { data: freshness, source } = await getDataFreshness();
 
     const pipelineRunDate = new Date(freshness.pipeline_run);
     const dataAgeHours =
@@ -40,6 +41,8 @@ router.get("/status", async (_req, res) => {
         entitiesBuilt: freshness.entities_built,
         snapshotArchived: freshness.snapshot_archived,
       },
+      source,
+      dataSourceSummary: getSourceSummary(),
       ts: new Date().toISOString(),
     });
   } catch (err) {
@@ -55,6 +58,8 @@ router.get("/status", async (_req, res) => {
         entitiesBuilt: null,
         snapshotArchived: null,
       },
+      source: "mock",
+      dataSourceSummary: getSourceSummary(),
       ts: new Date().toISOString(),
     });
     void err;

@@ -12,7 +12,7 @@ import { PageTransition, StaggerContainer, StaggerItem } from "@/components/moti
 import { RefreshCw } from "lucide-react";
 
 export default function PortfolioPage() {
-  const data = useDashboardData();
+  const { data, source } = useDashboardData();
   const live = useBriefing();
   const pipeline = usePipelineStatus();
 
@@ -37,6 +37,14 @@ export default function PortfolioPage() {
       : staleStatus
       ? null
       : "Status unknown";
+
+  if (!data) {
+    return (
+      <div className="h-full flex items-center justify-center text-[13px] text-gray-400">
+        {source === "loading" ? "Loading…" : "Data unavailable"}
+      </div>
+    );
+  }
 
   // Deterministic AI CFO briefing (Sprint 13) — falls back to the local,
   // metrics-derived briefing if /api/briefing hasn't loaded yet or failed.

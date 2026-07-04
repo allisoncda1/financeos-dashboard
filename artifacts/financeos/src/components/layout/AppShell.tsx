@@ -5,6 +5,7 @@ import { Sidebar } from "./Sidebar";
 import { GlobalHeader } from "./GlobalHeader";
 import { EntitySelectionProvider } from "@/lib/entity-context";
 import { motion, AnimatePresence } from "framer-motion";
+import { DataSourceBanner } from "@/components/shared/DataSourceBanner";
 
 export function AppShell({ children }: { children: React.ReactNode }) {
   const [sidebarOpen, setSidebarOpen] = useState(false);
@@ -42,6 +43,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         {/* Main area */}
         <div className="flex-1 flex flex-col overflow-hidden min-w-0">
           <GlobalHeader onMenuToggle={() => setSidebarOpen(v => !v)} />
+          <DataSourceBanner />
           <main className="flex-1 overflow-hidden">{children}</main>
         </div>
       </div>

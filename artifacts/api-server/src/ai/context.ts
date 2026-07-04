@@ -31,16 +31,16 @@ export async function buildAIContext(entitySlugs?: EntitySlug[]): Promise<AICont
   ]);
 
   const entities = Object.fromEntries(
-    slugs.map((slug, i) => [slug, { metrics: metricsList[i]!, anomalies: anomaliesList[i]! }]),
+    slugs.map((slug, i) => [slug, { metrics: metricsList[i]!.data, anomalies: anomaliesList[i]!.data }]),
   ) as AIContext["entities"];
 
   console.log(`[ai/context] built context for ${slugs.length} entities, ${alerts.length} alerts`);
 
   return {
-    portfolio,
+    portfolio: portfolio.data,
     entities,
     alerts,
-    validation,
-    freshness,
+    validation: validation.data,
+    freshness: freshness.data,
   };
 }

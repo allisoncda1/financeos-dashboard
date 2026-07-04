@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { api } from '@/lib/api';
 import { getMockData, getFinancials, getCustomers, getVendors, getBanking } from '@/lib/mock';
 import { ENTITY_SLUGS } from '@/lib/entities';
@@ -6,56 +6,128 @@ import type { DashboardData, FinancialsData, CustomersData, VendorsData, Banking
 import type { ReportTemplateSummary, ReportGenerateRequest, BuiltReport } from '@/lib/reportTypes';
 import type { AIStatus } from '@/lib/aiTypes';
 import type { PipelineStatus } from '@/lib/pipelineTypes';
+import {
+  reportDataSource,
+  clearDataSource,
+  USE_MOCK_FALLBACK,
+  type FetchState,
+} from '@/lib/dataState';
 
-export function useDashboardData(): DashboardData {
-  const [data, setData] = useState<DashboardData>(getMockData);
-  useEffect(() => { api.model().then(setData).catch(() => {}); }, []);
-  return data;
+/**
+ * useTrackedFetch — shared plumbing for every hook that surfaces
+ * {data, source, lastSuccessfulFetch}. Never silently swaps in mock data:
+ * - starts at "loading" (or "mock" if VITE_USE_MOCK=true, dev only)
+ * - on success: source = whatever the server reported ("live"/"cache"/"mock")
+ * - on failure: keeps last known data if any, else data=null, source="unavailable"
+ * Also reports its current state into the shared registry so the global
+ * DataSourceBanner can reflect whichever hooks are mounted on the page.
+ */
+function useTrackedFetch<T>(
+  key: string,
+  fetcher: () => Promise<{ data: T; source: 'live' | 'cache' | 'mock' }>,
+  mockInit: () => T,
+  deps: unknown[],
+): FetchState<T> {
+  const [state, setState] = useState<FetchState<T>>(() =>
+    USE_MOCK_FALLBACK
+      ? { data: mockInit(), source: 'mock', lastSuccessfulFetch: null }
+      : { data: null, source: 'loading', lastSuccessfulFetch: null },
+  );
+  const lastGoodRef = useRef<T | null>(USE_MOCK_FALLBACK ? mockInit() : null);
+
+  useEffect(() => {
+    let cancelled = false;
+    fetcher()
+      .then(({ data, source }) => {
+        if (cancelled) return;
+        lastGoodRef.current = data;
+        setState({ data, source, lastSuccessfulFetch: new Date().toISOString() });
+      })
+      .catch(() => {
+        if (cancelled) return;
+        setState((prev) => ({
+          data: lastGoodRef.current,
+          source: lastGoodRef.current ? prev.source : 'unavailable',
+          lastSuccessfulFetch: prev.lastSuccessfulFetch,
+        }));
+      });
+    return () => { cancelled = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, deps);
+
+  useEffect(() => {
+    reportDataSource(key, { source: state.source, lastSuccessfulFetch: state.lastSuccessfulFetch });
+    return () => clearDataSource(key);
+  }, [key, state.source, state.lastSuccessfulFetch]);
+
+  return state;
 }
 
-export function useEntityFinancials(slug: EntitySlug): FinancialsData {
-  const [data, setData] = useState<FinancialsData>(() => getFinancials(slug));
-  useEffect(() => { api.entityFinancials(slug).then(setData).catch(() => {}); }, [slug]);
-  return data;
+export function useDashboardData(): FetchState<DashboardData> {
+  return useTrackedFetch('dashboard', () => api.model(), getMockData, []);
+}
+
+export function useEntityFinancials(slug: EntitySlug): FetchState<FinancialsData> {
+  return useTrackedFetch(
+    `entityFinancials:${slug}`,
+    () => api.entityFinancials(slug),
+    () => getFinancials(slug),
+    [slug],
+  );
 }
 
 /**
  * useAllEntityFinancials — fetches live financials for every entity in
- * parallel. Starts from mock data (same pattern as the other hooks) and
- * swaps in the live API results once all fetches resolve.
+ * parallel. Never silently mock-swaps: starts at "loading" (or "mock" in
+ * dev when VITE_USE_MOCK=true) and reports the worst-case source across all
+ * four entities once they resolve.
  */
-export function useAllEntityFinancials(): Record<EntitySlug, FinancialsData> {
-  const [data, setData] = useState<Record<EntitySlug, FinancialsData>>(() =>
-    Object.fromEntries(ENTITY_SLUGS.map(s => [s, getFinancials(s)])) as Record<EntitySlug, FinancialsData>
+export function useAllEntityFinancials(): FetchState<Record<EntitySlug, FinancialsData>> {
+  const mockInit = useCallback(
+    () => Object.fromEntries(ENTITY_SLUGS.map(s => [s, getFinancials(s)])) as Record<EntitySlug, FinancialsData>,
+    [],
   );
-  useEffect(() => {
-    let cancelled = false;
-    Promise.all(ENTITY_SLUGS.map(s => api.entityFinancials(s).then(f => [s, f] as const)))
-      .then(entries => {
-        if (!cancelled) setData(Object.fromEntries(entries) as Record<EntitySlug, FinancialsData>);
-      })
-      .catch(() => {});
-    return () => { cancelled = true; };
-  }, []);
-  return data;
+  return useTrackedFetch(
+    'allEntityFinancials',
+    async () => {
+      const entries = await Promise.all(
+        ENTITY_SLUGS.map(s => api.entityFinancials(s).then(r => [s, r] as const)),
+      );
+      const data = Object.fromEntries(entries.map(([s, r]) => [s, r.data])) as Record<EntitySlug, FinancialsData>;
+      const sources = entries.map(([, r]) => r.source);
+      const source = sources.includes('mock') ? 'mock' : sources.includes('cache') ? 'cache' : 'live';
+      return { data, source };
+    },
+    mockInit,
+    [],
+  );
 }
 
-export function useEntityCustomers(slug: EntitySlug): CustomersData {
-  const [data, setData] = useState<CustomersData>(() => getCustomers(slug));
-  useEffect(() => { api.entityCustomers(slug).then(setData).catch(() => {}); }, [slug]);
-  return data;
+export function useEntityCustomers(slug: EntitySlug): FetchState<CustomersData> {
+  return useTrackedFetch(
+    `entityCustomers:${slug}`,
+    () => api.entityCustomers(slug),
+    () => getCustomers(slug),
+    [slug],
+  );
 }
 
-export function useEntityVendors(slug: EntitySlug): VendorsData {
-  const [data, setData] = useState<VendorsData>(() => getVendors(slug));
-  useEffect(() => { api.entityVendors(slug).then(setData).catch(() => {}); }, [slug]);
-  return data;
+export function useEntityVendors(slug: EntitySlug): FetchState<VendorsData> {
+  return useTrackedFetch(
+    `entityVendors:${slug}`,
+    () => api.entityVendors(slug),
+    () => getVendors(slug),
+    [slug],
+  );
 }
 
-export function useEntityBanking(slug: EntitySlug): BankingData {
-  const [data, setData] = useState<BankingData>(() => getBanking(slug));
-  useEffect(() => { api.entityBanking(slug).then(setData).catch(() => {}); }, [slug]);
-  return data;
+export function useEntityBanking(slug: EntitySlug): FetchState<BankingData> {
+  return useTrackedFetch(
+    `entityBanking:${slug}`,
+    () => api.entityBanking(slug),
+    () => getBanking(slug),
+    [slug],
+  );
 }
 
 /**

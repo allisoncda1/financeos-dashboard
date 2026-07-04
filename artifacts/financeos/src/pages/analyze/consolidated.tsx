@@ -40,15 +40,16 @@ function SortIcon({ dir }: { dir: SortDir }) {
 
 export default function ConsolidatedPage() {
   const { selected } = useEntitySelection();
-  const data = useDashboardData();
-  const allFins = useAllEntityFinancials();
+  const { data, source } = useDashboardData();
+  const { data: allFins } = useAllEntityFinancials();
   const [sortKey, setSortKey] = useState<NumericEntityKey | null>(null);
   const [sortDir, setSortDir] = useState<SortDir>(null);
 
   const slugs = useMemo(() => ENTITY_SLUGS.filter(s => selected.includes(s)), [selected]);
 
   const byMonth = useMemo(() => {
-    const maps: Record<string, Map<string, (typeof allFins)[keyof typeof allFins]["monthly_pl"][number]>> = {};
+    const maps: Record<string, Map<string, NonNullable<typeof allFins>[keyof NonNullable<typeof allFins>]["monthly_pl"][number]>> = {};
+    if (!allFins) return maps;
     for (const slug of slugs) {
       maps[slug] = new Map(allFins[slug].monthly_pl.map(p => [p.month, p]));
     }
@@ -56,6 +57,7 @@ export default function ConsolidatedPage() {
   }, [slugs, allFins]);
 
   const months = useMemo(() => {
+    if (!allFins) return [] as string[];
     const set = new Set<string>();
     for (const slug of slugs) for (const p of allFins[slug].monthly_pl) set.add(p.month);
     return [...set].sort();
@@ -83,28 +85,31 @@ export default function ConsolidatedPage() {
   const opexPct        = ytd.revenue > 0 ? (ytd.opex         / ytd.revenue) * 100 : 0;
   const cogsPct        = ytd.revenue > 0 ? (ytd.cogs         / ytd.revenue) * 100 : 0;
 
-  const totalAssets      = slugs.reduce((s, slug) => s + allFins[slug].balance_sheet.assets.total, 0);
-  const totalLiabilities = slugs.reduce((s, slug) => s + allFins[slug].balance_sheet.liabilities.total, 0);
-  const totalEquity      = slugs.reduce((s, slug) => s + allFins[slug].balance_sheet.equity.total, 0);
-  const totalCash        = slugs.reduce((s, slug) => s + allFins[slug].balance_sheet.assets.cash, 0);
-  const totalAR          = slugs.reduce((s, slug) => s + allFins[slug].balance_sheet.assets.accounts_receivable, 0);
-  const totalAP          = slugs.reduce((s, slug) => s + allFins[slug].balance_sheet.liabilities.accounts_payable, 0);
+  const totalAssets      = allFins ? slugs.reduce((s, slug) => s + allFins[slug].balance_sheet.assets.total, 0) : 0;
+  const totalLiabilities = allFins ? slugs.reduce((s, slug) => s + allFins[slug].balance_sheet.liabilities.total, 0) : 0;
+  const totalEquity      = allFins ? slugs.reduce((s, slug) => s + allFins[slug].balance_sheet.equity.total, 0) : 0;
+  const totalCash        = allFins ? slugs.reduce((s, slug) => s + allFins[slug].balance_sheet.assets.cash, 0) : 0;
+  const totalAR          = allFins ? slugs.reduce((s, slug) => s + allFins[slug].balance_sheet.assets.accounts_receivable, 0) : 0;
+  const totalAP          = allFins ? slugs.reduce((s, slug) => s + allFins[slug].balance_sheet.liabilities.accounts_payable, 0) : 0;
 
-  const entityContribs = useMemo(() =>
-    slugs.map(slug => ({ slug, cfg: ENTITY_CONFIG[slug], m: data.metrics[slug] })),
-    [slugs, data]
-  );
+  const entityContribs = useMemo(() => {
+    if (!data) return [];
+    return slugs.map(slug => ({ slug, cfg: ENTITY_CONFIG[slug], m: data.metrics[slug] }));
+  }, [slugs, data]);
   const totalRev = entityContribs.reduce((s, e) => s + e.m.revenue_ytd, 0);
 
-  const entityRows: EntityRow[] = useMemo(() => slugs.map(slug => {
-    const m = data.metrics[slug];
-    return {
-      slug,
-      revenue: m.revenue_ytd, cogs: m.cogs_ytd, gross_profit: m.gross_profit_ytd,
-      gross_margin: m.gross_margin_pct, opex: m.opex_ytd,
-      net_income: m.net_income_ytd, net_margin: m.net_margin_pct,
-    };
-  }), [slugs]);
+  const entityRows: EntityRow[] = useMemo(() => {
+    if (!data) return [];
+    return slugs.map(slug => {
+      const m = data.metrics[slug];
+      return {
+        slug,
+        revenue: m.revenue_ytd, cogs: m.cogs_ytd, gross_profit: m.gross_profit_ytd,
+        gross_margin: m.gross_margin_pct, opex: m.opex_ytd,
+        net_income: m.net_income_ytd, net_margin: m.net_margin_pct,
+      };
+    });
+  }, [slugs, data]);
 
   const sortedRows = useMemo(() => {
     if (!sortKey || !sortDir) return entityRows;
@@ -122,6 +127,14 @@ export default function ConsolidatedPage() {
       setSortDir("desc");
     }
   };
+
+  if (!data || !allFins) {
+    return (
+      <div className="h-full flex items-center justify-center text-[13px] text-gray-400">
+        {source === "loading" ? "Loading…" : "Data unavailable"}
+      </div>
+    );
+  }
 
   if (slugs.length === 0) {
     return (

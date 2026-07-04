@@ -90,10 +90,16 @@ async function loadDashboardData(): Promise<DashboardData> {
     Promise.all(ENTITY_SLUGS.map((slug) => getEntityAnomalies(slug))),
   ]);
 
-  const metrics = Object.fromEntries(ENTITY_SLUGS.map((slug, i) => [slug, metricsList[i]])) as DashboardData["metrics"];
-  const anomalies = Object.fromEntries(ENTITY_SLUGS.map((slug, i) => [slug, anomaliesList[i]])) as DashboardData["anomalies"];
+  const metrics = Object.fromEntries(ENTITY_SLUGS.map((slug, i) => [slug, metricsList[i]!.data])) as DashboardData["metrics"];
+  const anomalies = Object.fromEntries(ENTITY_SLUGS.map((slug, i) => [slug, anomaliesList[i]!.data])) as DashboardData["anomalies"];
 
-  return { portfolio, validation, freshness, metrics, anomalies };
+  return {
+    portfolio: portfolio.data,
+    validation: validation.data,
+    freshness: freshness.data,
+    metrics,
+    anomalies,
+  };
 }
 
 function buildExecutiveSummary(data: DashboardData): string[] {

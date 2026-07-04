@@ -1,13 +1,13 @@
 import { Router, type IRouter } from "express";
-import { loadValidationSummary } from "../lib/mockData";
+import { getValidationSummary } from "../lib/dataSource";
 
 const router: IRouter = Router();
 
 // GET /api/validation — validation summary + per-entity breakdown
-router.get("/validation", (req, res) => {
+router.get("/validation", async (req, res) => {
   try {
-    const summary = loadValidationSummary();
-    res.json({ ok: true, data: summary, ts: new Date().toISOString() });
+    const result = await getValidationSummary();
+    res.json({ ok: true, data: result.data, source: result.source, ts: new Date().toISOString() });
   } catch (err) {
     req.log.error({ err }, "Failed to load validation data");
     res.status(500).json({

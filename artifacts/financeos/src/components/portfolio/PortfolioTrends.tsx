@@ -44,9 +44,10 @@ function TrendCard({ label, value, data, color, period }: TrendCardProps) {
 }
 
 export function PortfolioTrends() {
-  const allFins = useAllEntityFinancials();
+  const { data: allFins } = useAllEntityFinancials();
 
   const { months, revenue, grossProfit, netIncome } = useMemo(() => {
+    if (!allFins) return { months: [] as string[], revenue: [] as number[], grossProfit: [] as number[], netIncome: [] as number[] };
     const set = new Set<string>();
     for (const slug of ENTITY_SLUGS) for (const p of allFins[slug].monthly_pl) set.add(p.month);
     const monthLabels = [...set].sort();
