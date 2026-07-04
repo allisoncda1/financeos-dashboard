@@ -150,12 +150,81 @@ export default function FinancialsPage() {
     </div>
   );
 
-  const cfPanel = (
+  const cf = fin.cash_flow;
+  const cfPanel = cf ? (
+    <div className="px-6 py-5 space-y-4">
+      {/* Summary cards */}
+      <div className="grid grid-cols-3 gap-3">
+        {[
+          ...cf.sections.map((s) => ({ label: `Net Cash — ${s.name}`, value: s.net_cash })),
+          ...(cf.net_cash_change !== null ? [{ label: "Net Cash Change", value: cf.net_cash_change }] : []),
+          ...(cf.cash_at_end !== null ? [{ label: "Cash at End of Period", value: cf.cash_at_end }] : []),
+        ].map((c) => (
+          <div key={c.label} className="bg-white rounded-xl border border-gray-200 p-4">
+            <p className="text-[10px] text-gray-400 font-medium uppercase tracking-wide">{c.label}</p>
+            <p className={`text-[20px] font-bold mt-1 ${c.value < 0 ? "text-red-700" : "text-gray-900"}`}>{fmtCF(c.value)}</p>
+          </div>
+        ))}
+      </div>
+
+      {/* Statement */}
+      <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
+        <div className="px-4 py-3 border-b border-gray-100">
+          <h3 className="text-[13px] font-semibold text-gray-900">Statement of Cash Flows — as of {cf.as_of}</h3>
+        </div>
+        <div className="divide-y divide-gray-100">
+          {cf.sections.map((section) => (
+            <div key={section.name} className="px-4 py-3">
+              <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-wide mb-2">{section.name}</p>
+              <div className="space-y-1.5">
+                {section.lines.map((line, i) => (
+                  <div key={`${line.label}-${i}`} className="flex items-center justify-between">
+                    <span className={`text-[12px] ${line.is_subtotal ? "font-semibold text-gray-800" : "text-gray-600"}`}>
+                      {line.label}
+                    </span>
+                    <span className={`text-[12px] ${line.is_subtotal ? "font-semibold" : "font-medium"} ${line.amount < 0 ? "text-red-700" : "text-gray-800"}`}>
+                      {fmtCF(line.amount)}
+                    </span>
+                  </div>
+                ))}
+              </div>
+              <div className="flex items-center justify-between mt-2 pt-2 border-t border-gray-200">
+                <span className="text-[12px] font-bold text-gray-900">Net cash from {section.name.toLowerCase()}</span>
+                <span className={`text-[12px] font-bold ${section.net_cash < 0 ? "text-red-700" : "text-gray-900"}`}>
+                  {fmtCF(section.net_cash)}
+                </span>
+              </div>
+            </div>
+          ))}
+          {(cf.net_cash_change !== null || cf.cash_at_end !== null) && (
+            <div className="px-4 py-3 bg-gray-50 space-y-1.5">
+              {cf.net_cash_change !== null && (
+                <div className="flex items-center justify-between">
+                  <span className="text-[12px] font-bold text-gray-900">Net cash change for period</span>
+                  <span className={`text-[12px] font-bold ${cf.net_cash_change < 0 ? "text-red-700" : "text-gray-900"}`}>
+                    {fmtCF(cf.net_cash_change)}
+                  </span>
+                </div>
+              )}
+              {cf.cash_at_end !== null && (
+                <div className="flex items-center justify-between">
+                  <span className="text-[12px] font-bold text-gray-900">Cash at end of period</span>
+                  <span className={`text-[12px] font-bold ${cf.cash_at_end < 0 ? "text-red-700" : "text-gray-900"}`}>
+                    {fmtCF(cf.cash_at_end)}
+                  </span>
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  ) : (
     <div className="px-6 py-5">
       <div className="bg-white rounded-xl border border-gray-200 px-6 py-10 text-center">
         <p className="text-[13px] font-semibold text-gray-900">Cash flow statement not available yet</p>
         <p className="text-[12px] text-gray-500 mt-1 max-w-md mx-auto">
-          A cash flow statement requires transaction-level data that the pipeline doesn't provide for this entity yet.
+          The data pipeline hasn't provided a cash flow statement for this entity yet.
           Net income YTD is {fmtCF(ytd.net_income)} — see the P&L and Balance Sheet tabs for live figures.
         </p>
       </div>

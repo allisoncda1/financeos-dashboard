@@ -1,4 +1,5 @@
 import { driveLoadCsv } from "../lib/driveLoader";
+import { transformCashFlow } from "./cashflow";
 import type { EntitySlug, FinancialsData, MonthlyPL, BalanceSheet } from "../lib/types";
 
 function toNumber(value: unknown): number {
@@ -123,9 +124,10 @@ async function loadBalanceSheet(slug: EntitySlug, asOf: string): Promise<Balance
 }
 
 export async function transformFinancials(slug: EntitySlug, asOf: string): Promise<FinancialsData> {
-  const [monthly_pl, balance_sheet] = await Promise.all([
+  const [monthly_pl, balance_sheet, cash_flow] = await Promise.all([
     loadMonthlyPl(slug),
     loadBalanceSheet(slug, asOf),
+    transformCashFlow(slug, asOf),
   ]);
 
   const ytd_summary = monthly_pl.reduce(
@@ -145,5 +147,6 @@ export async function transformFinancials(slug: EntitySlug, asOf: string): Promi
     monthly_pl,
     ytd_summary,
     balance_sheet,
+    cash_flow,
   };
 }

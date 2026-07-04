@@ -172,12 +172,32 @@ export type BalanceSheet = {
   equity: { paid_in_capital: number; retained_earnings: number; total: number };
 };
 
+export type CashFlowLine = {
+  label: string;
+  amount: number;
+  is_subtotal: boolean;
+};
+
+export type CashFlowSection = {
+  name: string;
+  lines: CashFlowLine[];
+  net_cash: number;
+};
+
+export type CashFlowStatement = {
+  as_of: string;
+  sections: CashFlowSection[];
+  net_cash_change: number | null;
+  cash_at_end: number | null;
+};
+
 export type FinancialsData = {
   entity_slug: string;
   as_of: string;
   monthly_pl: MonthlyPL[];
   ytd_summary: { revenue: number; cogs: number; gross_profit: number; opex: number; net_income: number };
   balance_sheet: BalanceSheet;
+  cash_flow?: CashFlowStatement | null;
 };
 
 export type BankAccount = {

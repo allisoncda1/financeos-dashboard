@@ -297,7 +297,10 @@ export async function getEntityFinancials(
       }
     }
     reportSource("mock");
-    return loadEntityFile<FinancialsData>(slug, "financials");
+    const mock = loadEntityFile<FinancialsData>(slug, "financials");
+    // Mock financials.json files predate the cash_flow field — normalize so
+    // the frontend can rely on `cash_flow` being present (null = unavailable).
+    return { ...mock, cash_flow: mock.cash_flow ?? null };
   });
 }
 
