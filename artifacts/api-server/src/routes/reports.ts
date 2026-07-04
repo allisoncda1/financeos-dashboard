@@ -3,6 +3,7 @@ import { REPORT_TEMPLATES, type ReportOutputFormat } from "../reports/templates"
 import { generateReport } from "../reports/engine";
 import type { EntitySlug } from "../lib/types";
 import { ENTITY_SLUGS } from "../lib/types";
+import { requirePermission } from "../auth/permissions";
 
 const router: IRouter = Router();
 
@@ -64,7 +65,7 @@ function isEntitySlug(value: unknown): value is EntitySlug {
 }
 
 // POST /api/reports/generate — build + render a report
-router.post("/reports/generate", async (req, res) => {
+router.post("/reports/generate", requirePermission("reports"), async (req, res) => {
   try {
     const body = req.body as {
       template?: unknown;

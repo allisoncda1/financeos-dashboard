@@ -2,6 +2,9 @@ import { Switch, Route, Router as WouterRouter } from "wouter";
 import { AppShell } from "@/components/layout/AppShell";
 import { CommandBar } from "@/components/layout/CommandBar";
 import NotFound from "@/pages/not-found";
+import LoginPage from "@/pages/login";
+import { AuthProvider } from "@/lib/auth";
+import { ProtectedRoute } from "@/components/auth/ProtectedRoute";
 
 import PortfolioPage from "@/pages/portfolio";
 import CashFlowPage from "@/pages/analyze/cashflow";
@@ -20,7 +23,7 @@ import EntityFinancialsPage from "@/pages/entity/financials";
 import EntityReportsPage from "@/pages/entity/reports";
 import EntityVendorsPage from "@/pages/entity/vendors";
 
-function Router() {
+function AppRoutes() {
   return (
     <Switch>
       <Route path="/" component={PortfolioPage} />
@@ -44,13 +47,28 @@ function Router() {
   );
 }
 
+function Router() {
+  return (
+    <Switch>
+      <Route path="/login" component={LoginPage} />
+      <Route>
+        <ProtectedRoute>
+          <AppShell>
+            <AppRoutes />
+          </AppShell>
+          <CommandBar />
+        </ProtectedRoute>
+      </Route>
+    </Switch>
+  );
+}
+
 function App() {
   return (
     <WouterRouter base={import.meta.env.BASE_URL.replace(/\/$/, "")}>
-      <AppShell>
+      <AuthProvider>
         <Router />
-      </AppShell>
-      <CommandBar />
+      </AuthProvider>
     </WouterRouter>
   );
 }

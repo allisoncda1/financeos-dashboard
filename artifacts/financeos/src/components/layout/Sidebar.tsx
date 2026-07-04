@@ -7,7 +7,7 @@ import type { ComponentType } from "react";
 import {
   BarChart3, LayoutDashboard, Inbox, TrendingUp, FileText,
   ShieldCheck, CheckCircle2, Clock, Settings, ChevronDown,
-  Layers, Droplets, X, Check,
+  Layers, Droplets, X, Check, LogOut,
 } from "lucide-react";
 import { useEntitySelection } from "@/lib/entity-context";
 import {
@@ -18,6 +18,7 @@ import {
 import { EntityLogo } from "@/components/ui/EntityLogo";
 import { getMockData } from "@/lib/mock";
 import { computeHealthScore, healthLabel } from "@/lib/briefing";
+import { useAuth } from "@/lib/auth";
 
 // Pre-compute health scores once at module load (mock data is static)
 const _data = getMockData();
@@ -36,12 +37,24 @@ const DIVIDER = "rgba(255,255,255,0.07)";
 const SURFACE = "rgba(255,255,255,0.06)";
 const ease    = [0.16, 1, 0.3, 1] as [number, number, number, number];
 
+const ROLE_LABEL: Record<string, string> = {
+  admin: "Admin",
+  cfo: "CFO",
+  controller: "Controller",
+  bookkeeper: "Bookkeeper",
+  investor: "Investor",
+  readonly: "Read-only",
+};
+
 export function Sidebar({ onClose }: { onClose?: () => void }) {
   const pathname = usePathname();
   const router   = useRouter();
   const [open, setOpen] = useState(false);
+  const [profileOpen, setProfileOpen] = useState(false);
+  const profileRef = useRef<HTMLDivElement>(null);
   const ref = useRef<HTMLDivElement>(null);
   const { selected, selectAll, setAgency } = useEntitySelection();
+  const { user, logout } = useAuth();
 
   // Derive current workspace context
   const rawSlug = pathname.startsWith("/entity/") ? pathname.split("/")[2] : null;
@@ -64,6 +77,7 @@ export function Sidebar({ onClose }: { onClose?: () => void }) {
   useEffect(() => {
     const handler = (e: MouseEvent) => {
       if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+      if (profileRef.current && !profileRef.current.contains(e.target as Node)) setProfileOpen(false);
     };
     document.addEventListener("mousedown", handler);
     return () => document.removeEventListener("mousedown", handler);
@@ -219,16 +233,49 @@ export function Sidebar({ onClose }: { onClose?: () => void }) {
       </nav>
 
       {/* Profile card */}
-      <div className="mx-3 mb-3">
-        <div className="flex items-center gap-2 p-2.5 rounded-lg cursor-pointer" style={{ background: SURFACE }}>
+      <div className="mx-3 mb-3 relative" ref={profileRef}>
+        <AnimatePresence>
+          {profileOpen && (
+            <motion.div
+              className="absolute bottom-full left-0 right-0 mb-1.5 rounded-xl overflow-hidden"
+              style={{
+                background: "#132D20",
+                border: "1px solid rgba(255,255,255,0.10)",
+                boxShadow: "0 12px 40px rgba(0,0,0,0.50)",
+              }}
+              initial={{ opacity: 0, y: 6, scaleY: 0.92 }}
+              animate={{ opacity: 1, y: 0, scaleY: 1 }}
+              exit={{ opacity: 0, y: 4, scaleY: 0.95 }}
+              transition={{ duration: 0.14, ease }}
+            >
+              <button
+                onClick={() => { setProfileOpen(false); void logout(); }}
+                className="w-full flex items-center gap-2 px-3 py-2.5 text-left transition-colors hover:bg-white/5"
+              >
+                <LogOut className="w-3.5 h-3.5 flex-shrink-0" style={{ color: MUTED }} />
+                <span className="text-[11px] font-medium text-white">Sign out</span>
+              </button>
+            </motion.div>
+          )}
+        </AnimatePresence>
+        <div
+          onClick={() => setProfileOpen(v => !v)}
+          className="flex items-center gap-2 p-2.5 rounded-lg cursor-pointer"
+          style={{ background: profileOpen ? "rgba(255,255,255,0.10)" : SURFACE }}
+        >
           <div className="w-6 h-6 rounded-full bg-emerald-500 flex items-center justify-center flex-shrink-0">
-            <span className="text-white text-[9px] font-bold">AF</span>
+            <span className="text-white text-[9px] font-bold">
+              {(user?.name ?? "?").slice(0, 2).toUpperCase()}
+            </span>
           </div>
           <div className="flex-1 min-w-0">
-            <p className="text-white text-[10px] font-semibold truncate">Allison Fabbri</p>
-            <p className="text-[9px]" style={{ color: MUTED }}>Bookkeeper</p>
+            <p className="text-white text-[10px] font-semibold truncate">{user?.name ?? "Loading…"}</p>
+            <p className="text-[9px]" style={{ color: MUTED }}>{user ? (ROLE_LABEL[user.role] ?? user.role) : ""}</p>
           </div>
-          <ChevronDown className="w-3 h-3 flex-shrink-0" style={{ color: MUTED }} />
+          <ChevronDown
+            className="w-3 h-3 flex-shrink-0 transition-transform duration-200"
+            style={{ color: MUTED, transform: profileOpen ? "rotate(180deg)" : "none" }}
+          />
         </div>
       </div>
     </aside>

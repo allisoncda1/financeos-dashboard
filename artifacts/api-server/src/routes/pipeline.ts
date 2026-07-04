@@ -4,6 +4,7 @@ import { invalidateCache as invalidateDriveCache } from "../lib/driveLoader";
 import { RulesEngine } from "../rules/engine";
 import { invalidateCache as invalidateAiCache } from "../ai/cache";
 import { getSourceSummary } from "../lib/sourceTracker";
+import { hasPermission } from "../auth/permissions";
 
 const router: IRouter = Router();
 
@@ -71,28 +72,43 @@ router.get("/status", async (_req, res) => {
 // in-memory caches so the next request re-fetches from Drive; never writes
 // to Drive and never triggers any external process itself.
 router.post("/refresh", (req, res) => {
-  const expectedToken = process.env["PIPELINE_REFRESH_TOKEN"];
-  if (!expectedToken) {
-    res.status(503).json({
-      ok: false,
-      error: "Refresh endpoint not configured",
-      ts: new Date().toISOString(),
-    });
-    return;
-  }
+  // Authorized either by the shared webhook token (external pipeline job)
+  // or by a signed-in dashboard user with the pipeline_refresh permission.
+  const sessionUser = req.session.user;
+  if (sessionUser) {
+    if (!hasPermission(sessionUser, "pipeline_refresh")) {
+      res.status(403).json({
+        ok: false,
+        error: "You don't have permission to perform this action.",
+        code: "FORBIDDEN",
+        ts: new Date().toISOString(),
+      });
+      return;
+    }
+  } else {
+    const expectedToken = process.env["PIPELINE_REFRESH_TOKEN"];
+    if (!expectedToken) {
+      res.status(503).json({
+        ok: false,
+        error: "Refresh endpoint not configured",
+        ts: new Date().toISOString(),
+      });
+      return;
+    }
 
-  const headerToken = req.header("x-refresh-token");
-  const bodyToken =
-    req.body && typeof req.body === "object" ? (req.body as Record<string, unknown>)["token"] : undefined;
-  const receivedToken = headerToken ?? (typeof bodyToken === "string" ? bodyToken : undefined);
+    const headerToken = req.header("x-refresh-token");
+    const bodyToken =
+      req.body && typeof req.body === "object" ? (req.body as Record<string, unknown>)["token"] : undefined;
+    const receivedToken = headerToken ?? (typeof bodyToken === "string" ? bodyToken : undefined);
 
-  if (receivedToken !== expectedToken) {
-    res.status(401).json({
-      ok: false,
-      error: "Unauthorized",
-      ts: new Date().toISOString(),
-    });
-    return;
+    if (receivedToken !== expectedToken) {
+      res.status(401).json({
+        ok: false,
+        error: "Unauthorized",
+        ts: new Date().toISOString(),
+      });
+      return;
+    }
   }
 
   invalidateDriveCache();

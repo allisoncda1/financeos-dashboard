@@ -4,6 +4,8 @@ import type { AIStatus } from "./aiTypes";
 import type { PipelineStatus } from "./pipelineTypes";
 import type { ApiSource } from "./dataState";
 
+import { SESSION_EXPIRED_EVENT } from "./auth";
+
 const BASE = "/api";
 
 export type Sourced<T> = { data: T; source: ApiSource };
@@ -12,8 +14,26 @@ function normalizeSource(value: unknown): ApiSource {
   return value === "live" || value === "cache" || value === "mock" ? value : "live";
 }
 
+/**
+ * A 401 from any API call means the session ended (expired, logged out
+ * elsewhere, server restarted). Broadcast it once so AuthProvider clears
+ * user state and ProtectedRoute redirects to /login?reason=session_expired,
+ * instead of every hook needing its own 401 handling.
+ */
+function handleUnauthorized(): void {
+  if (window.location.pathname.endsWith("/login")) return;
+  window.dispatchEvent(new Event(SESSION_EXPIRED_EVENT));
+  const url = new URL(window.location.href);
+  const loginPath = url.pathname.replace(/\/[^/]*$/, "/login");
+  window.location.href = `${loginPath}?reason=session_expired`;
+}
+
 async function get<T>(path: string): Promise<T> {
-  const res = await fetch(`${BASE}${path}`);
+  const res = await fetch(`${BASE}${path}`, { credentials: "include" });
+  if (res.status === 401) {
+    handleUnauthorized();
+    throw new Error("Session expired");
+  }
   if (!res.ok) throw new Error(`API ${path} → ${res.status}`);
   const json = await res.json();
   if (!json.ok) throw new Error(json.error ?? "API error");
@@ -21,7 +41,11 @@ async function get<T>(path: string): Promise<T> {
 }
 
 async function getSourced<T>(path: string): Promise<Sourced<T>> {
-  const res = await fetch(`${BASE}${path}`);
+  const res = await fetch(`${BASE}${path}`, { credentials: "include" });
+  if (res.status === 401) {
+    handleUnauthorized();
+    throw new Error("Session expired");
+  }
   if (!res.ok) throw new Error(`API ${path} → ${res.status}`);
   const json = await res.json();
   if (!json.ok) throw new Error(json.error ?? "API error");
@@ -32,8 +56,13 @@ async function post<T>(path: string, body: unknown): Promise<T> {
   const res = await fetch(`${BASE}${path}`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
+    credentials: "include",
     body: JSON.stringify(body),
   });
+  if (res.status === 401) {
+    handleUnauthorized();
+    throw new Error("Session expired");
+  }
   const json = await res.json().catch(() => ({ ok: false, error: `API ${path} → ${res.status}` }));
   if (!res.ok || !json.ok) throw new Error(json.error ?? `API ${path} → ${res.status}`);
   return json.data as T;
@@ -51,8 +80,13 @@ async function postForBlob(path: string, body: unknown): Promise<DownloadedFile>
   const res = await fetch(`${BASE}${path}`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
+    credentials: "include",
     body: JSON.stringify(body),
   });
+  if (res.status === 401) {
+    handleUnauthorized();
+    throw new Error("Session expired");
+  }
   if (!res.ok) {
     const json = await res.json().catch(() => null);
     throw new Error(json?.error ?? `API ${path} → ${res.status}`);

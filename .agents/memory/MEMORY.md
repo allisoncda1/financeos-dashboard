@@ -3,3 +3,4 @@
 - [FinanceOS Drive CSV schemas](financeos-drive-csv-schemas.md) — real Drive CSV headers differ from assumed simplified schemas; always inspect real headers before writing transformers.
 - [Main agent git restrictions](main-agent-git-restrictions.md) — add/commit/amend/config blocked for main agent, plain push allowed; rely on platform checkpoint commits; custom authorship needs an isolated task agent.
 - [LLM structured output sanitization](llm-structured-output-sanitization.md) — prompt-level JSON schemas drift; sanitize LLM output server-side (enum coercion, field filtering) before it reaches typed UI.
+- [express-rate-limit IPv6 keyGenerator](express-rate-limit-ipv6.md) — v8+ throws ERR_ERL_KEY_GEN_IPV6 at startup unless a custom IP-based keyGenerator is wrapped with the ipKeyGenerator helper.

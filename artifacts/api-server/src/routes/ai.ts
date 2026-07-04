@@ -5,8 +5,11 @@ import { formatAnalysisResponse, formatBriefingResponse } from "../ai/formatter"
 import { getAIOptions, getProvider } from "../ai/provider";
 import { ENTITY_SLUGS, type EntitySlug } from "../lib/types";
 import type { DataSourceKind } from "../lib/sourceTracker";
+import { requirePermission } from "../auth/permissions";
 
 const router: IRouter = Router();
+
+router.use(requirePermission("ai"));
 
 // Data source of the last computed briefing, keyed by cache key. Set inside
 // the dedupe closure before the promise resolves, so both the executor and
