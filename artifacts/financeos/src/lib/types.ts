@@ -225,6 +225,36 @@ export type FinancialsData = {
   cash_flow?: CashFlowStatement | null;
 };
 
+/** GET /api/model/:slug/history — real prior-fiscal-year financial history */
+export type PriorYearBalanceSheetSummary = {
+  as_of: string;
+  cash: number;
+  total_assets: number;
+  total_liabilities: number;
+  total_equity: number;
+};
+
+export type PriorYearHistory = {
+  fiscal_year: number;
+  monthly_pl: MonthlyPL[];
+  summary: { revenue: number; cogs: number; gross_profit: number; opex: number; net_income: number };
+  balance_sheet: PriorYearBalanceSheetSummary | null;
+};
+
+export type EntityHistoryData = {
+  entity_slug: string;
+  prior_years: PriorYearHistory[];
+};
+
+/** GET /api/model/history/snapshots — stored monthly metric snapshots */
+export type MetricSnapshot = {
+  month: string;
+  as_of: string;
+  metrics: EntityMetrics;
+};
+
+export type MetricSnapshotsData = Record<EntitySlug, MetricSnapshot[]>;
+
 export type BankAccount = {
   id: string;
   name: string;

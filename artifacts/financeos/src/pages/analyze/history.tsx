@@ -1,14 +1,17 @@
-import { useMemo } from "react";
-import { useDashboardData, useAllEntityFinancials } from "@/hooks/useApi";
+import { useMemo, useState } from "react";
+import { useDashboardData, useAllEntityFinancials, useAllEntityHistory, useHealthSnapshots } from "@/hooks/useApi";
 import { ENTITY_SLUGS, ENTITY_CONFIG, type EntitySlug } from "@/lib/entities";
 import { computeHealthScore } from "@/lib/briefing";
 import { useEntitySelection } from "@/lib/entity-context";
-import { Clock, TrendingUp, TrendingDown, Minus } from "lucide-react";
+import type { MonthlyPL } from "@/lib/types";
+import { Clock, TrendingUp, TrendingDown, Minus, ArrowLeftRight } from "lucide-react";
 
 function fmt(n: number) {
-  if (Math.abs(n) >= 1_000_000) return `$${(Math.abs(n) / 1_000_000).toFixed(2)}M`;
-  if (Math.abs(n) >= 1_000) return `$${(Math.abs(n) / 1_000).toFixed(0)}K`;
-  return `$${Math.abs(n)}`;
+  const sign = n < 0 ? "-" : "";
+  const abs = Math.abs(n);
+  if (abs >= 1_000_000) return `${sign}$${(abs / 1_000_000).toFixed(2)}M`;
+  if (abs >= 1_000) return `${sign}$${(abs / 1_000).toFixed(0)}K`;
+  return `${sign}$${Math.round(abs)}`;
 }
 function pct(n: number) { return `${n >= 0 ? "+" : ""}${n.toFixed(1)}%`; }
 
@@ -32,10 +35,39 @@ function summarize(series: MonthlyPoint[]) {
   };
 }
 
+/** Aggregate per-entity monthly P&L maps into a portfolio-level series. */
+function buildSeries(
+  slugs: EntitySlug[],
+  byMonth: Partial<Record<EntitySlug, Map<string, MonthlyPL>>>,
+  months: string[],
+): MonthlyPoint[] {
+  return months.map(label => {
+    const revenue      = slugs.reduce((s, slug) => s + (byMonth[slug]?.get(label)?.revenue ?? 0), 0);
+    const net_income   = slugs.reduce((s, slug) => s + (byMonth[slug]?.get(label)?.net_income ?? 0), 0);
+    const gross_profit = slugs.reduce((s, slug) => s + (byMonth[slug]?.get(label)?.gross_profit ?? 0), 0);
+    const opex         = slugs.reduce((s, slug) => s + (byMonth[slug]?.get(label)?.opex ?? 0), 0);
+    const net_margin   = revenue > 0 ? (net_income / revenue) * 100 : 0;
+    const gross_margin = revenue > 0 ? (gross_profit / revenue) * 100 : 0;
+    return { label, revenue, net_income, gross_profit, opex, net_margin, gross_margin };
+  });
+}
+
+type PeriodDef = {
+  id: string;
+  label: string;
+  sublabel: string;
+  kind: "current" | "prior";
+  snap: ReturnType<typeof summarize>;
+  /** Cash at the end of the period, when a real balance is known (else null). */
+  cash: number | null;
+};
+
 export default function HistoryPage() {
   const { selected } = useEntitySelection();
   const { data, source } = useDashboardData();
   const { data: allFins, source: finsSource } = useAllEntityFinancials();
+  const { data: allHistory, source: historySource } = useAllEntityHistory();
+  const { data: snapshots } = useHealthSnapshots();
 
   const slugs = useMemo(() => ENTITY_SLUGS.filter(s => selected.includes(s)), [selected]);
 
@@ -48,77 +80,112 @@ export default function HistoryPage() {
 
   const monthlySeries: MonthlyPoint[] = useMemo(() => {
     if (!allFins) return [];
-    const byMonth: Partial<Record<EntitySlug, Map<string, { revenue: number; net_income: number; gross_profit: number; opex: number }>>> = {};
+    const byMonth: Partial<Record<EntitySlug, Map<string, MonthlyPL>>> = {};
     for (const slug of slugs) {
       byMonth[slug] = new Map(allFins[slug].monthly_pl.map(p => [p.month, p]));
     }
-    return months.map(label => {
-      const revenue      = slugs.reduce((s, slug) => s + (byMonth[slug]?.get(label)?.revenue ?? 0), 0);
-      const net_income   = slugs.reduce((s, slug) => s + (byMonth[slug]?.get(label)?.net_income ?? 0), 0);
-      const gross_profit = slugs.reduce((s, slug) => s + (byMonth[slug]?.get(label)?.gross_profit ?? 0), 0);
-      const opex         = slugs.reduce((s, slug) => s + (byMonth[slug]?.get(label)?.opex ?? 0), 0);
-      const net_margin   = revenue > 0 ? (net_income / revenue) * 100 : 0;
-      const gross_margin = revenue > 0 ? (gross_profit / revenue) * 100 : 0;
-      return { label, revenue, net_income, gross_profit, opex, net_margin, gross_margin };
-    });
+    return buildSeries(slugs, byMonth, months);
   }, [slugs, allFins, months]);
 
   const totalCash = useMemo(() => (data ? slugs.reduce((s, slug) => s + data.metrics[slug].cash_on_hand, 0) : 0), [slugs, data]);
   const totalAR   = useMemo(() => (data ? slugs.reduce((s, slug) => s + data.metrics[slug].open_ar, 0) : 0), [slugs, data]);
 
-  // Real period slices derived from the live monthly series (no synthetic
-  // prior-year approximations — only periods actually present in the data).
-  const periods = useMemo(() => {
-    const n = monthlySeries.length;
-    const list: { id: string; label: string; sublabel: string; isCurrent: boolean; snap: ReturnType<typeof summarize> }[] = [];
-    if (n === 0) return list;
-    list.push({
-      id: "ytd",
-      label: "YTD",
-      sublabel: `${monthlySeries[0].label} – ${monthlySeries[n - 1].label}`,
-      isCurrent: true,
-      snap: summarize(monthlySeries),
-    });
-    if (n >= 2) {
-      const firstHalf = monthlySeries.slice(0, Math.ceil(n / 2));
-      const secondHalf = monthlySeries.slice(Math.ceil(n / 2));
-      if (firstHalf.length > 0) {
-        list.push({
-          id: "first-half",
-          label: "First Half",
-          sublabel: `${firstHalf[0].label} – ${firstHalf[firstHalf.length - 1].label}`,
-          isCurrent: false,
-          snap: summarize(firstHalf),
-        });
+  // ── Real prior-year periods from the pipeline's archived exports ─────────────
+  const priorYears = useMemo(() => {
+    if (!allHistory) return [] as number[];
+    const years = new Set<number>();
+    for (const slug of slugs) {
+      for (const py of allHistory[slug]?.prior_years ?? []) years.add(py.fiscal_year);
+    }
+    return [...years].sort((a, b) => a - b);
+  }, [slugs, allHistory]);
+
+  const priorData = useMemo(() => {
+    const map = new Map<number, { series: MonthlyPoint[]; cashEoy: number | null }>();
+    if (!allHistory) return map;
+    for (const year of priorYears) {
+      const monthSet = new Set<string>();
+      const byMonth: Partial<Record<EntitySlug, Map<string, MonthlyPL>>> = {};
+      let cashEoy: number | null = null;
+      for (const slug of slugs) {
+        const py = allHistory[slug]?.prior_years.find(p => p.fiscal_year === year);
+        if (!py) continue;
+        byMonth[slug] = new Map(py.monthly_pl.map(p => [p.month, p]));
+        for (const p of py.monthly_pl) monthSet.add(p.month);
+        if (py.balance_sheet) cashEoy = (cashEoy ?? 0) + py.balance_sheet.cash;
       }
-      if (secondHalf.length > 0) {
-        list.push({
-          id: "second-half",
-          label: "Recent Half",
-          sublabel: `${secondHalf[0].label} – ${secondHalf[secondHalf.length - 1].label}`,
-          isCurrent: false,
-          snap: summarize(secondHalf),
-        });
+      const yearMonths = [...monthSet].sort();
+      map.set(year, { series: buildSeries(slugs, byMonth, yearMonths), cashEoy });
+    }
+    return map;
+  }, [slugs, allHistory, priorYears]);
+
+  // Every period offered here is real: prior-year periods come from the
+  // pipeline's archived prior-year exports, current periods from live monthly
+  // P&L. Cash is only attached where an actual end-of-period balance exists.
+  const periodOptions: PeriodDef[] = useMemo(() => {
+    const list: PeriodDef[] = [];
+    const range = (s: MonthlyPoint[]) => (s.length > 0 ? `${s[0].label} – ${s[s.length - 1].label}` : "");
+    const monthNum = (m: MonthlyPoint) => Number.parseInt(m.label.slice(5, 7), 10);
+
+    for (const year of priorYears) {
+      const entry = priorData.get(year);
+      if (!entry || entry.series.length === 0) continue;
+      const { series, cashEoy } = entry;
+      const endsInDec = series[series.length - 1].label.endsWith("-12");
+      list.push({ id: `fy-${year}`, label: `FY ${year}`, sublabel: range(series), kind: "prior", snap: summarize(series), cash: endsInDec ? cashEoy : null });
+      const h1 = series.filter(m => monthNum(m) <= 6);
+      const h2 = series.filter(m => monthNum(m) >= 7);
+      if (h1.length > 0) list.push({ id: `h1-${year}`, label: `H1 ${year}`, sublabel: range(h1), kind: "prior", snap: summarize(h1), cash: null });
+      if (h2.length > 0) list.push({ id: `h2-${year}`, label: `H2 ${year}`, sublabel: range(h2), kind: "prior", snap: summarize(h2), cash: h2[h2.length - 1].label.endsWith("-12") ? cashEoy : null });
+      for (let q = 1; q <= 4; q++) {
+        const qMonths = series.filter(m => Math.ceil(monthNum(m) / 3) === q);
+        if (qMonths.length === 0) continue;
+        list.push({ id: `q${q}-${year}`, label: `Q${q} ${year}`, sublabel: range(qMonths), kind: "prior", snap: summarize(qMonths), cash: q === 4 && qMonths[qMonths.length - 1].label.endsWith("-12") ? cashEoy : null });
       }
     }
-    list.push({
-      id: "latest",
-      label: "Latest Month",
-      sublabel: monthlySeries[n - 1].label,
-      isCurrent: false,
-      snap: summarize(monthlySeries.slice(n - 1)),
-    });
-    return list;
-  }, [monthlySeries]);
 
-  const healthScores = useMemo(() => {
-    if (!data) return [];
-    return slugs.map(slug => ({
+    if (monthlySeries.length > 0) {
+      const curYear = monthlySeries[0].label.slice(0, 4);
+      const latest = monthlySeries[monthlySeries.length - 1];
+      list.push({ id: "ytd", label: `YTD ${curYear}`, sublabel: range(monthlySeries), kind: "current", snap: summarize(monthlySeries), cash: totalCash });
+      for (let q = 1; q <= 4; q++) {
+        const qMonths = monthlySeries.filter(m => Math.ceil(monthNum(m) / 3) === q);
+        if (qMonths.length === 0) continue;
+        const includesLatest = qMonths[qMonths.length - 1].label === latest.label;
+        list.push({ id: `q${q}-cur`, label: `Q${q} ${curYear}`, sublabel: range(qMonths), kind: "current", snap: summarize(qMonths), cash: includesLatest ? totalCash : null });
+      }
+      list.push({ id: "latest", label: `Latest Month`, sublabel: latest.label, kind: "current", snap: summarize([latest]), cash: totalCash });
+    }
+    return list;
+  }, [priorYears, priorData, monthlySeries, totalCash]);
+
+  const [periodAId, setPeriodAId] = useState<string | null>(null);
+  const [periodBId, setPeriodBId] = useState<string | null>(null);
+
+  const defaultAId = periodOptions.find(p => p.id === "ytd")?.id ?? periodOptions[0]?.id ?? null;
+  const defaultBId =
+    periodOptions.find(p => p.id.startsWith("fy-"))?.id ??
+    periodOptions.find(p => p.id !== defaultAId)?.id ??
+    defaultAId;
+  const periodA = periodOptions.find(p => p.id === periodAId) ?? periodOptions.find(p => p.id === defaultAId) ?? null;
+  const periodB = periodOptions.find(p => p.id === periodBId) ?? periodOptions.find(p => p.id === defaultBId) ?? null;
+
+  // ── Health score trend from stored monthly snapshots ─────────────────────────
+  const healthTrend = useMemo(() => {
+    const monthSet = new Set<string>();
+    if (snapshots) {
+      for (const slug of slugs) for (const s of snapshots[slug] ?? []) monthSet.add(s.month);
+    }
+    const trendMonths = [...monthSet].sort();
+    const rows = slugs.map(slug => ({
       slug,
       cfg: ENTITY_CONFIG[slug],
-      score: computeHealthScore(data.metrics[slug]),
+      byMonth: new Map((snapshots?.[slug] ?? []).map(s => [s.month, computeHealthScore(s.metrics)])),
+      current: data ? computeHealthScore(data.metrics[slug]) : null,
     }));
-  }, [slugs, data]);
+    return { trendMonths, rows };
+  }, [slugs, snapshots, data]);
 
   const moMChanges = useMemo(() => monthlySeries.slice(1).map((curr, i) => {
     const prev = monthlySeries[i];
@@ -158,6 +225,7 @@ export default function HistoryPage() {
   }
 
   const periodLabel = months.length > 0 ? `${months[0]} – ${months[months.length - 1]}` : "";
+  const historyLoading = historySource === "loading";
 
   return (
     <div className="h-full flex flex-col overflow-hidden bg-[#F4F5F7]">
@@ -182,66 +250,56 @@ export default function HistoryPage() {
           </div>
         ) : (
           <>
-        {/* Period comparison cards */}
-        <div>
-          <p className="text-[11px] font-semibold text-gray-500 uppercase tracking-widest mb-3">Period Comparison</p>
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-            {periods.map(period => {
-              const snap = period.snap;
-              const isYTD = period.isCurrent;
-              const ytd = periods[0]?.snap;
-              const revDiff = isYTD || !ytd ? null : ((ytd.revenue - snap.revenue) / Math.max(snap.revenue, 1)) * 100;
-              return (
-                <div key={period.id} className={`bg-white rounded-xl border p-3 sm:p-4 ${isYTD ? "border-emerald-300 ring-1 ring-emerald-200" : "border-gray-200"}`}>
-                  <div className="flex items-center justify-between mb-2 gap-1">
-                    <div className="min-w-0">
-                      <p className="text-[12px] font-bold text-gray-900 truncate">{period.label}</p>
-                      <p className="text-[10px] text-gray-400 truncate">{period.sublabel}</p>
-                    </div>
-                    {isYTD && <span className="text-[9px] font-bold px-1.5 py-0.5 bg-emerald-100 text-emerald-700 rounded-full flex-shrink-0">NOW</span>}
-                  </div>
-                  <div className="space-y-1.5 border-t border-gray-100 pt-2 mt-2">
-                    <div className="flex items-center justify-between">
-                      <span className="text-[10px] text-gray-400">Revenue</span>
-                      <span className="text-[11px] font-semibold text-gray-800">{fmt(snap.revenue)}</span>
-                    </div>
-                    <div className="flex items-center justify-between">
-                      <span className="text-[10px] text-gray-400">Net Income</span>
-                      <span className="text-[11px] font-semibold text-emerald-700">{fmt(snap.net_income)}</span>
-                    </div>
-                    <div className="flex items-center justify-between">
-                      <span className="text-[10px] text-gray-400">Net Margin</span>
-                      <span className="text-[11px] font-semibold text-gray-700">{snap.net_margin.toFixed(1)}%</span>
-                    </div>
-                    {isYTD && (
-                      <div className="flex items-center justify-between">
-                        <span className="text-[10px] text-gray-400">Cash</span>
-                        <span className="text-[11px] font-semibold text-gray-700">{fmt(totalCash)}</span>
-                      </div>
-                    )}
-                    {isYTD && (
-                      <div className="flex items-center justify-between">
-                        <span className="text-[10px] text-gray-400">Open AR</span>
-                        <span className="text-[11px] font-semibold text-gray-700">{fmt(totalAR)}</span>
-                      </div>
-                    )}
-                  </div>
-                  {!isYTD && revDiff !== null && (
-                    <div className="mt-2 pt-2 border-t border-gray-100 flex items-center gap-1">
-                      {revDiff > 0
-                        ? <TrendingUp className="w-3 h-3 text-emerald-500" />
-                        : revDiff < 0
-                        ? <TrendingDown className="w-3 h-3 text-red-500" />
-                        : <Minus className="w-3 h-3 text-gray-400" />
-                      }
-                      <span className={`text-[9px] font-semibold ${revDiff > 0 ? "text-emerald-600" : "text-red-600"}`}>
-                        YTD vs {period.label}: {pct(revDiff)} rev
-                      </span>
-                    </div>
-                  )}
-                </div>
-              );
-            })}
+        {/* Period comparison — pick two real periods */}
+        <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
+          <div className="px-4 py-3 border-b border-gray-100 flex flex-wrap items-center justify-between gap-2">
+            <div>
+              <h3 className="text-[13px] font-semibold text-gray-900">Period Comparison</h3>
+              <p className="text-[11px] text-gray-400">
+                {priorYears.length > 0
+                  ? "All periods are real: prior-year figures come from the pipeline's archived exports, current figures from live monthly P&L."
+                  : historyLoading
+                  ? "Loading prior-period archives…"
+                  : "Prior-year archives are unavailable right now — only current-year periods can be compared."}
+              </p>
+            </div>
+            <div className="flex items-center gap-2">
+              <PeriodSelect value={periodA?.id ?? ""} onChange={setPeriodAId} options={periodOptions} testId="select-period-a" />
+              <ArrowLeftRight className="w-3.5 h-3.5 text-gray-400 flex-shrink-0" />
+              <PeriodSelect value={periodB?.id ?? ""} onChange={setPeriodBId} options={periodOptions} testId="select-period-b" />
+            </div>
+          </div>
+
+          {periodA && periodB && (
+            <div className="overflow-x-auto">
+              <table className="w-full min-w-[460px]">
+                <thead className="border-b border-gray-100">
+                  <tr>
+                    <th className="text-left px-4 py-2.5 text-[10px] font-semibold text-gray-400 uppercase tracking-wide">Metric</th>
+                    <th className="text-right px-4 py-2.5 text-[10px] font-semibold text-gray-600 uppercase tracking-wide bg-violet-50/50">
+                      {periodA.label}
+                      <span className="block font-normal normal-case text-gray-400">{periodA.sublabel}</span>
+                    </th>
+                    <th className="text-right px-4 py-2.5 text-[10px] font-semibold text-gray-600 uppercase tracking-wide">
+                      {periodB.label}
+                      <span className="block font-normal normal-case text-gray-400">{periodB.sublabel}</span>
+                    </th>
+                    <th className="text-right px-4 py-2.5 text-[10px] font-semibold text-gray-400 uppercase tracking-wide">Δ ({periodA.label} vs {periodB.label})</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <CompareRow label="Revenue" a={periodA.snap.revenue} b={periodB.snap.revenue} fmtFn={fmt} deltaMode="pct" testId="row-compare-revenue" />
+                  <CompareRow label="Net Income" a={periodA.snap.net_income} b={periodB.snap.net_income} fmtFn={fmt} deltaMode="pct" testId="row-compare-net-income" />
+                  <CompareRow label="Net Margin" a={periodA.snap.net_margin} b={periodB.snap.net_margin} fmtFn={(n) => `${n.toFixed(1)}%`} deltaMode="pp" testId="row-compare-margin" />
+                  <CompareRow label="Cash (end of period)" a={periodA.cash} b={periodB.cash} fmtFn={fmt} deltaMode="pct" testId="row-compare-cash" />
+                </tbody>
+              </table>
+            </div>
+          )}
+          <div className="px-4 py-2 border-t border-gray-100 flex flex-wrap gap-x-4 gap-y-1">
+            <span className="text-[10px] text-gray-400">Open AR now: <span className="font-semibold text-gray-600">{fmt(totalAR)}</span></span>
+            <span className="text-[10px] text-gray-400">Cash now: <span className="font-semibold text-gray-600">{fmt(totalCash)}</span></span>
+            <span className="text-[10px] text-gray-400">Cash shows "—" for periods without an archived end-of-period balance sheet.</span>
           </div>
         </div>
 
@@ -315,23 +373,29 @@ export default function HistoryPage() {
           </div>
         )}
 
-        {/* Entity health scores (current, from live metrics) */}
-        {healthScores.length > 0 && (
+        {/* Entity health scores — monthly trend from stored snapshots */}
+        {healthTrend.rows.length > 0 && (
           <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
             <div className="px-4 py-3 border-b border-gray-100">
-              <h3 className="text-[13px] font-semibold text-gray-900">Entity Health Score — Current</h3>
-              <p className="text-[11px] text-gray-400">Penalty-based score computed from live metrics (100 = healthy). Monthly trend will be available once historical snapshots are stored.</p>
+              <h3 className="text-[13px] font-semibold text-gray-900">Entity Health Score — Monthly Trend</h3>
+              <p className="text-[11px] text-gray-400">
+                Penalty-based score (100 = healthy), recomputed from the metrics snapshot stored for each month.
+                {healthTrend.trendMonths.length <= 1 ? " Snapshots accumulate monthly as the pipeline runs — the trend fills in over time." : ""}
+              </p>
             </div>
             <div className="overflow-x-auto">
               <table className="w-full min-w-[300px]">
                 <thead className="sticky top-0 z-10 bg-white border-b border-gray-100">
                   <tr>
                     <th className="text-left px-4 py-2.5 text-[10px] font-semibold text-gray-400 uppercase tracking-wide">Entity</th>
-                    <th className="text-right px-4 py-2.5 text-[10px] font-semibold text-gray-600 uppercase tracking-wide bg-gray-50">Current Score</th>
+                    {healthTrend.trendMonths.map(m => (
+                      <th key={m} className="text-right px-4 py-2.5 text-[10px] font-semibold text-gray-400 uppercase tracking-wide">{m}</th>
+                    ))}
+                    <th className="text-right px-4 py-2.5 text-[10px] font-semibold text-gray-600 uppercase tracking-wide bg-gray-50">Current</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {healthScores.map(({ slug, cfg, score }) => (
+                  {healthTrend.rows.map(({ slug, cfg, byMonth, current }) => (
                     <tr key={slug} className="border-t border-gray-50 hover:bg-gray-50 transition-colors">
                       <td className="px-4 py-2.5">
                         <div className="flex items-center gap-2">
@@ -339,7 +403,17 @@ export default function HistoryPage() {
                           <span className="text-[12px] font-medium text-gray-800">{cfg.name}</span>
                         </div>
                       </td>
-                      <td className="px-4 py-2.5 text-right bg-gray-50"><ScoreChip score={score} bold /></td>
+                      {healthTrend.trendMonths.map(m => {
+                        const s = byMonth.get(m);
+                        return (
+                          <td key={m} className="px-4 py-2.5 text-right">
+                            {s !== undefined ? <ScoreChip score={s} /> : <span className="text-[11px] text-gray-300">—</span>}
+                          </td>
+                        );
+                      })}
+                      <td className="px-4 py-2.5 text-right bg-gray-50">
+                        {current !== null ? <ScoreChip score={current} bold /> : <span className="text-[11px] text-gray-300">—</span>}
+                      </td>
                     </tr>
                   ))}
                 </tbody>
@@ -386,6 +460,70 @@ export default function HistoryPage() {
 }
 
 // ── Helpers ────────────────────────────────────────────────────────────────────
+
+function PeriodSelect({ value, onChange, options, testId }: {
+  value: string;
+  onChange: (id: string) => void;
+  options: PeriodDef[];
+  testId: string;
+}) {
+  const prior = options.filter(o => o.kind === "prior");
+  const current = options.filter(o => o.kind === "current");
+  return (
+    <select
+      value={value}
+      onChange={e => onChange(e.target.value)}
+      data-testid={testId}
+      className="text-[12px] font-medium text-gray-700 bg-white border border-gray-200 rounded-lg px-2 py-1.5 focus:outline-none focus:ring-1 focus:ring-violet-300"
+    >
+      {current.length > 0 && (
+        <optgroup label="Current year">
+          {current.map(o => <option key={o.id} value={o.id}>{o.label}</option>)}
+        </optgroup>
+      )}
+      {prior.length > 0 && (
+        <optgroup label="Prior years (archived)">
+          {prior.map(o => <option key={o.id} value={o.id}>{o.label}</option>)}
+        </optgroup>
+      )}
+    </select>
+  );
+}
+
+function CompareRow({ label, a, b, fmtFn, deltaMode, testId }: {
+  label: string;
+  a: number | null;
+  b: number | null;
+  fmtFn: (n: number) => string;
+  deltaMode: "pct" | "pp";
+  testId: string;
+}) {
+  const hasBoth = a !== null && b !== null;
+  let delta: number | null = null;
+  let suffix = "%";
+  if (hasBoth) {
+    if (deltaMode === "pp") {
+      delta = a - b;
+      suffix = "pp";
+    } else if (b !== 0) {
+      delta = ((a - b) / Math.abs(b)) * 100;
+    }
+  }
+  return (
+    <tr className="border-t border-gray-50 hover:bg-gray-50 transition-colors" data-testid={testId}>
+      <td className="px-4 py-2.5 text-[12px] font-medium text-gray-600">{label}</td>
+      <td className="px-4 py-2.5 text-right text-[12px] font-semibold text-gray-800 bg-violet-50/50">
+        {a !== null ? fmtFn(a) : <span className="text-gray-300">—</span>}
+      </td>
+      <td className="px-4 py-2.5 text-right text-[12px] font-medium text-gray-600">
+        {b !== null ? fmtFn(b) : <span className="text-gray-300">—</span>}
+      </td>
+      <td className="px-4 py-2.5 text-right">
+        {delta !== null ? <ChangeChip value={delta} suffix={suffix} /> : <span className="text-[11px] text-gray-300">—</span>}
+      </td>
+    </tr>
+  );
+}
 
 function ChangeChip({ value, suffix }: { value: number; suffix: string }) {
   const isPos = value > 0;

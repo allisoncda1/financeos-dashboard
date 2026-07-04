@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import { api } from '@/lib/api';
 import { getMockData, getFinancials, getCustomers, getVendors, getBanking } from '@/lib/mock';
 import { ENTITY_SLUGS } from '@/lib/entities';
-import type { DashboardData, FinancialsData, CustomersData, VendorsData, BankingData, EntitySlug, BriefingResponse, Alert, ValidationMatrixData } from '@/lib/types';
+import type { DashboardData, FinancialsData, CustomersData, VendorsData, BankingData, EntitySlug, BriefingResponse, Alert, ValidationMatrixData, EntityHistoryData, MetricSnapshotsData } from '@/lib/types';
 import type { ReportTemplateSummary, ReportGenerateRequest, BuiltReport } from '@/lib/reportTypes';
 import type { AIStatus } from '@/lib/aiTypes';
 import type { PipelineStatus } from '@/lib/pipelineTypes';
@@ -101,6 +101,40 @@ export function useAllEntityFinancials(): FetchState<Record<EntitySlug, Financia
     mockInit,
     [],
   );
+}
+
+/**
+ * useAllEntityHistory — fetches real prior-fiscal-year history for every
+ * entity in parallel from GET /api/model/:slug/history. There is no mock
+ * fallback: when the pipeline archives are unreachable the hook reports
+ * "unavailable" and the History page simply offers no prior periods,
+ * instead of fabricating them.
+ */
+export function useAllEntityHistory(): FetchState<Record<EntitySlug, EntityHistoryData>> {
+  return useTrackedFetch(
+    'allEntityHistory',
+    async () => {
+      const entries = await Promise.all(
+        ENTITY_SLUGS.map(s => api.entityHistory(s).then(r => [s, r] as const)),
+      );
+      const data = Object.fromEntries(entries.map(([s, r]) => [s, r.data])) as Record<EntitySlug, EntityHistoryData>;
+      const sources = entries.map(([, r]) => r.source);
+      const source = sources.includes('mock') ? 'mock' : sources.includes('cache') ? 'cache' : 'live';
+      return { data, source };
+    },
+    null,
+    [],
+  );
+}
+
+/**
+ * useHealthSnapshots — fetches stored monthly metric snapshots from
+ * GET /api/model/history/snapshots. The server archives one snapshot per
+ * entity per month from live pipeline data; the History page recomputes
+ * health scores from what was actually observed each month.
+ */
+export function useHealthSnapshots(): FetchState<MetricSnapshotsData> {
+  return useTrackedFetch('healthSnapshots', () => api.historySnapshots(), null, []);
 }
 
 export function useEntityCustomers(slug: EntitySlug): FetchState<CustomersData> {

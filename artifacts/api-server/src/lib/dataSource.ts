@@ -1,6 +1,7 @@
 import { driveLoadJson } from "./driveLoader";
 import { loadMockData, loadEntityFile, loadValidationSummary, type EntityDataFile } from "./mockData";
 import { transformFinancials } from "../transformers/financials";
+import { transformHistory } from "../transformers/history";
 import { transformCustomers } from "../transformers/customers";
 import { transformVendors } from "../transformers/vendors";
 import { transformBanking } from "../transformers/banking";
@@ -13,6 +14,7 @@ import type {
   Anomaly,
   EntitySlug,
   FinancialsData,
+  EntityHistoryData,
   CustomersData,
   VendorsData,
   BankingData,
@@ -301,6 +303,29 @@ export async function getEntityFinancials(
     // Mock financials.json files predate the cash_flow field — normalize so
     // the frontend can rely on `cash_flow` being present (null = unavailable).
     return { ...mock, cash_flow: mock.cash_flow ?? null };
+  });
+}
+
+/**
+ * Real prior-period history for an entity, derived from the pipeline's
+ * archived prior-year exports on Drive (pnl_prior_year.csv +
+ * balance_sheet_prior_year.csv). There is deliberately NO mock fallback with
+ * fabricated prior years: when Drive is unavailable this returns an empty
+ * prior_years list so the frontend only ever shows real periods.
+ */
+export async function getEntityHistory(
+  slug: EntitySlug,
+): Promise<{ data: EntityHistoryData; source: DataSourceKind }> {
+  return trackSource(async () => {
+    if (USE_DRIVE) {
+      try {
+        return await transformHistory(slug);
+      } catch (err) {
+        console.warn(`[dataSource] failed to transform history for ${slug}:`, err);
+      }
+    }
+    reportSource("mock");
+    return { entity_slug: slug, prior_years: [] };
   });
 }
 

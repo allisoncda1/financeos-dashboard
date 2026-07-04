@@ -92,35 +92,40 @@ function mapEquityField(accountName: string): keyof BalanceSheet["equity"] {
   return "paid_in_capital";
 }
 
-async function loadBalanceSheet(slug: EntitySlug, asOf: string): Promise<BalanceSheet> {
+export function parseBalanceSheetRows(rows: Record<string, string>[], asOf: string): BalanceSheet {
   const sheet = emptyBalanceSheet(asOf);
-  try {
-    const rows = await driveLoadCsv(`entities/${slug}/balance_sheet_current.csv`);
-    for (const row of rows) {
-      const accountName = row["account_name"] ?? "";
-      const accountType = row["account_type"] ?? "";
-      const subtype = row["account_subtype"] ?? "";
-      const amount = toNumber(row["amount"]);
-      const category = classifyRow(accountType, subtype);
+  for (const row of rows) {
+    const accountName = row["account_name"] ?? "";
+    const accountType = row["account_type"] ?? "";
+    const subtype = row["account_subtype"] ?? "";
+    const amount = toNumber(row["amount"]);
+    const category = classifyRow(accountType, subtype);
 
-      if (category === "asset") {
-        const field = mapAssetField(subtype);
-        sheet.assets[field] += amount;
-        sheet.assets.total += amount;
-      } else if (category === "liability") {
-        const field = mapLiabilityField(subtype);
-        sheet.liabilities[field] += amount;
-        sheet.liabilities.total += amount;
-      } else {
-        const field = mapEquityField(accountName);
-        sheet.equity[field] += amount;
-        sheet.equity.total += amount;
-      }
+    if (category === "asset") {
+      const field = mapAssetField(subtype);
+      sheet.assets[field] += amount;
+      sheet.assets.total += amount;
+    } else if (category === "liability") {
+      const field = mapLiabilityField(subtype);
+      sheet.liabilities[field] += amount;
+      sheet.liabilities.total += amount;
+    } else {
+      const field = mapEquityField(accountName);
+      sheet.equity[field] += amount;
+      sheet.equity.total += amount;
     }
-  } catch (err) {
-    console.warn(`[transformFinancials] failed to load balance_sheet_current.csv for ${slug}:`, err);
   }
   return sheet;
+}
+
+async function loadBalanceSheet(slug: EntitySlug, asOf: string): Promise<BalanceSheet> {
+  try {
+    const rows = await driveLoadCsv(`entities/${slug}/balance_sheet_current.csv`);
+    return parseBalanceSheetRows(rows, asOf);
+  } catch (err) {
+    console.warn(`[transformFinancials] failed to load balance_sheet_current.csv for ${slug}:`, err);
+    return emptyBalanceSheet(asOf);
+  }
 }
 
 export async function transformFinancials(slug: EntitySlug, asOf: string): Promise<FinancialsData> {
