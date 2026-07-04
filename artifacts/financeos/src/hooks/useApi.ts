@@ -131,6 +131,32 @@ export function useEntityBanking(slug: EntitySlug): FetchState<BankingData> {
 }
 
 /**
+ * useAllEntityBanking — fetches live banking data for every entity in
+ * parallel, mirroring useAllEntityFinancials. Reports the worst-case
+ * source across all entities once they resolve.
+ */
+export function useAllEntityBanking(): FetchState<Record<EntitySlug, BankingData>> {
+  const mockInit = useCallback(
+    () => Object.fromEntries(ENTITY_SLUGS.map(s => [s, getBanking(s)])) as Record<EntitySlug, BankingData>,
+    [],
+  );
+  return useTrackedFetch(
+    'allEntityBanking',
+    async () => {
+      const entries = await Promise.all(
+        ENTITY_SLUGS.map(s => api.entityBanking(s).then(r => [s, r] as const)),
+      );
+      const data = Object.fromEntries(entries.map(([s, r]) => [s, r.data])) as Record<EntitySlug, BankingData>;
+      const sources = entries.map(([, r]) => r.source);
+      const source = sources.includes('mock') ? 'mock' : sources.includes('cache') ? 'cache' : 'live';
+      return { data, source };
+    },
+    mockInit,
+    [],
+  );
+}
+
+/**
  * useAlerts — fetches live operational alerts from the Rules Engine via
  * GET /api/alerts. Exposes {data, source, lastSuccessfulFetch}; data is
  * null until the fetch resolves (source === "loading") or when the

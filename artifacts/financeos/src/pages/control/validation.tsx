@@ -1,8 +1,8 @@
 
 import { useState } from "react";
 import { useDashboardData } from "@/hooks/useApi";
-import { getMockData } from "@/lib/mock";
 import { ENTITY_SLUGS, ENTITY_CONFIG } from "@/lib/entities";
+import type { DashboardData } from "@/lib/types";
 import { CheckCircle2, XCircle, AlertCircle, Info } from "lucide-react";
 
 // 10 rules × description + what triggers a failure
@@ -20,7 +20,7 @@ const RULES: Record<string, { label: string; description: string; failCondition:
 };
 
 // Per-entity, per-rule result — derived from anomalies + metrics
-function buildMatrix(data: ReturnType<typeof getMockData>): Record<string, Record<string, "pass" | "warn" | "fail">> {
+function buildMatrix(data: DashboardData): Record<string, Record<string, "pass" | "warn" | "fail">> {
   const result: Record<string, Record<string, "pass" | "warn" | "fail">> = {};
   ENTITY_SLUGS.forEach((slug) => {
     result[slug] = {};
@@ -37,17 +37,6 @@ function buildMatrix(data: ReturnType<typeof getMockData>): Record<string, Recor
   return result;
 }
 
-// Validation history (mock — last 7 runs)
-const VALIDATION_HISTORY = [
-  { date: "2026-07-02", passed: 40, total: 40 },
-  { date: "2026-07-01", passed: 40, total: 40 },
-  { date: "2026-06-30", passed: 38, total: 40 },
-  { date: "2026-06-29", passed: 37, total: 40 },
-  { date: "2026-06-28", passed: 40, total: 40 },
-  { date: "2026-06-27", passed: 40, total: 40 },
-  { date: "2026-06-26", passed: 39, total: 40 },
-];
-
 export default function ValidationPage() {
   const { data, source } = useDashboardData();
   const [selectedRule, setSelectedRule] = useState<string | null>(null);
@@ -62,8 +51,29 @@ export default function ValidationPage() {
   }
 
   const matrix = buildMatrix(data);
-  const v = data.validation;
-  const passPct = v.total_checks > 0 ? Math.round((v.passed / v.total_checks) * 100) : 0;
+
+  // The validation summary has two observed shapes: the declared
+  // ValidationSummary type (mock/typed: run_date, passed, failed, rule_count,
+  // entity_count) and the real Drive-backed pipeline output (generated_at,
+  // pass_count, fail_count). Read both defensively — mirrors the api-server's
+  // normalizeValidationSummary — so live data never renders "undefined"/NaN.
+  const raw = data.validation as unknown as Record<string, unknown>;
+  const num = (key: string): number | undefined => (typeof raw[key] === "number" ? (raw[key] as number) : undefined);
+  const str = (key: string): string | undefined => (typeof raw[key] === "string" && raw[key] !== "" ? (raw[key] as string) : undefined);
+  const v = {
+    total_checks: num("total_checks"),
+    passed: num("passed") ?? num("pass_count"),
+    failed: num("failed") ?? num("fail_count"),
+    all_passed: typeof raw["all_passed"] === "boolean" ? (raw["all_passed"] as boolean) : undefined,
+    run_date: str("run_date") ?? str("generated_at"),
+    as_of: str("as_of") ?? str("generated_at"),
+    rule_count: num("rule_count") ?? Object.keys(RULES).length,
+    entity_count: num("entity_count") ?? ENTITY_SLUGS.length,
+  };
+  const passPct =
+    v.total_checks !== undefined && v.total_checks > 0 && v.passed !== undefined
+      ? Math.round((v.passed / v.total_checks) * 100)
+      : null;
 
   const ruleKeys = Object.keys(RULES);
   const categoryColors: Record<string, string> = {
@@ -93,12 +103,16 @@ export default function ValidationPage() {
           </div>
           <div>
             <h1 className="text-[15px] font-bold text-gray-900">Validation Rules</h1>
-            <p className="text-[11px] text-gray-400">{v.rule_count} rules × {v.entity_count} entities · {v.run_date}</p>
+            <p className="text-[11px] text-gray-400">{v.rule_count} rules × {v.entity_count} entities{v.run_date ? ` · ${v.run_date}` : ""}</p>
           </div>
         </div>
         <div className="flex items-center gap-3">
           <span className="text-[11px] font-semibold text-emerald-700 bg-emerald-50 px-3 py-1.5 rounded-full">
-            {v.passed}/{v.total_checks} passed ({passPct}%)
+            {v.passed !== undefined && v.total_checks !== undefined
+              ? `${v.passed}/${v.total_checks} passed${passPct !== null ? ` (${passPct}%)` : ""}`
+              : v.all_passed !== undefined
+              ? (v.all_passed ? "All checks passed" : "Issues found")
+              : "Result unavailable"}
           </span>
         </div>
       </div>
@@ -111,10 +125,10 @@ export default function ValidationPage() {
           {/* Overview KPI row */}
           <div className="grid grid-cols-4 gap-3">
             {[
-              { label: "Total Checks",  value: v.total_checks, color: "text-gray-900" },
-              { label: "Passed",        value: v.passed,        color: "text-emerald-600" },
+              { label: "Total Checks",  value: v.total_checks ?? "—", color: "text-gray-900" },
+              { label: "Passed",        value: v.passed ?? "—",        color: "text-emerald-600" },
               { label: "Warnings",      value: ENTITY_SLUGS.reduce((s, slug) => s + Object.values(matrix[slug]).filter((v) => v === "warn").length, 0), color: "text-amber-600" },
-              { label: "Failed",        value: v.failed,        color: "text-red-600" },
+              { label: "Failed",        value: v.failed ?? "—",        color: "text-red-600" },
             ].map((c) => (
               <div key={c.label} className="bg-white rounded-xl border border-gray-200 p-4">
                 <p className="text-[10px] text-gray-400 uppercase tracking-wide font-medium">{c.label}</p>
@@ -230,30 +244,39 @@ export default function ValidationPage() {
                         </td>
                       );
                     })}
-                    <td className="px-3 py-2.5 text-center text-[11px] font-black text-emerald-600">{passPct}%</td>
+                    <td className="px-3 py-2.5 text-center text-[11px] font-black text-emerald-600">{passPct !== null ? `${passPct}%` : "—"}</td>
                   </tr>
                 </tfoot>
               </table>
             </div>
           </div>
 
-          {/* Validation history sparkline */}
+          {/* Latest validation run */}
           <div className="bg-white rounded-xl border border-gray-200 p-4">
-            <h3 className="text-[13px] font-semibold text-gray-900 mb-3">Validation History — Last 7 Runs</h3>
-            <div className="flex items-end gap-2 h-16">
-              {VALIDATION_HISTORY.map((run) => {
-                const pct = run.passed / run.total;
-                const h = Math.round(pct * 56);
-                const color = pct === 1 ? "#10B981" : pct >= 0.95 ? "#F59E0B" : "#EF4444";
-                return (
-                  <div key={run.date} className="flex-1 flex flex-col items-center gap-1.5">
-                    <span className="text-[9px] font-semibold" style={{ color }}>{run.passed}/{run.total}</span>
-                    <div className="w-full rounded-t" style={{ height: h, background: color }} title={`${run.date}: ${run.passed}/${run.total}`} />
-                    <span className="text-[9px] text-gray-400">{run.date.slice(5)}</span>
-                  </div>
-                );
-              })}
+            <h3 className="text-[13px] font-semibold text-gray-900 mb-3">Latest Validation Run</h3>
+            <div className="flex items-center gap-6">
+              <div>
+                <p className="text-[10px] text-gray-400 uppercase tracking-wide font-medium">Run Date</p>
+                <p className="text-[13px] font-bold text-gray-900 mt-0.5">{v.run_date ?? "—"}</p>
+              </div>
+              <div>
+                <p className="text-[10px] text-gray-400 uppercase tracking-wide font-medium">Data As Of</p>
+                <p className="text-[13px] font-bold text-gray-900 mt-0.5">{v.as_of ?? "—"}</p>
+              </div>
+              <div>
+                <p className="text-[10px] text-gray-400 uppercase tracking-wide font-medium">Result</p>
+                <p className={`text-[13px] font-bold mt-0.5 ${v.all_passed ? "text-emerald-600" : (v.failed ?? 0) > 0 ? "text-red-600" : "text-amber-600"}`}>
+                  {v.passed !== undefined && v.total_checks !== undefined
+                    ? `${v.passed}/${v.total_checks} passed`
+                    : v.all_passed !== undefined
+                    ? (v.all_passed ? "All passed" : "Issues found")
+                    : "—"}
+                </p>
+              </div>
             </div>
+            <p className="text-[11px] text-gray-400 mt-3">
+              Run history isn't available yet — only the most recent pipeline validation run is stored.
+            </p>
           </div>
         </div>
 

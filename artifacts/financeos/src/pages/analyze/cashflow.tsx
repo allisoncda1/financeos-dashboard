@@ -1,17 +1,9 @@
-import { useDashboardData } from "@/hooks/useApi";
-
 import { useMemo } from "react";
-import { getMockData, getFinancials, getBanking } from "@/lib/mock";
+import { useDashboardData, useAllEntityFinancials, useAllEntityBanking } from "@/hooks/useApi";
 import { ENTITY_SLUGS, ENTITY_CONFIG, type EntitySlug } from "@/lib/entities";
 import { useEntitySelection } from "@/lib/entity-context";
+import type { FinancialsData, MonthlyPL } from "@/lib/types";
 import { Droplets } from "lucide-react";
-
-const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun"];
-
-// Pre-load all data at module level (server-safe synchronous mock)
-const ALL_DATA = getMockData();
-const ALL_FINS = Object.fromEntries(ENTITY_SLUGS.map(s => [s, getFinancials(s)])) as Record<EntitySlug, ReturnType<typeof getFinancials>>;
-const ALL_BANKING = Object.fromEntries(ENTITY_SLUGS.map(s => [s, getBanking(s)])) as Record<EntitySlug, ReturnType<typeof getBanking>>;
 
 function fmt(n: number) {
   if (Math.abs(n) >= 1_000_000) return `${n < 0 ? "(" : ""}$${(Math.abs(n) / 1_000_000).toFixed(2)}M${n < 0 ? ")" : ""}`;
@@ -24,40 +16,68 @@ function fmtPlain(n: number) {
   return `$${Math.abs(n)}`;
 }
 
-function deriveCF(fin: ReturnType<typeof getFinancials>) {
-  return fin.monthly_pl.map(m => {
-    const ops    = m.net_income + Math.round(m.opex * 0.08) - Math.round(m.revenue * 0.03) + Math.round(m.cogs * 0.02);
-    const invest = -Math.round(m.opex * 0.12);
-    const fin2   = -Math.round(m.opex * 0.05);
-    return { month: m.month, ops, invest, fin: fin2, net: ops + invest + fin2 };
-  });
+function deriveCFMonth(m: MonthlyPL) {
+  const ops    = m.net_income + Math.round(m.opex * 0.08) - Math.round(m.revenue * 0.03) + Math.round(m.cogs * 0.02);
+  const invest = -Math.round(m.opex * 0.12);
+  const fin2   = -Math.round(m.opex * 0.05);
+  return { month: m.month, ops, invest, fin: fin2, net: ops + invest + fin2 };
+}
+
+function deriveCF(fin: FinancialsData) {
+  return fin.monthly_pl.map(deriveCFMonth);
 }
 
 export default function CashFlowPage() {
   const { selected } = useEntitySelection();
+  const { data, source } = useDashboardData();
+  const { data: allFins, source: finsSource } = useAllEntityFinancials();
+  const { data: allBanking } = useAllEntityBanking();
+
   const slugs = useMemo(() => ENTITY_SLUGS.filter(s => selected.includes(s)), [selected]);
 
-  const consolidatedCF = useMemo(() => MONTHS.map((_, i) => ({
-    label: MONTHS[i],
-    ops:    slugs.reduce((s, slug) => s + deriveCF(ALL_FINS[slug])[i].ops, 0),
-    invest: slugs.reduce((s, slug) => s + deriveCF(ALL_FINS[slug])[i].invest, 0),
-    fin:    slugs.reduce((s, slug) => s + deriveCF(ALL_FINS[slug])[i].fin, 0),
-    net:    slugs.reduce((s, slug) => s + deriveCF(ALL_FINS[slug])[i].net, 0),
-  })), [slugs]);
+  // Per-entity derived cash flow, keyed by month label
+  const cfByEntity = useMemo(() => {
+    const maps: Partial<Record<EntitySlug, Map<string, ReturnType<typeof deriveCFMonth>>>> = {};
+    if (!allFins) return maps;
+    for (const slug of slugs) {
+      maps[slug] = new Map(deriveCF(allFins[slug]).map(m => [m.month, m]));
+    }
+    return maps;
+  }, [slugs, allFins]);
+
+  const months = useMemo(() => {
+    if (!allFins) return [] as string[];
+    const set = new Set<string>();
+    for (const slug of slugs) for (const p of allFins[slug].monthly_pl) set.add(p.month);
+    return [...set].sort();
+  }, [slugs, allFins]);
+
+  const consolidatedCF = useMemo(() => months.map(label => ({
+    label,
+    ops:    slugs.reduce((s, slug) => s + (cfByEntity[slug]?.get(label)?.ops ?? 0), 0),
+    invest: slugs.reduce((s, slug) => s + (cfByEntity[slug]?.get(label)?.invest ?? 0), 0),
+    fin:    slugs.reduce((s, slug) => s + (cfByEntity[slug]?.get(label)?.fin ?? 0), 0),
+    net:    slugs.reduce((s, slug) => s + (cfByEntity[slug]?.get(label)?.net ?? 0), 0),
+  })), [months, slugs, cfByEntity]);
 
   const ytdNet    = useMemo(() => consolidatedCF.reduce((s, m) => s + m.net, 0), [consolidatedCF]);
   const ytdOps    = useMemo(() => consolidatedCF.reduce((s, m) => s + m.ops, 0), [consolidatedCF]);
   const ytdInvest = useMemo(() => consolidatedCF.reduce((s, m) => s + m.invest, 0), [consolidatedCF]);
   const ytdFin    = useMemo(() => consolidatedCF.reduce((s, m) => s + m.fin, 0), [consolidatedCF]);
 
-  const totalCash = useMemo(() => slugs.reduce((s, slug) => s + ALL_DATA.metrics[slug].cash_on_hand, 0), [slugs]);
-  const totalAR   = useMemo(() => slugs.reduce((s, slug) => s + ALL_DATA.metrics[slug].open_ar, 0), [slugs]);
-  const totalAP   = useMemo(() => slugs.reduce((s, slug) => s + ALL_DATA.metrics[slug].open_ap, 0), [slugs]);
+  const totalCash = useMemo(() => (data ? slugs.reduce((s, slug) => s + data.metrics[slug].cash_on_hand, 0) : 0), [slugs, data]);
+  const totalAR   = useMemo(() => (data ? slugs.reduce((s, slug) => s + data.metrics[slug].open_ar, 0) : 0), [slugs, data]);
+  const totalAP   = useMemo(() => (data ? slugs.reduce((s, slug) => s + data.metrics[slug].open_ap, 0) : 0), [slugs, data]);
 
   const maxAbsNet = useMemo(() => Math.max(1, ...consolidatedCF.map(m => Math.abs(m.net))), [consolidatedCF]);
 
-  let running = 0;
-  const runningBalances = consolidatedCF.map(m => { running += m.net; return running; });
+  if (!data || !allFins) {
+    return (
+      <div className="h-full flex items-center justify-center text-[13px] text-gray-400">
+        {source === "loading" || finsSource === "loading" ? "Loading…" : "Data unavailable"}
+      </div>
+    );
+  }
 
   if (slugs.length === 0) {
     return (
@@ -71,6 +91,10 @@ export default function CashFlowPage() {
     );
   }
 
+  let running = 0;
+  const runningBalances = consolidatedCF.map(m => { running += m.net; return running; });
+  const periodLabel = months.length > 0 ? `${months[0]} – ${months[months.length - 1]}` : "";
+
   return (
     <div className="h-full flex flex-col overflow-hidden bg-[#F4F5F7]">
       <div className="flex-shrink-0 bg-white border-b border-gray-200 px-4 sm:px-6 py-3 sm:py-4 flex items-center justify-between gap-3">
@@ -80,7 +104,7 @@ export default function CashFlowPage() {
           </div>
           <div>
             <h1 className="text-[14px] sm:text-[15px] font-bold text-gray-900">Cash Flow Analysis</h1>
-            <p className="text-[10px] sm:text-[11px] text-gray-400">Derived from P&L · YTD Jan–Jun 2026 · mock data</p>
+            <p className="text-[10px] sm:text-[11px] text-gray-400">Derived from P&L{periodLabel ? ` · ${periodLabel}` : ""}</p>
           </div>
         </div>
         <span className={`text-[10px] font-semibold px-2.5 py-1 rounded-full flex-shrink-0 ${ytdNet >= 0 ? "bg-emerald-50 text-emerald-700" : "bg-red-50 text-red-700"}`}>
@@ -111,13 +135,16 @@ export default function CashFlowPage() {
           <div className="bg-white rounded-xl border border-gray-200 p-4">
             <h3 className="text-[13px] font-semibold text-gray-900 mb-1">Portfolio Net Cash Flow — Monthly</h3>
             <p className="text-[11px] text-gray-400 mb-4">Positive = inflow · Negative = outflow</p>
+            {consolidatedCF.length === 0 ? (
+              <p className="text-[12px] text-gray-400 py-6 text-center">No monthly data available.</p>
+            ) : (
             <div className="space-y-2">
               {consolidatedCF.map(m => {
                 const isPos = m.net >= 0;
                 const w = maxAbsNet > 0 ? Math.abs(m.net) / maxAbsNet * 100 : 0;
                 return (
                   <div key={m.label} className="flex items-center gap-3">
-                    <span className="text-[10px] text-gray-400 w-6">{m.label}</span>
+                    <span className="text-[10px] text-gray-400 w-14 truncate">{m.label}</span>
                     <div className="flex-1 flex items-center h-6 relative">
                       <div className="absolute left-1/2 top-0 bottom-0 w-px bg-gray-200" />
                       {isPos ? (
@@ -133,6 +160,7 @@ export default function CashFlowPage() {
                 );
               })}
             </div>
+            )}
             <div className="flex items-center justify-center gap-4 mt-4">
               <div className="flex items-center gap-1.5"><div className="w-3 h-2 rounded-sm bg-emerald-500" /><span className="text-[10px] text-gray-500">Inflow</span></div>
               <div className="flex items-center gap-1.5"><div className="w-3 h-2 rounded-sm bg-red-400" /><span className="text-[10px] text-gray-500">Outflow</span></div>
@@ -182,7 +210,7 @@ export default function CashFlowPage() {
               <thead className="sticky top-0 z-10 bg-white border-b border-gray-100">
                 <tr>
                   <th className="text-left px-4 py-2.5 text-[10px] font-semibold text-gray-400 uppercase tracking-wide w-40">Activity</th>
-                  {MONTHS.map(m => <th key={m} className="text-right px-3 py-2.5 text-[10px] font-semibold text-gray-400 uppercase tracking-wide">{m}</th>)}
+                  {months.map(m => <th key={m} className="text-right px-3 py-2.5 text-[10px] font-semibold text-gray-400 uppercase tracking-wide">{m}</th>)}
                   <th className="text-right px-4 py-2.5 text-[10px] font-semibold text-gray-600 uppercase tracking-wide bg-gray-50">YTD</th>
                 </tr>
               </thead>
@@ -235,12 +263,12 @@ export default function CashFlowPage() {
               </thead>
               <tbody>
                 {slugs.map(slug => {
-                  const m = ALL_DATA.metrics[slug];
+                  const m = data.metrics[slug];
                   const cfg = ENTITY_CONFIG[slug];
-                  const monthly = deriveCF(ALL_FINS[slug]);
+                  const monthly = deriveCF(allFins[slug]);
                   const entYtdOps = monthly.reduce((s, mo) => s + mo.ops, 0);
                   const entYtdNet = monthly.reduce((s, mo) => s + mo.net, 0);
-                  const bk = ALL_BANKING[slug];
+                  const bk = allBanking?.[slug];
                   return (
                     <tr key={slug} className="border-t border-gray-50 hover:bg-gray-50 transition-colors">
                       <td className="px-4 py-2.5">
@@ -254,7 +282,7 @@ export default function CashFlowPage() {
                       <td className="px-4 py-2.5 text-right text-[12px] text-red-700">{fmtPlain(m.open_ap)}</td>
                       <td className={`px-4 py-2.5 text-right text-[12px] font-medium ${entYtdOps >= 0 ? "text-emerald-600" : "text-red-600"}`}>{fmt(entYtdOps)}</td>
                       <td className={`px-4 py-2.5 text-right text-[12px] font-semibold ${entYtdNet >= 0 ? "text-emerald-700" : "text-red-700"}`}>{fmt(entYtdNet)}</td>
-                      <td className="px-4 py-2.5 text-right text-[12px] text-gray-600">{bk.accounts.length} accounts</td>
+                      <td className="px-4 py-2.5 text-right text-[12px] text-gray-600">{bk ? `${bk.accounts.length} accounts` : "—"}</td>
                     </tr>
                   );
                 })}
@@ -265,7 +293,9 @@ export default function CashFlowPage() {
                   <td className="px-4 py-2.5 text-right text-[12px] font-bold text-red-700">{fmtPlain(totalAP)}</td>
                   <td className={`px-4 py-2.5 text-right text-[12px] font-bold ${ytdOps >= 0 ? "text-emerald-700" : "text-red-700"}`}>{fmt(ytdOps)}</td>
                   <td className={`px-4 py-2.5 text-right text-[12px] font-black ${ytdNet >= 0 ? "text-emerald-700" : "text-red-700"}`}>{fmt(ytdNet)}</td>
-                  <td className="px-4 py-2.5 text-right text-[12px] font-bold text-gray-700">{slugs.reduce((s, slug) => s + ALL_BANKING[slug].accounts.length, 0)} accounts</td>
+                  <td className="px-4 py-2.5 text-right text-[12px] font-bold text-gray-700">
+                    {allBanking ? `${slugs.reduce((s, slug) => s + allBanking[slug].accounts.length, 0)} accounts` : "—"}
+                  </td>
                 </tr>
               </tbody>
             </table>

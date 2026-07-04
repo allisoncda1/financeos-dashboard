@@ -1,16 +1,9 @@
-import { useDashboardData } from "@/hooks/useApi";
-
 import { useMemo } from "react";
-import { getMockData, getFinancials } from "@/lib/mock";
+import { useDashboardData, useAllEntityFinancials } from "@/hooks/useApi";
 import { ENTITY_SLUGS, ENTITY_CONFIG, type EntitySlug } from "@/lib/entities";
 import { computeHealthScore } from "@/lib/briefing";
 import { useEntitySelection } from "@/lib/entity-context";
 import { Clock, TrendingUp, TrendingDown, Minus } from "lucide-react";
-
-const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun"];
-
-const ALL_DATA = getMockData();
-const ALL_FINS = Object.fromEntries(ENTITY_SLUGS.map(s => [s, getFinancials(s)])) as Record<EntitySlug, ReturnType<typeof getFinancials>>;
 
 function fmt(n: number) {
   if (Math.abs(n) >= 1_000_000) return `$${(Math.abs(n) / 1_000_000).toFixed(2)}M`;
@@ -19,65 +12,119 @@ function fmt(n: number) {
 }
 function pct(n: number) { return `${n >= 0 ? "+" : ""}${n.toFixed(1)}%`; }
 
-const SNAPSHOT_PERIODS = [
-  { id: "ytd-2026", label: "YTD 2026",  sublabel: "Jan–Jun 2026",   isCurrent: true },
-  { id: "q1-2026",  label: "Q1 2026",   sublabel: "Jan–Mar 2026",   isCurrent: false },
-  { id: "fy-2025",  label: "FY 2025",   sublabel: "Full year 2025", isCurrent: false },
-  { id: "q3-2025",  label: "Q3 2025",   sublabel: "Jul–Sep 2025",   isCurrent: false },
-];
-
-// Scale factors applied to a "base" derived from selected entities
-// so the history cards respond to entity selection in a proportional way
-const PERIOD_SCALE = {
-  "ytd-2026": 1.0,
-  "q1-2026":  0.443,  // ~Q1 / YTD
-  "fy-2025":  1.754,  // full year 2025 approx
-  "q3-2025":  0.410,  // Q3 approx
+type MonthlyPoint = {
+  label: string;
+  revenue: number;
+  net_income: number;
+  gross_profit: number;
+  opex: number;
+  net_margin: number;
+  gross_margin: number;
 };
+
+function summarize(series: MonthlyPoint[]) {
+  const revenue = series.reduce((s, m) => s + m.revenue, 0);
+  const net_income = series.reduce((s, m) => s + m.net_income, 0);
+  return {
+    revenue,
+    net_income,
+    net_margin: revenue > 0 ? (net_income / revenue) * 100 : 0,
+  };
+}
 
 export default function HistoryPage() {
   const { selected } = useEntitySelection();
+  const { data, source } = useDashboardData();
+  const { data: allFins, source: finsSource } = useAllEntityFinancials();
+
   const slugs = useMemo(() => ENTITY_SLUGS.filter(s => selected.includes(s)), [selected]);
 
-  const monthlySeries = useMemo(() => MONTHS.map((label, i) => {
-    const revenue      = slugs.reduce((s, slug) => s + ALL_FINS[slug].monthly_pl[i].revenue, 0);
-    const net_income   = slugs.reduce((s, slug) => s + ALL_FINS[slug].monthly_pl[i].net_income, 0);
-    const gross_profit = slugs.reduce((s, slug) => s + ALL_FINS[slug].monthly_pl[i].gross_profit, 0);
-    const opex         = slugs.reduce((s, slug) => s + ALL_FINS[slug].monthly_pl[i].opex, 0);
-    const net_margin   = revenue > 0 ? (net_income / revenue) * 100 : 0;
-    const gross_margin = revenue > 0 ? (gross_profit / revenue) * 100 : 0;
-    return { label, revenue, net_income, gross_profit, opex, net_margin, gross_margin };
-  }), [slugs]);
+  const months = useMemo(() => {
+    if (!allFins) return [] as string[];
+    const set = new Set<string>();
+    for (const slug of slugs) for (const p of allFins[slug].monthly_pl) set.add(p.month);
+    return [...set].sort();
+  }, [slugs, allFins]);
 
-  const ytdRevenue   = useMemo(() => monthlySeries.reduce((s, m) => s + m.revenue, 0), [monthlySeries]);
-  const ytdNetIncome = useMemo(() => monthlySeries.reduce((s, m) => s + m.net_income, 0), [monthlySeries]);
-  const ytdMargin    = ytdRevenue > 0 ? (ytdNetIncome / ytdRevenue) * 100 : 0;
-  const totalCash    = useMemo(() => slugs.reduce((s, slug) => s + ALL_DATA.metrics[slug].cash_on_hand, 0), [slugs]);
-  const totalAR      = useMemo(() => slugs.reduce((s, slug) => s + ALL_DATA.metrics[slug].open_ar, 0), [slugs]);
+  const monthlySeries: MonthlyPoint[] = useMemo(() => {
+    if (!allFins) return [];
+    const byMonth: Partial<Record<EntitySlug, Map<string, { revenue: number; net_income: number; gross_profit: number; opex: number }>>> = {};
+    for (const slug of slugs) {
+      byMonth[slug] = new Map(allFins[slug].monthly_pl.map(p => [p.month, p]));
+    }
+    return months.map(label => {
+      const revenue      = slugs.reduce((s, slug) => s + (byMonth[slug]?.get(label)?.revenue ?? 0), 0);
+      const net_income   = slugs.reduce((s, slug) => s + (byMonth[slug]?.get(label)?.net_income ?? 0), 0);
+      const gross_profit = slugs.reduce((s, slug) => s + (byMonth[slug]?.get(label)?.gross_profit ?? 0), 0);
+      const opex         = slugs.reduce((s, slug) => s + (byMonth[slug]?.get(label)?.opex ?? 0), 0);
+      const net_margin   = revenue > 0 ? (net_income / revenue) * 100 : 0;
+      const gross_margin = revenue > 0 ? (gross_profit / revenue) * 100 : 0;
+      return { label, revenue, net_income, gross_profit, opex, net_margin, gross_margin };
+    });
+  }, [slugs, allFins, months]);
 
-  // Derived period snapshots, scaled to selected entities
-  const periodSnaps = useMemo(() => Object.fromEntries(
-    Object.entries(PERIOD_SCALE).map(([id, scale]) => [id, {
-      revenue:    Math.round(ytdRevenue   * scale),
-      net_income: Math.round(ytdNetIncome * scale),
-      net_margin: ytdMargin,
-      cash:       Math.round(totalCash    * (id === "ytd-2026" ? 1 : scale * 0.9)),
-      ar:         Math.round(totalAR      * (id === "ytd-2026" ? 1 : scale * 0.92)),
-    }])
-  ), [ytdRevenue, ytdNetIncome, ytdMargin, totalCash, totalAR]);
+  const totalCash = useMemo(() => (data ? slugs.reduce((s, slug) => s + data.metrics[slug].cash_on_hand, 0) : 0), [slugs, data]);
+  const totalAR   = useMemo(() => (data ? slugs.reduce((s, slug) => s + data.metrics[slug].open_ar, 0) : 0), [slugs, data]);
 
-  const healthHistory = useMemo(() => slugs.map(slug => {
-    const baseScore = computeHealthScore(ALL_DATA.metrics[slug]);
-    const cfg = ENTITY_CONFIG[slug];
-    const scores = MONTHS.map((_, i) => Math.max(30, Math.min(100, baseScore + (i - 5) * 2)));
-    return { slug, cfg, scores, current: baseScore };
-  }), [slugs]);
+  // Real period slices derived from the live monthly series (no synthetic
+  // prior-year approximations — only periods actually present in the data).
+  const periods = useMemo(() => {
+    const n = monthlySeries.length;
+    const list: { id: string; label: string; sublabel: string; isCurrent: boolean; snap: ReturnType<typeof summarize> }[] = [];
+    if (n === 0) return list;
+    list.push({
+      id: "ytd",
+      label: "YTD",
+      sublabel: `${monthlySeries[0].label} – ${monthlySeries[n - 1].label}`,
+      isCurrent: true,
+      snap: summarize(monthlySeries),
+    });
+    if (n >= 2) {
+      const firstHalf = monthlySeries.slice(0, Math.ceil(n / 2));
+      const secondHalf = monthlySeries.slice(Math.ceil(n / 2));
+      if (firstHalf.length > 0) {
+        list.push({
+          id: "first-half",
+          label: "First Half",
+          sublabel: `${firstHalf[0].label} – ${firstHalf[firstHalf.length - 1].label}`,
+          isCurrent: false,
+          snap: summarize(firstHalf),
+        });
+      }
+      if (secondHalf.length > 0) {
+        list.push({
+          id: "second-half",
+          label: "Recent Half",
+          sublabel: `${secondHalf[0].label} – ${secondHalf[secondHalf.length - 1].label}`,
+          isCurrent: false,
+          snap: summarize(secondHalf),
+        });
+      }
+    }
+    list.push({
+      id: "latest",
+      label: "Latest Month",
+      sublabel: monthlySeries[n - 1].label,
+      isCurrent: false,
+      snap: summarize(monthlySeries.slice(n - 1)),
+    });
+    return list;
+  }, [monthlySeries]);
 
-  const moMChanges = useMemo(() => MONTHS.slice(1).map((label, i) => {
-    const curr = monthlySeries[i + 1];
+  const healthScores = useMemo(() => {
+    if (!data) return [];
+    return slugs.map(slug => ({
+      slug,
+      cfg: ENTITY_CONFIG[slug],
+      score: computeHealthScore(data.metrics[slug]),
+    }));
+  }, [slugs, data]);
+
+  const moMChanges = useMemo(() => monthlySeries.slice(1).map((curr, i) => {
     const prev = monthlySeries[i];
     return {
-      label,
+      label: curr.label,
+      prevLabel: prev.label,
       revChange:    prev.revenue > 0    ? ((curr.revenue - prev.revenue) / prev.revenue) * 100 : 0,
       niChange:     prev.net_income > 0 ? ((curr.net_income - prev.net_income) / prev.net_income) * 100 : 0,
       marginChange: curr.net_margin - prev.net_margin,
@@ -88,6 +135,15 @@ export default function HistoryPage() {
   const worstNetMonth = [...monthlySeries].sort((a, b) => a.net_income - b.net_income)[0];
   const maxRev        = Math.max(1, ...monthlySeries.map(m => m.revenue));
   const H = 80;
+  const chartW = Math.max(monthlySeries.length, 1) * 100;
+
+  if (!data || !allFins) {
+    return (
+      <div className="h-full flex items-center justify-center text-[13px] text-gray-400">
+        {source === "loading" || finsSource === "loading" ? "Loading…" : "Data unavailable"}
+      </div>
+    );
+  }
 
   if (slugs.length === 0) {
     return (
@@ -101,6 +157,8 @@ export default function HistoryPage() {
     );
   }
 
+  const periodLabel = months.length > 0 ? `${months[0]} – ${months[months.length - 1]}` : "";
+
   return (
     <div className="h-full flex flex-col overflow-hidden bg-[#F4F5F7]">
       <div className="flex-shrink-0 bg-white border-b border-gray-200 px-4 sm:px-6 py-3 sm:py-4 flex items-center justify-between gap-3">
@@ -110,29 +168,35 @@ export default function HistoryPage() {
           </div>
           <div>
             <h1 className="text-[14px] sm:text-[15px] font-bold text-gray-900">History / Time Machine</h1>
-            <p className="text-[10px] sm:text-[11px] text-gray-400">Mock data · YTD 2026 + approximated prior periods</p>
+            <p className="text-[10px] sm:text-[11px] text-gray-400">{periodLabel ? `Live data · ${periodLabel}` : "Live data"}</p>
           </div>
         </div>
-        <span className="text-[10px] px-2.5 py-1 bg-violet-50 text-violet-700 rounded-full font-semibold flex-shrink-0">Phase 1 — Mock</span>
       </div>
 
       <div className="flex-1 overflow-y-auto px-3 sm:px-6 py-4 sm:py-5 space-y-4 sm:space-y-5">
 
+        {monthlySeries.length === 0 ? (
+          <div className="bg-white rounded-xl border border-gray-200 p-8 text-center">
+            <p className="text-[13px] font-semibold text-gray-500">No monthly history available</p>
+            <p className="text-[12px] text-gray-400 mt-1">The data pipeline has not produced monthly P&L data for the selected entities yet.</p>
+          </div>
+        ) : (
+          <>
         {/* Period comparison cards */}
         <div>
           <p className="text-[11px] font-semibold text-gray-500 uppercase tracking-widest mb-3">Period Comparison</p>
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-            {SNAPSHOT_PERIODS.map(period => {
-              const snap = periodSnaps[period.id];
+            {periods.map(period => {
+              const snap = period.snap;
               const isYTD = period.isCurrent;
-              const ytd = periodSnaps["ytd-2026"];
+              const ytd = periods[0]?.snap;
               const revDiff = isYTD || !ytd ? null : ((ytd.revenue - snap.revenue) / Math.max(snap.revenue, 1)) * 100;
               return (
                 <div key={period.id} className={`bg-white rounded-xl border p-3 sm:p-4 ${isYTD ? "border-emerald-300 ring-1 ring-emerald-200" : "border-gray-200"}`}>
                   <div className="flex items-center justify-between mb-2 gap-1">
                     <div className="min-w-0">
                       <p className="text-[12px] font-bold text-gray-900 truncate">{period.label}</p>
-                      <p className="text-[10px] text-gray-400">{period.sublabel}</p>
+                      <p className="text-[10px] text-gray-400 truncate">{period.sublabel}</p>
                     </div>
                     {isYTD && <span className="text-[9px] font-bold px-1.5 py-0.5 bg-emerald-100 text-emerald-700 rounded-full flex-shrink-0">NOW</span>}
                   </div>
@@ -149,10 +213,18 @@ export default function HistoryPage() {
                       <span className="text-[10px] text-gray-400">Net Margin</span>
                       <span className="text-[11px] font-semibold text-gray-700">{snap.net_margin.toFixed(1)}%</span>
                     </div>
-                    <div className="flex items-center justify-between">
-                      <span className="text-[10px] text-gray-400">Cash</span>
-                      <span className="text-[11px] font-semibold text-gray-700">{fmt(snap.cash)}</span>
-                    </div>
+                    {isYTD && (
+                      <div className="flex items-center justify-between">
+                        <span className="text-[10px] text-gray-400">Cash</span>
+                        <span className="text-[11px] font-semibold text-gray-700">{fmt(totalCash)}</span>
+                      </div>
+                    )}
+                    {isYTD && (
+                      <div className="flex items-center justify-between">
+                        <span className="text-[10px] text-gray-400">Open AR</span>
+                        <span className="text-[11px] font-semibold text-gray-700">{fmt(totalAR)}</span>
+                      </div>
+                    )}
                   </div>
                   {!isYTD && revDiff !== null && (
                     <div className="mt-2 pt-2 border-t border-gray-100 flex items-center gap-1">
@@ -175,15 +247,15 @@ export default function HistoryPage() {
 
         {/* Revenue trend chart */}
         <div className="bg-white rounded-xl border border-gray-200 p-4">
-          <h3 className="text-[13px] font-semibold text-gray-900 mb-1">Portfolio Revenue Trend — Jan–Jun 2026</h3>
+          <h3 className="text-[13px] font-semibold text-gray-900 mb-1">Portfolio Revenue Trend{periodLabel ? ` — ${periodLabel}` : ""}</h3>
           <div className="flex flex-wrap items-center gap-x-3 gap-y-1 mb-4">
             <span className="text-[11px] text-gray-400">Best month: <span className="font-semibold text-gray-700">{bestRevMonth?.label} ({fmt(bestRevMonth?.revenue ?? 0)})</span></span>
             <span className="text-gray-200 hidden sm:block">|</span>
             <span className="text-[11px] text-gray-400">Lowest NI: <span className="font-semibold text-gray-700">{worstNetMonth?.label} ({fmt(worstNetMonth?.net_income ?? 0)})</span></span>
           </div>
-          <svg viewBox={`0 0 600 ${H + 20}`} className="w-full overflow-visible" style={{ height: H + 20 }}>
+          <svg viewBox={`0 0 ${chartW} ${H + 20}`} className="w-full overflow-visible" style={{ height: H + 20 }}>
             {[0.25, 0.5, 0.75, 1].map(r => (
-              <line key={r} x1={0} x2={600} y1={H - r * H} y2={H - r * H} stroke="#F3F4F6" strokeWidth="1" />
+              <line key={r} x1={0} x2={chartW} y1={H - r * H} y2={H - r * H} stroke="#F3F4F6" strokeWidth="1" />
             ))}
             {monthlySeries.map((m, i) => {
               const barW = 50;
@@ -194,15 +266,15 @@ export default function HistoryPage() {
             {monthlySeries.map((m, i) => {
               const barW = 25;
               const x = i * 100 + 25;
-              const niH = (m.net_income / maxRev) * H;
+              const niH = Math.max(0, (m.net_income / maxRev) * H);
               return <rect key={`ni-${i}`} x={x} y={H - niH} width={barW} height={niH} rx={3} fill="#10B981" />;
             })}
             {(() => {
               const pts = monthlySeries.map((m, i) => `${i * 100 + 50},${H - (m.net_margin / 50) * H}`).join(" ");
               return <polyline points={pts} fill="none" stroke="#8B5CF6" strokeWidth="2" strokeLinejoin="round" />;
             })()}
-            {MONTHS.map((label, i) => (
-              <text key={label} x={i * 100 + 50} y={H + 14} textAnchor="middle" fontSize="10" fill="#9CA3AF">{label}</text>
+            {monthlySeries.map((m, i) => (
+              <text key={m.label} x={i * 100 + 50} y={H + 14} textAnchor="middle" fontSize="10" fill="#9CA3AF">{m.label}</text>
             ))}
           </svg>
           <div className="flex items-center gap-5 mt-2">
@@ -213,52 +285,53 @@ export default function HistoryPage() {
         </div>
 
         {/* Month-over-month changes */}
-        <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
-          <div className="px-4 py-3 border-b border-gray-100">
-            <h3 className="text-[13px] font-semibold text-gray-900">Month-over-Month Changes</h3>
-          </div>
-          <div className="overflow-x-auto">
-            <table className="w-full min-w-[400px]">
-              <thead className="sticky top-0 z-10 bg-white border-b border-gray-100">
-                <tr>
-                  <th className="text-left px-4 py-2.5 text-[10px] font-semibold text-gray-400 uppercase tracking-wide">Period</th>
-                  <th className="text-right px-4 py-2.5 text-[10px] font-semibold text-gray-400 uppercase tracking-wide">Revenue Δ</th>
-                  <th className="text-right px-4 py-2.5 text-[10px] font-semibold text-gray-400 uppercase tracking-wide">Net Income Δ</th>
-                  <th className="text-right px-4 py-2.5 text-[10px] font-semibold text-gray-400 uppercase tracking-wide">Margin Δ (pp)</th>
-                </tr>
-              </thead>
-              <tbody>
-                {moMChanges.map((row, i) => (
-                  <tr key={row.label} className="border-t border-gray-50 hover:bg-gray-50 transition-colors">
-                    <td className="px-4 py-2.5 text-[12px] text-gray-600">{MONTHS[i]} → {row.label}</td>
-                    <td className="px-4 py-2.5 text-right"><ChangeChip value={row.revChange} suffix="%" /></td>
-                    <td className="px-4 py-2.5 text-right"><ChangeChip value={row.niChange} suffix="%" /></td>
-                    <td className="px-4 py-2.5 text-right"><ChangeChip value={row.marginChange} suffix="pp" /></td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </div>
-
-        {/* Entity health score history */}
-        {healthHistory.length > 0 && (
+        {moMChanges.length > 0 && (
           <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
             <div className="px-4 py-3 border-b border-gray-100">
-              <h3 className="text-[13px] font-semibold text-gray-900">Entity Health Score — Monthly Trend</h3>
-              <p className="text-[11px] text-gray-400">Penalty-based score (100 = healthy)</p>
+              <h3 className="text-[13px] font-semibold text-gray-900">Month-over-Month Changes</h3>
             </div>
             <div className="overflow-x-auto">
-              <table className="w-full min-w-[500px]">
+              <table className="w-full min-w-[400px]">
                 <thead className="sticky top-0 z-10 bg-white border-b border-gray-100">
                   <tr>
-                    <th className="text-left px-4 py-2.5 text-[10px] font-semibold text-gray-400 uppercase tracking-wide w-36">Entity</th>
-                    {MONTHS.map(m => <th key={m} className="text-right px-3 py-2.5 text-[10px] font-semibold text-gray-400 uppercase tracking-wide">{m}</th>)}
-                    <th className="text-right px-4 py-2.5 text-[10px] font-semibold text-gray-600 uppercase tracking-wide bg-gray-50">Current</th>
+                    <th className="text-left px-4 py-2.5 text-[10px] font-semibold text-gray-400 uppercase tracking-wide">Period</th>
+                    <th className="text-right px-4 py-2.5 text-[10px] font-semibold text-gray-400 uppercase tracking-wide">Revenue Δ</th>
+                    <th className="text-right px-4 py-2.5 text-[10px] font-semibold text-gray-400 uppercase tracking-wide">Net Income Δ</th>
+                    <th className="text-right px-4 py-2.5 text-[10px] font-semibold text-gray-400 uppercase tracking-wide">Margin Δ (pp)</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {healthHistory.map(({ slug, cfg, scores, current }) => (
+                  {moMChanges.map(row => (
+                    <tr key={row.label} className="border-t border-gray-50 hover:bg-gray-50 transition-colors">
+                      <td className="px-4 py-2.5 text-[12px] text-gray-600">{row.prevLabel} → {row.label}</td>
+                      <td className="px-4 py-2.5 text-right"><ChangeChip value={row.revChange} suffix="%" /></td>
+                      <td className="px-4 py-2.5 text-right"><ChangeChip value={row.niChange} suffix="%" /></td>
+                      <td className="px-4 py-2.5 text-right"><ChangeChip value={row.marginChange} suffix="pp" /></td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        )}
+
+        {/* Entity health scores (current, from live metrics) */}
+        {healthScores.length > 0 && (
+          <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
+            <div className="px-4 py-3 border-b border-gray-100">
+              <h3 className="text-[13px] font-semibold text-gray-900">Entity Health Score — Current</h3>
+              <p className="text-[11px] text-gray-400">Penalty-based score computed from live metrics (100 = healthy). Monthly trend will be available once historical snapshots are stored.</p>
+            </div>
+            <div className="overflow-x-auto">
+              <table className="w-full min-w-[300px]">
+                <thead className="sticky top-0 z-10 bg-white border-b border-gray-100">
+                  <tr>
+                    <th className="text-left px-4 py-2.5 text-[10px] font-semibold text-gray-400 uppercase tracking-wide">Entity</th>
+                    <th className="text-right px-4 py-2.5 text-[10px] font-semibold text-gray-600 uppercase tracking-wide bg-gray-50">Current Score</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {healthScores.map(({ slug, cfg, score }) => (
                     <tr key={slug} className="border-t border-gray-50 hover:bg-gray-50 transition-colors">
                       <td className="px-4 py-2.5">
                         <div className="flex items-center gap-2">
@@ -266,8 +339,7 @@ export default function HistoryPage() {
                           <span className="text-[12px] font-medium text-gray-800">{cfg.name}</span>
                         </div>
                       </td>
-                      {scores.map((score, i) => <td key={i} className="px-3 py-2.5 text-right"><ScoreChip score={score} /></td>)}
-                      <td className="px-4 py-2.5 text-right bg-gray-50"><ScoreChip score={current} bold /></td>
+                      <td className="px-4 py-2.5 text-right bg-gray-50"><ScoreChip score={score} bold /></td>
                     </tr>
                   ))}
                 </tbody>
@@ -286,7 +358,7 @@ export default function HistoryPage() {
               <thead className="sticky top-0 z-10 bg-white border-b border-gray-100">
                 <tr>
                   <th className="text-left px-4 py-2.5 text-[10px] font-semibold text-gray-400 uppercase tracking-wide">Metric</th>
-                  {MONTHS.map(m => <th key={m} className="text-right px-3 py-2.5 text-[10px] font-semibold text-gray-400 uppercase tracking-wide">{m}</th>)}
+                  {monthlySeries.map(m => <th key={m.label} className="text-right px-3 py-2.5 text-[10px] font-semibold text-gray-400 uppercase tracking-wide">{m.label}</th>)}
                 </tr>
               </thead>
               <tbody>
@@ -306,17 +378,8 @@ export default function HistoryPage() {
             </table>
           </div>
         </div>
-
-        {/* Phase 2 note */}
-        <div className="flex items-start gap-2 px-4 py-3 bg-violet-50 border border-violet-200 rounded-xl">
-          <div className="w-4 h-4 rounded-full bg-violet-500 flex items-center justify-center flex-shrink-0 mt-0.5">
-            <span className="text-white text-[9px] font-bold">i</span>
-          </div>
-          <p className="text-[11px] text-violet-700">
-            <span className="font-semibold">Phase 2:</span> Time Machine will display real historical snapshots from Google Shared Drive data pipeline runs,
-            enabling side-by-side comparison of any two periods with full drill-down to transaction level.
-          </p>
-        </div>
+          </>
+        )}
       </div>
     </div>
   );
