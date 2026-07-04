@@ -104,17 +104,17 @@ def _count_raw(conn, entity_id: str, object_type: str) -> int:
         return cur.fetchone()["count"]
 
 
-def run_limited_sync(env: dict, company: dict, object_types: list, state_mgr, data_conn) -> dict:
+def run_limited_sync(cfg, company: dict, object_types: list, state_mgr, data_conn) -> dict:
     """
     Run the sync engine for one company, limited to the given object types.
     Returns a summary dict with counts.
     """
-    from connectors.quickbooks import refresh_access_token, save_rotated_tokens
+    from connectors.quickbooks import refresh_access_token
     from financeos_core.sync.extractor import QBOExtractor
     from financeos_core.sync.normalizer import normalize_account, normalize_customer, normalize_vendor
     from financeos_core.sync.loader import CoreLoader
 
-    realm_id = company.get("realm_id") or company.get("realmId") or company.get("realm")
+    realm_id = company.get("realm_id")
     if not realm_id:
         raise ValueError(f"No realm_id found for company: {list(company.keys())}")
 
@@ -128,9 +128,11 @@ def run_limited_sync(env: dict, company: dict, object_types: list, state_mgr, da
     company_name = company.get("name", "unknown")
     log.info(f"Entity resolved: {company_name} → DB id={entity_id[:8]}...")
 
-    # Refresh QBO token (same pattern as runner.py)
+    # Refresh QBO token
+    env = cfg.to_env_dict()
     token, new_rt = refresh_access_token(env, company["refresh_token"])
-    save_rotated_tokens({company_name: new_rt})
+    if new_rt != company["refresh_token"]:
+        cfg.note_rotated_token(company_name, new_rt)
     log.info("QBO token refreshed")
 
     normalizers = {
@@ -240,10 +242,14 @@ def main():
     parser.add_argument("--no-second-run", action="store_true", help="Skip idempotency check")
     args = parser.parse_args()
 
-    from connectors.quickbooks import load_companies as qbo_load_companies
-    companies = qbo_load_companies()
+    from financeos_core import config as qbo_config
+    from financeos_core.db.connection import get_connection
+    from financeos_core.sync.state import SyncStateManager
+
+    cfg = qbo_config.load()
+    companies = cfg.to_company_dicts()
     company = _find_company(companies, args.company_slug)
-    company_name = company.get("slug") or company.get("name") or "unknown"
+    company_name = company.get("name") or "unknown"
 
     log.info("=" * 60)
     log.info(f"FinanceOS Core — Safe Sync Validation")
@@ -253,11 +259,6 @@ def main():
     log.info("=" * 60)
 
     # ── Connect ───────────────────────────────────────────────────────────────
-    from connectors.quickbooks import load_env
-    from financeos_core.db.connection import get_connection
-    from financeos_core.sync.state import SyncStateManager
-
-    env = load_env()
     state_conn = get_connection()
     data_conn = get_connection()
     state_mgr = SyncStateManager(state_conn)
@@ -275,7 +276,7 @@ def main():
     if not entity_id:
         log.error(
             f"BLOCKED: realm_id '{realm_id}' not found in entities table. "
-            f"Seed the entities or check that the QBO realm IDs match companies.json."
+            f"Seed the entities or check that QBO_REALM_* secrets match the seeded values."
         )
         sys.exit(1)
 
@@ -298,7 +299,7 @@ def main():
 
     # ── Run 1 ─────────────────────────────────────────────────────────────────
     log.info("\n── Run 1 ────────────────────────────────────────────────────")
-    run1 = run_limited_sync(env, company, object_types, state_mgr, data_conn)
+    run1 = run_limited_sync(cfg, company, object_types, state_mgr, data_conn)
 
     post1_accounts = _count_table(data_conn, "accounts", entity_id)
     post1_customers = _count_table(data_conn, "customers", entity_id)
@@ -315,7 +316,7 @@ def main():
 
     if not args.no_second_run:
         log.info("\n── Run 2 (idempotency check) ────────────────────────────────")
-        run2 = run_limited_sync(env, company, object_types, state_mgr, data_conn)
+        run2 = run_limited_sync(cfg, company, object_types, state_mgr, data_conn)
 
         post2_accounts = _count_table(data_conn, "accounts", entity_id)
         post2_customers = _count_table(data_conn, "customers", entity_id)

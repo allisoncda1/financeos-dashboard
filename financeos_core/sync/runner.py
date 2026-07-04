@@ -14,7 +14,7 @@ Entry points:
     python3 -m financeos_core.sync.runner manual
 
 Architecture:
-    1. Load companies.json (existing credentials — unchanged)
+    1. Load configuration from environment variables via financeos_core.config
     2. For each entity (sequential — never parallel):
         a. Refresh QBO access token
         b. Resolve entity DB UUID from realm_id
@@ -47,12 +47,8 @@ _ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__
 if _ROOT not in sys.path:
     sys.path.insert(0, _ROOT)
 
-from connectors.quickbooks import (
-    load_env,
-    load_companies,
-    refresh_access_token,
-    save_rotated_tokens,
-)
+from connectors.quickbooks import refresh_access_token
+from financeos_core import config as qbo_config
 from financeos_core.db.connection import get_connection
 from financeos_core.sync.extractor import QBOExtractor, INCREMENTAL_ENTITIES, REPORT_TYPES
 from financeos_core.sync.normalizer import (
@@ -106,7 +102,7 @@ ALL_REPORT_TYPES = [
 # ── Entity sync ───────────────────────────────────────────────────────────────
 
 def sync_entity(
-    env: dict,
+    cfg: "qbo_config.QBOConfig",
     company: dict,
     entity_id: str,
     sync_type: str,
@@ -117,8 +113,8 @@ def sync_entity(
     Run a full sync for one entity (company).
 
     Args:
-        env:       Loaded .env dict (QBO credentials)
-        company:   Dict from companies.json { name, realm_id, refresh_token }
+        cfg:       QBOConfig loaded by config.load() — the only source of credentials
+        company:   Dict { name, realm_id, refresh_token } from cfg.to_company_dicts()
         entity_id: DB UUID of the entity (from entities table)
         sync_type: 'full_backfill' | 'incremental' | 'manual'
         state_mgr: SyncStateManager instance (uses its own connection)
@@ -134,9 +130,11 @@ def sync_entity(
     log.info(f"[runner] ── {name} ({sync_type}) ──")
 
     # Refresh QBO token
+    env = cfg.to_env_dict()
     try:
         token, new_rt = refresh_access_token(env, company["refresh_token"])
-        save_rotated_tokens({name: new_rt})
+        if new_rt != company["refresh_token"]:
+            cfg.note_rotated_token(name, new_rt)
     except Exception as exc:
         msg = f"Token refresh failed for {name}: {exc}"
         log.error(f"[runner] {msg}")
@@ -152,7 +150,7 @@ def sync_entity(
     )
     log.info(f"[runner] {name}: sync_run created → {sync_run_id}")
 
-    extractor = QBOExtractor(env=env, token=token, realm_id=realm)
+    extractor = QBOExtractor(env=cfg.to_env_dict(), token=token, realm_id=realm)
     loader    = CoreLoader(conn=data_conn)
 
     try:
@@ -400,12 +398,17 @@ def run(sync_type: str = "incremental") -> dict:
 
     run_start = datetime.datetime.now()
 
-    # Load credentials (existing mechanism — unchanged)
-    env       = load_env()
-    companies = load_companies()
+    # Load configuration from environment (no files, no credentials on disk)
+    try:
+        cfg = qbo_config.load()
+    except RuntimeError as exc:
+        log.error(f"[runner] Configuration error: {exc}")
+        return {"error": str(exc), "entities": []}
+
+    companies = cfg.to_company_dicts()
 
     if not companies:
-        log.error("[runner] No companies configured in companies.json.")
+        log.error("[runner] No companies configured.")
         return {"error": "No companies found", "entities": []}
 
     # Open two connections:
@@ -445,7 +448,7 @@ def run(sync_type: str = "incremental") -> dict:
 
             try:
                 counts = sync_entity(
-                    env=env,
+                    cfg=cfg,
                     company=company,
                     entity_id=entity_id,
                     sync_type=sync_type,
