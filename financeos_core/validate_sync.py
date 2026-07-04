@@ -166,32 +166,45 @@ def run_limited_sync(cfg, company: dict, object_types: list, state_mgr, data_con
             log.info(f"  {obj_type}: fetched {n} records")
             total_fetched += n
 
-            inserted = 0
-            updated = 0
+            # ── Step 1: batch-upsert qbo_raw ─────────────────────────────
+            raw_rows = []
+            skipped = 0
             for raw in records:
                 qbo_id = str(raw.get("Id", ""))
-                sync_token = str(raw.get("SyncToken", "")) or None
+                if not qbo_id:
+                    skipped += 1
+                    continue
+                raw_rows.append({
+                    "entity_id":      entity_id,
+                    "object_type":    obj_type,
+                    "qbo_id":         qbo_id,
+                    "qbo_sync_token": str(raw.get("SyncToken", "")) or None,
+                    "payload":        raw,
+                    "sync_run_id":    sync_run_id,
+                    "is_deleted":     not bool(raw.get("Active", True)),
+                })
 
-                is_new = loader.upsert_raw(
-                    entity_id=entity_id,
-                    object_type=obj_type,
-                    qbo_id=qbo_id,
-                    qbo_sync_token=sync_token,
-                    payload=raw,
-                    sync_run_id=sync_run_id,
-                )
-                if is_new:
-                    inserted += 1
-                else:
-                    updated += 1
+            loader.upsert_raw_batch(raw_rows)
 
-                normalized = normalizers[obj_type](entity_id, raw)
-                if obj_type == "Account":
-                    loader.upsert_account(normalized)
-                elif obj_type == "Customer":
-                    loader.upsert_customer(normalized)
-                elif obj_type == "Vendor":
-                    loader.upsert_vendor(normalized)
+            # ── Step 2: normalize + batch-upsert typed table ─────────────
+            normalize_fn = normalizers[obj_type]
+            normalized_rows = []
+            for r in raw_rows:
+                rec = normalize_fn(entity_id, r["payload"])
+                if rec is not None:
+                    normalized_rows.append(rec)
+
+            if obj_type == "Account":
+                processed = loader.upsert_accounts_batch(normalized_rows)
+            elif obj_type == "Customer":
+                processed = loader.upsert_customers_batch(normalized_rows)
+            elif obj_type == "Vendor":
+                processed = loader.upsert_vendors_batch(normalized_rows)
+            else:
+                processed = 0
+
+            inserted = processed
+            updated = 0
 
             data_conn.commit()
 

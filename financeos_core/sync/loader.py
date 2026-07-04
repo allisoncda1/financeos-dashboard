@@ -80,6 +80,208 @@ class CoreLoader:
             )
             return cur.rowcount == 1
 
+    def upsert_raw_batch(
+        self,
+        rows: list,
+        batch_size: int = 500,
+    ) -> int:
+        """
+        Batch-upsert a list of raw QBO objects into qbo_raw.
+        Each item in rows must be a dict with keys:
+            entity_id, object_type, qbo_id, qbo_sync_token,
+            payload, sync_run_id, is_deleted
+        Returns total rows processed (inserts + updates).
+        """
+        if not rows:
+            return 0
+        tuples = [
+            (
+                r["entity_id"],
+                r["object_type"],
+                r["qbo_id"],
+                r["qbo_sync_token"],
+                psycopg2.extras.Json(r["payload"]),
+                r["sync_run_id"],
+                r["is_deleted"],
+            )
+            for r in rows
+        ]
+        total = 0
+        n_batches = (len(tuples) + batch_size - 1) // batch_size
+        for i in range(0, len(tuples), batch_size):
+            chunk = tuples[i : i + batch_size]
+            batch_num = i // batch_size + 1
+            with self._cursor() as cur:
+                psycopg2.extras.execute_values(
+                    cur,
+                    """
+                    INSERT INTO qbo_raw (
+                        entity_id, object_type, qbo_id, qbo_sync_token,
+                        payload, synced_at, sync_run_id, is_deleted
+                    )
+                    VALUES %s
+                    ON CONFLICT (entity_id, object_type, qbo_id)
+                    DO UPDATE SET
+                        qbo_sync_token = EXCLUDED.qbo_sync_token,
+                        payload        = EXCLUDED.payload,
+                        synced_at      = now(),
+                        sync_run_id    = EXCLUDED.sync_run_id,
+                        is_deleted     = EXCLUDED.is_deleted
+                    """,
+                    chunk,
+                    template="(%s, %s, %s, %s, %s, now(), %s, %s)",
+                    page_size=batch_size,
+                )
+                total += cur.rowcount
+            log.info(f"[loader] qbo_raw batch {batch_num}/{n_batches}: {len(chunk)} records")
+        return total
+
+    def upsert_accounts_batch(self, records: list, batch_size: int = 500) -> int:
+        """
+        Batch-upsert normalized account records.
+        Each item must be a dict matching the accounts table columns.
+        Returns total rows processed.
+        """
+        if not records:
+            return 0
+        tuples = [
+            (
+                r["entity_id"], r["qbo_id"], r["name"], r["fully_qualified_name"],
+                r["account_type"], r["account_subtype"], r["classification"],
+                r["current_balance"], r["currency"], r["is_active"],
+                r["is_sub_account"], r["parent_qbo_id"],
+            )
+            for r in records
+        ]
+        total = 0
+        n_batches = (len(tuples) + batch_size - 1) // batch_size
+        for i in range(0, len(tuples), batch_size):
+            chunk = tuples[i : i + batch_size]
+            batch_num = i // batch_size + 1
+            with self._cursor() as cur:
+                psycopg2.extras.execute_values(
+                    cur,
+                    """
+                    INSERT INTO accounts (
+                        entity_id, qbo_id, name, fully_qualified_name,
+                        account_type, account_subtype, classification,
+                        current_balance, currency, is_active,
+                        is_sub_account, parent_qbo_id, synced_at
+                    )
+                    VALUES %s
+                    ON CONFLICT (entity_id, qbo_id)
+                    DO UPDATE SET
+                        name                 = EXCLUDED.name,
+                        fully_qualified_name = EXCLUDED.fully_qualified_name,
+                        account_type         = EXCLUDED.account_type,
+                        account_subtype      = EXCLUDED.account_subtype,
+                        classification       = EXCLUDED.classification,
+                        current_balance      = EXCLUDED.current_balance,
+                        currency             = EXCLUDED.currency,
+                        is_active            = EXCLUDED.is_active,
+                        is_sub_account       = EXCLUDED.is_sub_account,
+                        parent_qbo_id        = EXCLUDED.parent_qbo_id,
+                        synced_at            = now()
+                    """,
+                    chunk,
+                    template="(%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,now())",
+                    page_size=batch_size,
+                )
+                total += cur.rowcount
+            log.info(f"[loader] accounts batch {batch_num}/{n_batches}: {len(chunk)} records")
+        return total
+
+    def upsert_customers_batch(self, records: list, batch_size: int = 500) -> int:
+        """
+        Batch-upsert normalized customer records.
+        Returns total rows processed.
+        """
+        if not records:
+            return 0
+        tuples = [
+            (
+                r["entity_id"], r["qbo_id"], r["display_name"], r["email"],
+                r["phone"], r["balance"], r["currency"], r["is_active"],
+            )
+            for r in records
+        ]
+        total = 0
+        n_batches = (len(tuples) + batch_size - 1) // batch_size
+        for i in range(0, len(tuples), batch_size):
+            chunk = tuples[i : i + batch_size]
+            batch_num = i // batch_size + 1
+            with self._cursor() as cur:
+                psycopg2.extras.execute_values(
+                    cur,
+                    """
+                    INSERT INTO customers (
+                        entity_id, qbo_id, display_name, email, phone,
+                        balance, currency, is_active, synced_at
+                    )
+                    VALUES %s
+                    ON CONFLICT (entity_id, qbo_id)
+                    DO UPDATE SET
+                        display_name = EXCLUDED.display_name,
+                        email        = EXCLUDED.email,
+                        phone        = EXCLUDED.phone,
+                        balance      = EXCLUDED.balance,
+                        currency     = EXCLUDED.currency,
+                        is_active    = EXCLUDED.is_active,
+                        synced_at    = now()
+                    """,
+                    chunk,
+                    template="(%s,%s,%s,%s,%s,%s,%s,%s,now())",
+                    page_size=batch_size,
+                )
+                total += cur.rowcount
+            log.info(f"[loader] customers batch {batch_num}/{n_batches}: {len(chunk)} records")
+        return total
+
+    def upsert_vendors_batch(self, records: list, batch_size: int = 500) -> int:
+        """
+        Batch-upsert normalized vendor records.
+        Returns total rows processed.
+        """
+        if not records:
+            return 0
+        tuples = [
+            (
+                r["entity_id"], r["qbo_id"], r["display_name"], r["email"],
+                r["balance"], r["currency"], r["is_active"],
+            )
+            for r in records
+        ]
+        total = 0
+        n_batches = (len(tuples) + batch_size - 1) // batch_size
+        for i in range(0, len(tuples), batch_size):
+            chunk = tuples[i : i + batch_size]
+            batch_num = i // batch_size + 1
+            with self._cursor() as cur:
+                psycopg2.extras.execute_values(
+                    cur,
+                    """
+                    INSERT INTO vendors (
+                        entity_id, qbo_id, display_name, email,
+                        balance, currency, is_active, synced_at
+                    )
+                    VALUES %s
+                    ON CONFLICT (entity_id, qbo_id)
+                    DO UPDATE SET
+                        display_name = EXCLUDED.display_name,
+                        email        = EXCLUDED.email,
+                        balance      = EXCLUDED.balance,
+                        currency     = EXCLUDED.currency,
+                        is_active    = EXCLUDED.is_active,
+                        synced_at    = now()
+                    """,
+                    chunk,
+                    template="(%s,%s,%s,%s,%s,%s,%s,now())",
+                    page_size=batch_size,
+                )
+                total += cur.rowcount
+            log.info(f"[loader] vendors batch {batch_num}/{n_batches}: {len(chunk)} records")
+        return total
+
     def upsert_raw_report(
         self,
         entity_id: str,

@@ -137,12 +137,24 @@ class QBOExtractor:
         Paginate through all QBO records for the given object type.
         Applies LastUpdatedTime filter if since_time is provided.
         """
+        # Entities that must be filtered to active-only (inactive records skew counts)
+        ACTIVE_ONLY = {"Customer", "Vendor"}
+
         if since_time and object_type in INCREMENTAL_ENTITIES:
             # Incremental: only records modified since last sync
-            sql = (
-                f"SELECT * FROM {object_type} "
-                f"WHERE LastUpdatedTime >= '{since_time}'"
-            )
+            if object_type in ACTIVE_ONLY:
+                sql = (
+                    f"SELECT * FROM {object_type} "
+                    f"WHERE Active = true AND LastUpdatedTime >= '{since_time}'"
+                )
+            else:
+                sql = (
+                    f"SELECT * FROM {object_type} "
+                    f"WHERE LastUpdatedTime >= '{since_time}'"
+                )
+        elif object_type in ACTIVE_ONLY:
+            # Full backfill — active records only
+            sql = f"SELECT * FROM {object_type} WHERE Active = true"
         else:
             sql = f"SELECT * FROM {object_type}"
 
