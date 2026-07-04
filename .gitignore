@@ -47,3 +47,18 @@ Thumbs.db
 # Replit
 .cache/
 .local/
+
+# Secrets and credentials — NEVER commit
+.env
+*.env
+companies.json
+*token*.json
+credentials.json
+drive_token.json
+service-account*.json
+*.pem
+*.key
+
+# Python
+__pycache__/
+*.pyc

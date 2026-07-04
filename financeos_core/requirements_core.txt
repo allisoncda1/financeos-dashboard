@@ -1,0 +1,12 @@
+# FinanceOS Core Sync Engine — Additional Dependencies
+# Install alongside the existing requirements.txt:
+#   pip3 install -r requirements.txt
+#   pip3 install -r financeos_core/requirements_core.txt
+#
+# These packages are ONLY used by financeos_core/ and do not affect the
+# existing pipeline (main.py, exports, reports).
+
+# ── PostgreSQL client ─────────────────────────────────────────────────────────
+# psycopg2-binary includes the C extension compiled and bundled.
+# Use psycopg2 (without -binary) in production environments with a system pg client.
+psycopg2-binary==2.9.10
