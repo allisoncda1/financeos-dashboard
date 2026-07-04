@@ -87,6 +87,31 @@ export type PortfolioSummary = {
   portfolio_cash_on_hand: number;
 };
 
+// ─── Validation matrix (GET /api/validation/matrix) ─────────────────────────
+// Per-entity × per-rule statuses derived strictly from the pipeline's
+// published output. "unknown" = the pipeline never reported a per-cell
+// outcome (it only publishes summary counts).
+export type ValidationCellStatus = "pass" | "fail" | "unknown";
+
+export type ValidationMatrixData = {
+  generated_at: string | null;
+  reported: {
+    total_checks: number | null;
+    passed: number | null;
+    failed: number | null;
+    all_passed: boolean | null;
+    status_label: string;
+    note: string | null;
+  };
+  expected_checks: number;
+  rule_ids: string[];
+  entity_slugs: EntitySlug[];
+  granularity: "summary_only";
+  cell_basis: string;
+  discrepancies: string[];
+  matrix: Record<EntitySlug, Record<string, ValidationCellStatus>>;
+};
+
 /** 08_DATA_MODEL/validation/validation_summary.json */
 export type ValidationSummary = {
   run_date: string;

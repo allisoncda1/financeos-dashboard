@@ -1,12 +1,13 @@
 
 import { useState } from "react";
-import { useDashboardData } from "@/hooks/useApi";
-import { ENTITY_SLUGS, ENTITY_CONFIG } from "@/lib/entities";
-import type { DashboardData } from "@/lib/types";
-import { CheckCircle2, XCircle, AlertCircle, Info } from "lucide-react";
+import { useValidationMatrix } from "@/hooks/useApi";
+import { ENTITY_CONFIG } from "@/lib/entities";
+import type { ValidationCellStatus } from "@/lib/types";
+import { CheckCircle2, XCircle, AlertTriangle, HelpCircle, Info } from "lucide-react";
 
-// 10 rules × description + what triggers a failure
-const RULES: Record<string, { label: string; description: string; failCondition: string; category: string }> = {
+// Rule metadata for display — labels/descriptions for the pipeline's 10
+// canonical rule ids. Statuses always come from the API, never from here.
+const RULE_META: Record<string, { label: string; description: string; failCondition: string; category: string }> = {
   "1":  { label: "Revenue ≥ 0",          category: "P&L",      description: "Total revenue for the period must be non-negative.",                    failCondition: "Revenue field is null, negative, or missing." },
   "2":  { label: "COGS ≤ Revenue",        category: "P&L",      description: "Cost of goods sold must not exceed total revenue.",                     failCondition: "COGS > Revenue in any period." },
   "2b": { label: "Gross Margin > 0%",     category: "P&L",      description: "Gross profit margin must be positive.",                                 failCondition: "Gross profit is zero or negative." },
@@ -19,79 +20,66 @@ const RULES: Record<string, { label: string; description: string; failCondition:
   "8b": { label: "AR MoM variance",       category: "AR/AP",    description: "AR balance must not increase more than 20% month-over-month without a proportional revenue increase.", failCondition: "AR MoM growth > 20% with no corresponding revenue increase." },
 };
 
-// Per-entity, per-rule result — derived from anomalies + metrics
-function buildMatrix(data: DashboardData): Record<string, Record<string, "pass" | "warn" | "fail">> {
-  const result: Record<string, Record<string, "pass" | "warn" | "fail">> = {};
-  ENTITY_SLUGS.forEach((slug) => {
-    result[slug] = {};
-    Object.keys(RULES).forEach((r) => { result[slug][r] = "pass"; });
-    // Apply anomalies as warn/fail
-    data.anomalies[slug].forEach((a) => {
-      result[slug][a.rule] = a.severity === "error" ? "fail" : "warn";
-    });
-    // Rule 7: ap_overdue_pct > 5 → warn
-    if (data.metrics[slug].ap_overdue_pct > 5) result[slug]["7"] = "warn";
-    // Rule 8a: dso_days > 60 → warn
-    if (data.metrics[slug].dso_days > 60) result[slug]["8a"] = "warn";
-  });
-  return result;
+const categoryColors: Record<string, string> = {
+  "P&L":     "#10B981",
+  "AR/AP":   "#F59E0B",
+  "Banking": "#3B82F6",
+};
+
+function StatusIcon({ status, className = "w-4 h-4" }: { status: ValidationCellStatus; className?: string }) {
+  if (status === "pass") return <CheckCircle2 className={`${className} text-emerald-500`} />;
+  if (status === "fail") return <XCircle className={`${className} text-red-500`} />;
+  return <HelpCircle className={`${className} text-gray-400`} />;
 }
 
+const cellBg: Record<ValidationCellStatus, string> = {
+  pass: "bg-emerald-50 hover:bg-emerald-100",
+  fail: "bg-red-50 hover:bg-red-100",
+  unknown: "bg-gray-100 hover:bg-gray-200",
+};
+
 export default function ValidationPage() {
-  const { data, source } = useDashboardData();
+  const { data, source } = useValidationMatrix();
   const [selectedRule, setSelectedRule] = useState<string | null>(null);
   const [selectedCell, setSelectedCell] = useState<{ slug: string; rule: string } | null>(null);
 
   if (!data) {
     return (
       <div className="h-full flex items-center justify-center text-[13px] text-gray-400">
-        {source === "loading" ? "Loading…" : "Data unavailable"}
+        {source === "loading" ? "Loading…" : "Validation results unavailable"}
       </div>
     );
   }
 
-  const matrix = buildMatrix(data);
+  const { reported, matrix, rule_ids: ruleIds, entity_slugs: entitySlugs, discrepancies } = data;
 
-  // The validation summary has two observed shapes: the declared
-  // ValidationSummary type (mock/typed: run_date, passed, failed, rule_count,
-  // entity_count) and the real Drive-backed pipeline output (generated_at,
-  // pass_count, fail_count). Read both defensively — mirrors the api-server's
-  // normalizeValidationSummary — so live data never renders "undefined"/NaN.
-  const raw = data.validation as unknown as Record<string, unknown>;
-  const num = (key: string): number | undefined => (typeof raw[key] === "number" ? (raw[key] as number) : undefined);
-  const str = (key: string): string | undefined => (typeof raw[key] === "string" && raw[key] !== "" ? (raw[key] as string) : undefined);
-  const v = {
-    total_checks: num("total_checks"),
-    passed: num("passed") ?? num("pass_count"),
-    failed: num("failed") ?? num("fail_count"),
-    all_passed: typeof raw["all_passed"] === "boolean" ? (raw["all_passed"] as boolean) : undefined,
-    run_date: str("run_date") ?? str("generated_at"),
-    as_of: str("as_of") ?? str("generated_at"),
-    rule_count: num("rule_count") ?? Object.keys(RULES).length,
-    entity_count: num("entity_count") ?? ENTITY_SLUGS.length,
-  };
   const passPct =
-    v.total_checks !== undefined && v.total_checks > 0 && v.passed !== undefined
-      ? Math.round((v.passed / v.total_checks) * 100)
+    reported.total_checks !== null && reported.total_checks > 0 && reported.passed !== null
+      ? Math.round((Math.min(reported.passed, reported.total_checks) / reported.total_checks) * 100)
       : null;
 
-  const ruleKeys = Object.keys(RULES);
-  const categoryColors: Record<string, string> = {
-    "P&L":     "#10B981",
-    "AR/AP":   "#F59E0B",
-    "Banking": "#3B82F6",
-  };
-
-  // Counts per rule across entities
-  function ruleStatus(rule: string): "pass" | "warn" | "fail" {
-    const statuses = ENTITY_SLUGS.map((s) => matrix[s][rule]);
-    if (statuses.some((s) => s === "fail"))  return "fail";
-    if (statuses.some((s) => s === "warn"))  return "warn";
+  // Overall status for a rule row across entities.
+  function ruleStatus(rule: string): ValidationCellStatus {
+    const statuses = entitySlugs.map((s) => matrix[s]?.[rule] ?? "unknown");
+    if (statuses.some((s) => s === "fail")) return "fail";
+    if (statuses.some((s) => s === "unknown")) return "unknown";
     return "pass";
   }
 
+  const unknownCells = entitySlugs.reduce(
+    (sum, slug) => sum + ruleIds.filter((r) => (matrix[slug]?.[r] ?? "unknown") === "unknown").length,
+    0,
+  );
+
   const activeRule = selectedRule ?? selectedCell?.rule ?? null;
-  const activeRuleInfo = activeRule ? RULES[activeRule] : null;
+  const activeRuleMeta = activeRule ? RULE_META[activeRule] ?? null : null;
+
+  const headerPill =
+    reported.passed !== null && reported.total_checks !== null
+      ? `Pipeline reported ${reported.passed} passed / ${reported.failed ?? "?"} failed (declared total ${reported.total_checks})`
+      : reported.all_passed !== null
+      ? (reported.all_passed ? "All checks passed" : "Issues found")
+      : "Result unavailable";
 
   return (
     <div className="h-full flex flex-col overflow-hidden bg-[#F4F5F7]">
@@ -103,52 +91,81 @@ export default function ValidationPage() {
           </div>
           <div>
             <h1 className="text-[15px] font-bold text-gray-900">Validation Rules</h1>
-            <p className="text-[11px] text-gray-400">{v.rule_count} rules × {v.entity_count} entities{v.run_date ? ` · ${v.run_date}` : ""}</p>
+            <p className="text-[11px] text-gray-400">
+              {ruleIds.length} rules × {entitySlugs.length} entities{data.generated_at ? ` · ${data.generated_at}` : ""}
+            </p>
           </div>
         </div>
         <div className="flex items-center gap-3">
-          <span className="text-[11px] font-semibold text-emerald-700 bg-emerald-50 px-3 py-1.5 rounded-full">
-            {v.passed !== undefined && v.total_checks !== undefined
-              ? `${v.passed}/${v.total_checks} passed${passPct !== null ? ` (${passPct}%)` : ""}`
-              : v.all_passed !== undefined
-              ? (v.all_passed ? "All checks passed" : "Issues found")
-              : "Result unavailable"}
+          <span className={`text-[11px] font-semibold px-3 py-1.5 rounded-full ${
+            discrepancies.length > 0
+              ? "text-amber-700 bg-amber-50"
+              : (reported.failed ?? 0) > 0
+              ? "text-red-700 bg-red-50"
+              : "text-emerald-700 bg-emerald-50"
+          }`}>
+            {headerPill}
           </span>
         </div>
       </div>
 
       <div className="flex-1 overflow-hidden flex gap-0">
 
-        {/* Left: matrix + history */}
+        {/* Left: matrix + run details */}
         <div className="flex-1 overflow-y-auto px-6 py-5 space-y-5 min-w-0">
 
-          {/* Overview KPI row */}
+          {/* Discrepancy banner — the pipeline's own numbers don't add up */}
+          {discrepancies.length > 0 && (
+            <div className="bg-amber-50 border border-amber-200 rounded-xl p-4">
+              <div className="flex items-start gap-2.5">
+                <AlertTriangle className="w-4 h-4 text-amber-600 flex-shrink-0 mt-0.5" />
+                <div>
+                  <p className="text-[12px] font-bold text-amber-800 mb-1.5">
+                    The pipeline's latest validation summary is internally inconsistent
+                  </p>
+                  <ul className="space-y-1">
+                    {discrepancies.map((d, i) => (
+                      <li key={i} className="text-[11px] text-amber-800 leading-relaxed flex gap-1.5">
+                        <span className="flex-shrink-0">•</span>
+                        <span>{d}</span>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Overview KPI row — reported by the pipeline, not recomputed */}
           <div className="grid grid-cols-4 gap-3">
             {[
-              { label: "Total Checks",  value: v.total_checks ?? "—", color: "text-gray-900" },
-              { label: "Passed",        value: v.passed ?? "—",        color: "text-emerald-600" },
-              { label: "Warnings",      value: ENTITY_SLUGS.reduce((s, slug) => s + Object.values(matrix[slug]).filter((v) => v === "warn").length, 0), color: "text-amber-600" },
-              { label: "Failed",        value: v.failed ?? "—",        color: "text-red-600" },
+              { label: "Expected Checks",  value: data.expected_checks,          color: "text-gray-900",    sub: `${ruleIds.length} rules × ${entitySlugs.length} entities` },
+              { label: "Reported Passed",  value: reported.passed ?? "—",         color: "text-emerald-600", sub: "as published by pipeline" },
+              { label: "Reported Failed",  value: reported.failed ?? "—",         color: (reported.failed ?? 0) > 0 ? "text-red-600" : "text-gray-900", sub: "as published by pipeline" },
+              { label: "Not Reported",     value: unknownCells,                   color: unknownCells > 0 ? "text-gray-500" : "text-gray-900", sub: "cells without a per-rule result" },
             ].map((c) => (
               <div key={c.label} className="bg-white rounded-xl border border-gray-200 p-4">
                 <p className="text-[10px] text-gray-400 uppercase tracking-wide font-medium">{c.label}</p>
                 <p className={`text-[28px] font-black mt-1 ${c.color}`}>{c.value}</p>
+                <p className="text-[10px] text-gray-400 mt-0.5">{c.sub}</p>
               </div>
             ))}
           </div>
 
-          {/* 4×10 matrix */}
+          {/* Matrix */}
           <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
             <div className="px-4 py-3 border-b border-gray-100">
-              <h3 className="text-[13px] font-semibold text-gray-900">Validation Matrix — 4 Entities × 10 Rules</h3>
-              <p className="text-[11px] text-gray-400">Click any cell or rule name for details</p>
+              <h3 className="text-[13px] font-semibold text-gray-900">
+                Validation Matrix — {entitySlugs.length} Entities × {ruleIds.length} Rules
+              </h3>
+              <p className="text-[11px] text-gray-400">{data.cell_basis}</p>
             </div>
             <div className="overflow-x-auto">
               <table className="w-full">
                 <thead>
                   <tr className="border-b border-gray-100">
                     <th className="text-left px-4 py-2.5 text-[10px] font-semibold text-gray-400 uppercase tracking-wide w-44">Rule</th>
-                    {ENTITY_SLUGS.map((slug) => {
+                    {entitySlugs.map((slug) => {
                       const cfg = ENTITY_CONFIG[slug];
                       return (
                         <th key={slug} className="px-3 py-2.5 text-center">
@@ -163,8 +180,8 @@ export default function ValidationPage() {
                   </tr>
                 </thead>
                 <tbody>
-                  {ruleKeys.map((rule) => {
-                    const r = RULES[rule];
+                  {ruleIds.map((rule) => {
+                    const meta = RULE_META[rule];
                     const overall = ruleStatus(rule);
                     const isActiveRule = activeRule === rule;
                     return (
@@ -177,40 +194,34 @@ export default function ValidationPage() {
                             onClick={() => setSelectedRule(selectedRule === rule ? null : rule)}
                             className="text-left group"
                           >
-                            <div className="flex items-center gap-2">
-                              <span
-                                className="text-[9px] font-bold px-1.5 py-0.5 rounded"
-                                style={{ background: `${categoryColors[r.category]}1A`, color: categoryColors[r.category] }}
-                              >
-                                {r.category}
-                              </span>
-                            </div>
+                            {meta && (
+                              <div className="flex items-center gap-2">
+                                <span
+                                  className="text-[9px] font-bold px-1.5 py-0.5 rounded"
+                                  style={{ background: `${categoryColors[meta.category]}1A`, color: categoryColors[meta.category] }}
+                                >
+                                  {meta.category}
+                                </span>
+                              </div>
+                            )}
                             <p className={`text-[12px] font-medium mt-0.5 group-hover:text-gray-900 ${isActiveRule ? "text-gray-900" : "text-gray-700"}`}>
-                              {rule}. {r.label}
+                              {rule}. {meta?.label ?? `Rule ${rule}`}
                             </p>
                           </button>
                         </td>
-                        {ENTITY_SLUGS.map((slug) => {
-                          const status = matrix[slug][rule];
+                        {entitySlugs.map((slug) => {
+                          const status = matrix[slug]?.[rule] ?? "unknown";
                           const isActiveCell = selectedCell?.slug === slug && selectedCell?.rule === rule;
                           return (
                             <td key={slug} className="px-3 py-2.5 text-center">
                               <button
                                 onClick={() => setSelectedCell(isActiveCell ? null : { slug, rule })}
+                                title={status === "unknown" ? "No per-rule result published by the pipeline" : status}
                                 className={`w-8 h-8 rounded-lg flex items-center justify-center mx-auto transition-all ${
                                   isActiveCell ? "ring-2 ring-offset-1 ring-gray-400" : ""
-                                } ${
-                                  status === "pass" ? "bg-emerald-50 hover:bg-emerald-100" :
-                                  status === "warn" ? "bg-amber-50 hover:bg-amber-100" :
-                                  "bg-red-50 hover:bg-red-100"
-                                }`}
+                                } ${cellBg[status]}`}
                               >
-                                {status === "pass"
-                                  ? <CheckCircle2 className="w-4 h-4 text-emerald-500" />
-                                  : status === "warn"
-                                  ? <AlertCircle className="w-4 h-4 text-amber-500" />
-                                  : <XCircle className="w-4 h-4 text-red-500" />
-                                }
+                                <StatusIcon status={status} />
                               </button>
                             </td>
                           );
@@ -218,10 +229,10 @@ export default function ValidationPage() {
                         <td className="px-3 py-2.5 text-center">
                           <span className={`text-[10px] font-bold px-2 py-1 rounded-full ${
                             overall === "pass" ? "bg-emerald-50 text-emerald-700" :
-                            overall === "warn" ? "bg-amber-50 text-amber-700" :
-                            "bg-red-50 text-red-700"
+                            overall === "fail" ? "bg-red-50 text-red-700" :
+                            "bg-gray-100 text-gray-500"
                           }`}>
-                            {overall === "pass" ? "PASS" : overall === "warn" ? "WARN" : "FAIL"}
+                            {overall === "pass" ? "PASS" : overall === "fail" ? "FAIL" : "NOT REPORTED"}
                           </span>
                         </td>
                       </tr>
@@ -232,10 +243,18 @@ export default function ValidationPage() {
                 <tfoot>
                   <tr className="border-t-2 border-gray-200 bg-gray-50">
                     <td className="px-4 py-2.5 text-[11px] font-bold text-gray-600">Pass Rate</td>
-                    {ENTITY_SLUGS.map((slug) => {
-                      const total = ruleKeys.length;
-                      const passed = ruleKeys.filter((r) => matrix[slug][r] === "pass").length;
-                      const pct = Math.round((passed / total) * 100);
+                    {entitySlugs.map((slug) => {
+                      const statuses = ruleIds.map((r) => matrix[slug]?.[r] ?? "unknown");
+                      const hasUnknown = statuses.some((s) => s === "unknown");
+                      if (hasUnknown) {
+                        return (
+                          <td key={slug} className="px-3 py-2.5 text-center">
+                            <span className="text-[11px] font-bold text-gray-400" title="Per-rule results not published by the pipeline">—</span>
+                          </td>
+                        );
+                      }
+                      const passed = statuses.filter((s) => s === "pass").length;
+                      const pct = Math.round((passed / statuses.length) * 100);
                       return (
                         <td key={slug} className="px-3 py-2.5 text-center">
                           <span className={`text-[11px] font-bold ${pct === 100 ? "text-emerald-600" : pct >= 80 ? "text-amber-600" : "text-red-600"}`}>
@@ -244,7 +263,9 @@ export default function ValidationPage() {
                         </td>
                       );
                     })}
-                    <td className="px-3 py-2.5 text-center text-[11px] font-black text-emerald-600">{passPct !== null ? `${passPct}%` : "—"}</td>
+                    <td className="px-3 py-2.5 text-center text-[11px] font-black text-gray-600">
+                      {unknownCells === 0 && passPct !== null ? `${passPct}%` : "—"}
+                    </td>
                   </tr>
                 </tfoot>
               </table>
@@ -257,32 +278,35 @@ export default function ValidationPage() {
             <div className="flex items-center gap-6">
               <div>
                 <p className="text-[10px] text-gray-400 uppercase tracking-wide font-medium">Run Date</p>
-                <p className="text-[13px] font-bold text-gray-900 mt-0.5">{v.run_date ?? "—"}</p>
+                <p className="text-[13px] font-bold text-gray-900 mt-0.5">{data.generated_at ?? "—"}</p>
               </div>
               <div>
-                <p className="text-[10px] text-gray-400 uppercase tracking-wide font-medium">Data As Of</p>
-                <p className="text-[13px] font-bold text-gray-900 mt-0.5">{v.as_of ?? "—"}</p>
-              </div>
-              <div>
-                <p className="text-[10px] text-gray-400 uppercase tracking-wide font-medium">Result</p>
-                <p className={`text-[13px] font-bold mt-0.5 ${v.all_passed ? "text-emerald-600" : (v.failed ?? 0) > 0 ? "text-red-600" : "text-amber-600"}`}>
-                  {v.passed !== undefined && v.total_checks !== undefined
-                    ? `${v.passed}/${v.total_checks} passed`
-                    : v.all_passed !== undefined
-                    ? (v.all_passed ? "All passed" : "Issues found")
-                    : "—"}
+                <p className="text-[10px] text-gray-400 uppercase tracking-wide font-medium">Reported Result</p>
+                <p className={`text-[13px] font-bold mt-0.5 ${
+                  reported.all_passed ? "text-emerald-600" : (reported.failed ?? 0) > 0 ? "text-red-600" : "text-amber-600"
+                }`}>
+                  {reported.passed !== null && reported.total_checks !== null
+                    ? `${reported.passed} passed / ${reported.failed ?? "?"} failed of ${reported.total_checks} declared`
+                    : reported.status_label}
                 </p>
               </div>
+              <div>
+                <p className="text-[10px] text-gray-400 uppercase tracking-wide font-medium">Detail Level</p>
+                <p className="text-[13px] font-bold text-gray-900 mt-0.5">Summary counts only</p>
+              </div>
             </div>
-            <p className="text-[11px] text-gray-400 mt-3">
+            {reported.note && (
+              <p className="text-[11px] text-gray-500 mt-3">Pipeline note: {reported.note}</p>
+            )}
+            <p className="text-[11px] text-gray-400 mt-1.5">
               Run history isn't available yet — only the most recent pipeline validation run is stored.
             </p>
           </div>
         </div>
 
         {/* Right: rule detail panel */}
-        <aside className={`flex-shrink-0 bg-white border-l border-gray-200 overflow-y-auto transition-all duration-200 ${activeRuleInfo ? "w-[300px]" : "w-0 border-l-0"}`}>
-          {activeRuleInfo && activeRule && (
+        <aside className={`flex-shrink-0 bg-white border-l border-gray-200 overflow-y-auto transition-all duration-200 ${activeRule ? "w-[300px]" : "w-0 border-l-0"}`}>
+          {activeRule && (
             <div className="px-4 py-4 space-y-4">
               <div className="flex items-center justify-between">
                 <span className="text-[11px] font-semibold text-gray-500">Rule Detail</span>
@@ -295,54 +319,54 @@ export default function ValidationPage() {
               {/* Rule header */}
               <div>
                 <div className="flex items-center gap-2 mb-1">
-                  <span
-                    className="text-[9px] font-bold px-1.5 py-0.5 rounded"
-                    style={{ background: `${categoryColors[activeRuleInfo.category]}1A`, color: categoryColors[activeRuleInfo.category] }}
-                  >
-                    {activeRuleInfo.category}
-                  </span>
+                  {activeRuleMeta && (
+                    <span
+                      className="text-[9px] font-bold px-1.5 py-0.5 rounded"
+                      style={{ background: `${categoryColors[activeRuleMeta.category]}1A`, color: categoryColors[activeRuleMeta.category] }}
+                    >
+                      {activeRuleMeta.category}
+                    </span>
+                  )}
                   <span className="text-[10px] text-gray-400">Rule {activeRule}</span>
                 </div>
-                <p className="text-[14px] font-bold text-gray-900">{activeRuleInfo.label}</p>
+                <p className="text-[14px] font-bold text-gray-900">{activeRuleMeta?.label ?? `Rule ${activeRule}`}</p>
               </div>
 
               {/* Description */}
-              <div className="bg-gray-50 rounded-xl p-3">
-                <p className="text-[9px] font-semibold text-gray-400 uppercase tracking-widest mb-1.5">What it checks</p>
-                <p className="text-[12px] text-gray-700 leading-relaxed">{activeRuleInfo.description}</p>
-              </div>
+              {activeRuleMeta && (
+                <div className="bg-gray-50 rounded-xl p-3">
+                  <p className="text-[9px] font-semibold text-gray-400 uppercase tracking-widest mb-1.5">What it checks</p>
+                  <p className="text-[12px] text-gray-700 leading-relaxed">{activeRuleMeta.description}</p>
+                </div>
+              )}
 
               {/* Fail condition */}
-              <div className="bg-red-50 rounded-xl p-3">
-                <p className="text-[9px] font-semibold text-red-400 uppercase tracking-widest mb-1.5">Fails when</p>
-                <p className="text-[12px] text-red-700 leading-relaxed">{activeRuleInfo.failCondition}</p>
-              </div>
+              {activeRuleMeta && (
+                <div className="bg-red-50 rounded-xl p-3">
+                  <p className="text-[9px] font-semibold text-red-400 uppercase tracking-widest mb-1.5">Fails when</p>
+                  <p className="text-[12px] text-red-700 leading-relaxed">{activeRuleMeta.failCondition}</p>
+                </div>
+              )}
 
-              {/* Per-entity status */}
+              {/* Per-entity status — straight from the pipeline endpoint */}
               <div>
                 <p className="text-[9px] font-semibold text-gray-400 uppercase tracking-widest mb-2">Entity Results</p>
                 <div className="space-y-2">
-                  {ENTITY_SLUGS.map((slug) => {
+                  {entitySlugs.map((slug) => {
                     const cfg = ENTITY_CONFIG[slug];
-                    const status = matrix[slug][activeRule];
-                    const anomaly = data.anomalies[slug].find((a) => a.rule === activeRule);
+                    const status = matrix[slug]?.[activeRule] ?? "unknown";
                     return (
                       <div key={slug} className={`flex items-start gap-2.5 p-2.5 rounded-lg ${
-                        status === "pass" ? "bg-emerald-50" : status === "warn" ? "bg-amber-50" : "bg-red-50"
+                        status === "pass" ? "bg-emerald-50" : status === "fail" ? "bg-red-50" : "bg-gray-100"
                       }`}>
                         <span className="w-2 h-2 rounded-full mt-1 flex-shrink-0" style={{ background: cfg.color }} />
                         <div className="flex-1 min-w-0">
                           <div className="flex items-center justify-between mb-0.5">
                             <span className="text-[11px] font-semibold text-gray-800">{cfg.name}</span>
-                            {status === "pass"
-                              ? <CheckCircle2 className="w-3.5 h-3.5 text-emerald-500" />
-                              : status === "warn"
-                              ? <AlertCircle className="w-3.5 h-3.5 text-amber-500" />
-                              : <XCircle className="w-3.5 h-3.5 text-red-500" />
-                            }
+                            <StatusIcon status={status} className="w-3.5 h-3.5" />
                           </div>
-                          {anomaly && (
-                            <p className="text-[10px] text-gray-600 leading-snug">{anomaly.description}</p>
+                          {status === "unknown" && (
+                            <p className="text-[10px] text-gray-500 leading-snug">No per-rule result published for this run.</p>
                           )}
                         </div>
                       </div>
@@ -351,15 +375,16 @@ export default function ValidationPage() {
                 </div>
               </div>
 
-              {/* Confidence explanation */}
+              {/* Data source explanation */}
               <div className="bg-blue-50 rounded-xl p-3">
                 <div className="flex items-start gap-2">
                   <Info className="w-3.5 h-3.5 text-blue-500 flex-shrink-0 mt-0.5" />
                   <div>
-                    <p className="text-[9px] font-semibold text-blue-600 uppercase tracking-widest mb-1">Confidence Impact</p>
+                    <p className="text-[9px] font-semibold text-blue-600 uppercase tracking-widest mb-1">Where these results come from</p>
                     <p className="text-[11px] text-blue-700 leading-relaxed">
-                      Each failed rule reduces the portfolio confidence score. Warnings reduce it by 1–2 points;
-                      failures reduce it by 5–10 points depending on the rule category.
+                      Statuses come directly from the data pipeline's published validation output.
+                      The pipeline currently publishes pass/fail counts only — when it doesn't report
+                      a per-rule outcome, the cell is shown as "not reported" rather than guessed.
                     </p>
                   </div>
                 </div>

@@ -1,4 +1,4 @@
-import type { DashboardData, FinancialsData, CustomersData, VendorsData, BankingData, EntitySlug, BriefingResponse, Alert } from "./types";
+import type { DashboardData, FinancialsData, CustomersData, VendorsData, BankingData, EntitySlug, BriefingResponse, Alert, ValidationMatrixData } from "./types";
 import type { ReportTemplateSummary, ReportGenerateRequest, BuiltReport } from "./reportTypes";
 import type { AIStatus } from "./aiTypes";
 import type { PipelineStatus } from "./pipelineTypes";
@@ -105,6 +105,7 @@ export const api = {
   entityVendors:    (s: string)  => getSourced<VendorsData>(`/model/${s}/vendors`),
   entityBanking:    (s: string)  => getSourced<BankingData>(`/model/${s}/banking`),
   briefing:         ()           => getSourced<BriefingResponse>("/briefing"),
+  validationMatrix: ()           => getSourced<ValidationMatrixData>("/validation/matrix"),
   alerts:           ()           => getSourced<Alert[]>("/alerts"),
   reportTemplates:  ()           => getSourced<ReportTemplateSummary[]>("/reports"),
   generateReport:   (req: ReportGenerateRequest) => post<BuiltReport>("/reports/generate", req),

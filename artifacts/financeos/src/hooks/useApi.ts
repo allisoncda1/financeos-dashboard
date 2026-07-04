@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import { api } from '@/lib/api';
 import { getMockData, getFinancials, getCustomers, getVendors, getBanking } from '@/lib/mock';
 import { ENTITY_SLUGS } from '@/lib/entities';
-import type { DashboardData, FinancialsData, CustomersData, VendorsData, BankingData, EntitySlug, BriefingResponse, Alert } from '@/lib/types';
+import type { DashboardData, FinancialsData, CustomersData, VendorsData, BankingData, EntitySlug, BriefingResponse, Alert, ValidationMatrixData } from '@/lib/types';
 import type { ReportTemplateSummary, ReportGenerateRequest, BuiltReport } from '@/lib/reportTypes';
 import type { AIStatus } from '@/lib/aiTypes';
 import type { PipelineStatus } from '@/lib/pipelineTypes';
@@ -154,6 +154,17 @@ export function useAllEntityBanking(): FetchState<Record<EntitySlug, BankingData
     mockInit,
     [],
   );
+}
+
+/**
+ * useValidationMatrix — fetches the per-entity × per-rule validation matrix
+ * from GET /api/validation/matrix. Statuses come strictly from the
+ * pipeline's published output ("unknown" = not reported), never from
+ * client-side heuristics. No mock fallback: data stays null until the
+ * endpoint responds.
+ */
+export function useValidationMatrix(): FetchState<ValidationMatrixData> {
+  return useTrackedFetch('validationMatrix', () => api.validationMatrix(), null, []);
 }
 
 /**
