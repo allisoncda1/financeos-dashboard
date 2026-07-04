@@ -5,9 +5,10 @@ import { Inbox } from "lucide-react";
 
 export default function OperationsPage() {
   const { data } = useDashboardData();
-  const { data: alerts, loading } = useAlerts();
+  const { data: alerts, source: alertsSource } = useAlerts();
+  const loading = alertsSource === "loading";
 
-  const items = alertsToOperationItems(alerts);
+  const items = alertsToOperationItems(alerts ?? []);
   const asOfLabel = data?.freshness.data_as_of ?? "—";
 
   return (

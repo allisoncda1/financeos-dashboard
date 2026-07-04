@@ -1,10 +1,16 @@
 import { Router, type IRouter } from "express";
-import { buildAIContext } from "../ai/context";
+import { buildAIContextWithSource } from "../ai/context";
 import { getCached, setCached, withDedupe } from "../ai/cache";
 import { formatBriefingResponse } from "../ai/formatter";
 import { getProvider } from "../ai/provider";
+import type { DataSourceKind } from "../lib/sourceTracker";
 
 const router: IRouter = Router();
+
+// Data source of the last computed briefing, keyed by cache key. Set inside
+// the dedupe closure before the promise resolves, so both the executor and
+// any deduplicated followers read the correct value after awaiting.
+const briefingSource = new Map<string, DataSourceKind>();
 
 // GET /api/briefing — thin proxy to the AI Platform's briefing capability.
 // Kept as a stable, pre-existing URL for the frontend; all AI logic now
@@ -15,22 +21,26 @@ router.get("/briefing", async (req, res) => {
   try {
     const cacheKey = "briefing";
     let response = getCached(cacheKey);
+    let source: DataSourceKind;
     if (response) {
       // eslint-disable-next-line no-console
       console.log("[ai] cache hit: briefing");
+      source = "cache";
     } else {
       // eslint-disable-next-line no-console
       console.log("[ai] cache miss: briefing");
       response = await withDedupe(cacheKey, async () => {
-        const context = await buildAIContext();
+        const { context, source: contextSource } = await buildAIContextWithSource();
         const result = await getProvider().generateBriefing(context);
+        briefingSource.set(cacheKey, contextSource);
         setCached(cacheKey, result);
         return result;
       });
+      source = briefingSource.get(cacheKey) ?? "live";
     }
 
     const data = formatBriefingResponse(response);
-    res.json({ ok: true, data, ts: new Date().toISOString() });
+    res.json({ ok: true, data, source, ts: new Date().toISOString() });
   } catch (err) {
     req.log.error({ err }, "Failed to generate briefing");
     res.status(500).json({

@@ -25,15 +25,15 @@ import {
 function useTrackedFetch<T>(
   key: string,
   fetcher: () => Promise<{ data: T; source: 'live' | 'cache' | 'mock' }>,
-  mockInit: () => T,
+  mockInit: (() => T) | null,
   deps: unknown[],
 ): FetchState<T> {
   const [state, setState] = useState<FetchState<T>>(() =>
-    USE_MOCK_FALLBACK
+    USE_MOCK_FALLBACK && mockInit
       ? { data: mockInit(), source: 'mock', lastSuccessfulFetch: null }
       : { data: null, source: 'loading', lastSuccessfulFetch: null },
   );
-  const lastGoodRef = useRef<T | null>(USE_MOCK_FALLBACK ? mockInit() : null);
+  const lastGoodRef = useRef<T | null>(USE_MOCK_FALLBACK && mockInit ? mockInit() : null);
 
   useEffect(() => {
     let cancelled = false;
@@ -132,65 +132,29 @@ export function useEntityBanking(slug: EntitySlug): FetchState<BankingData> {
 
 /**
  * useAlerts — fetches live operational alerts from the Rules Engine via
- * GET /api/alerts. Returns an empty array until the fetch resolves so
- * callers never see undefined.
+ * GET /api/alerts. Exposes {data, source, lastSuccessfulFetch}; data is
+ * null until the fetch resolves (source === "loading") or when the
+ * endpoint is unreachable (source === "unavailable").
  */
-export function useAlerts(): { data: Alert[]; loading: boolean; failed: boolean } {
-  const [data, setData] = useState<Alert[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [failed, setFailed] = useState(false);
-
-  useEffect(() => {
-    let cancelled = false;
-    api.alerts()
-      .then((res) => { if (!cancelled) { setData(res); setLoading(false); } })
-      .catch(() => { if (!cancelled) { setFailed(true); setLoading(false); } });
-    return () => { cancelled = true; };
-  }, []);
-
-  return { data, loading, failed };
+export function useAlerts(): FetchState<Alert[]> {
+  return useTrackedFetch('alerts', () => api.alerts(), null, []);
 }
 
 /**
  * useBriefing — fetches the deterministic AI CFO briefing from /api/briefing.
- * Returns `null` on failure (never throws), so callers can render a graceful
- * fallback instead of crashing.
+ * Exposes {data, source, lastSuccessfulFetch}; data stays null on failure
+ * (never throws) so callers can render a graceful fallback.
  */
-export function useBriefing(): { data: BriefingResponse | null; loading: boolean; failed: boolean } {
-  const [data, setData] = useState<BriefingResponse | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [failed, setFailed] = useState(false);
-
-  useEffect(() => {
-    let cancelled = false;
-    api.briefing()
-      .then((res) => { if (!cancelled) { setData(res); setLoading(false); } })
-      .catch(() => { if (!cancelled) { setFailed(true); setLoading(false); } });
-    return () => { cancelled = true; };
-  }, []);
-
-  return { data, loading, failed };
+export function useBriefing(): FetchState<BriefingResponse> {
+  return useTrackedFetch('briefing', () => api.briefing(), null, []);
 }
 
 /**
  * useReportTemplates — fetches the Report Engine's available template
- * catalog from GET /api/reports. Returns an empty array until the fetch
- * resolves so callers never see undefined.
+ * catalog from GET /api/reports. Exposes {data, source, lastSuccessfulFetch}.
  */
-export function useReportTemplates(): { data: ReportTemplateSummary[]; loading: boolean; failed: boolean } {
-  const [data, setData] = useState<ReportTemplateSummary[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [failed, setFailed] = useState(false);
-
-  useEffect(() => {
-    let cancelled = false;
-    api.reportTemplates()
-      .then((res) => { if (!cancelled) { setData(res); setLoading(false); } })
-      .catch(() => { if (!cancelled) { setFailed(true); setLoading(false); } });
-    return () => { cancelled = true; };
-  }, []);
-
-  return { data, loading, failed };
+export function useReportTemplates(): FetchState<ReportTemplateSummary[]> {
+  return useTrackedFetch('reportTemplates', () => api.reportTemplates(), null, []);
 }
 
 /**
@@ -228,41 +192,17 @@ export function useReportGenerator() {
  * usePipelineStatus — fetches the external pipeline's self-reported status
  * from GET /api/pipeline/status, once on mount (no polling). Read-only —
  * FinanceOS never runs or triggers the pipeline, it only displays what it
- * last reported.
+ * last reported. Exposes {data, source, lastSuccessfulFetch}.
  */
-export function usePipelineStatus(): { data: PipelineStatus | null; loading: boolean; failed: boolean } {
-  const [data, setData] = useState<PipelineStatus | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [failed, setFailed] = useState(false);
-
-  useEffect(() => {
-    let cancelled = false;
-    api.pipelineStatus()
-      .then((res) => { if (!cancelled) { setData(res); setLoading(false); } })
-      .catch(() => { if (!cancelled) { setFailed(true); setLoading(false); } });
-    return () => { cancelled = true; };
-  }, []);
-
-  return { data, loading, failed };
+export function usePipelineStatus(): FetchState<PipelineStatus> {
+  return useTrackedFetch('pipelineStatus', () => api.pipelineStatus(), null, []);
 }
 
 /**
  * useAiStatus — fetches the AI Platform's status (provider, model, cache
  * stats) from GET /api/ai/status. Read-only — used to render the Settings
- * page's AI Platform section.
+ * page's AI Platform section. Exposes {data, source, lastSuccessfulFetch}.
  */
-export function useAiStatus(): { data: AIStatus | null; loading: boolean; failed: boolean } {
-  const [data, setData] = useState<AIStatus | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [failed, setFailed] = useState(false);
-
-  useEffect(() => {
-    let cancelled = false;
-    api.aiStatus()
-      .then((res) => { if (!cancelled) { setData(res); setLoading(false); } })
-      .catch(() => { if (!cancelled) { setFailed(true); setLoading(false); } });
-    return () => { cancelled = true; };
-  }, []);
-
-  return { data, loading, failed };
+export function useAiStatus(): FetchState<AIStatus> {
+  return useTrackedFetch('aiStatus', () => api.aiStatus(), null, []);
 }

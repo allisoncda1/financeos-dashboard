@@ -162,7 +162,9 @@ export default function ReportCenterPage() {
   const [previewOpen, setPreviewOpen]   = useState(false);
   const [resultOpen, setResultOpen]     = useState(false);
 
-  const { data: liveTemplates, loading: templatesLoading } = useReportTemplates();
+  const { data: liveTemplatesData, source: templatesSource } = useReportTemplates();
+  const liveTemplates = liveTemplatesData ?? [];
+  const templatesLoading = templatesSource === "loading";
   const { report, generating, error: generateError, generate, reset: resetReport } = useReportGenerator();
 
   const template = TEMPLATE_MAP[selectedTemplate];

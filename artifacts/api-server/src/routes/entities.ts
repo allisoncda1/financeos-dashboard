@@ -4,8 +4,9 @@ import { ENTITY_DEFINITIONS } from "../lib/entities";
 const router: IRouter = Router();
 
 // GET /api/entities — entity registry
+// Entity definitions are static application config, so source is "live".
 router.get("/entities", (_req, res) => {
-  res.json({ ok: true, data: ENTITY_DEFINITIONS, ts: new Date().toISOString() });
+  res.json({ ok: true, data: ENTITY_DEFINITIONS, source: "live", ts: new Date().toISOString() });
 });
 
 // GET /api/entities/:slug — single entity definition
@@ -19,7 +20,7 @@ router.get("/entities/:slug", (req, res) => {
     });
     return;
   }
-  res.json({ ok: true, data: entity, ts: new Date().toISOString() });
+  res.json({ ok: true, data: entity, source: "live", ts: new Date().toISOString() });
 });
 
 export default router;

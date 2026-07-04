@@ -15,12 +15,13 @@ import {
   getEntityMetrics,
 } from "../lib/dataSource";
 import { ENTITY_SLUGS, type DashboardData } from "../lib/types";
+import { combineSources, type DataSourceKind } from "../lib/sourceTracker";
 import { evaluateAllRules, type Alert } from "./evaluator";
 import { RULE_REGISTRY, type Rule } from "./registry";
 
 const CACHE_TTL_MS = 5 * 60 * 1000;
 
-async function getDashboardData(): Promise<DashboardData> {
+async function getDashboardData(): Promise<{ data: DashboardData; source: DataSourceKind }> {
   const [portfolio, validation, freshness, metricsList, anomaliesList] = await Promise.all([
     getPortfolioSummary(),
     getValidationSummary(),
@@ -36,31 +37,54 @@ async function getDashboardData(): Promise<DashboardData> {
     ENTITY_SLUGS.map((slug, i) => [slug, anomaliesList[i]!.data]),
   ) as DashboardData["anomalies"];
 
+  const source = combineSources([
+    portfolio.source,
+    validation.source,
+    freshness.source,
+    ...metricsList.map((m) => m.source),
+    ...anomaliesList.map((a) => a.source),
+  ]);
+
   return {
-    portfolio: portfolio.data,
-    validation: validation.data,
-    freshness: freshness.data,
-    metrics,
-    anomalies,
+    data: {
+      portfolio: portfolio.data,
+      validation: validation.data,
+      freshness: freshness.data,
+      metrics,
+      anomalies,
+    },
+    source,
   };
 }
 
 class RulesEngineImpl {
   private cachedAlerts: Alert[] | null = null;
+  private cachedSource: DataSourceKind = "live";
   private cacheExpiresAt = 0;
 
   async run(): Promise<Alert[]> {
+    const { alerts } = await this.runWithSource();
+    return alerts;
+  }
+
+  /**
+   * runWithSource — same as run() but also reports the worst-case data
+   * source (mock > cache > live) of the underlying dashboard data the
+   * alerts were computed from, so /api/alerts can honestly label itself.
+   */
+  async runWithSource(): Promise<{ alerts: Alert[]; source: DataSourceKind }> {
     const now = Date.now();
     if (this.cachedAlerts && this.cacheExpiresAt > now) {
-      return this.cachedAlerts;
+      return { alerts: this.cachedAlerts, source: this.cachedSource };
     }
 
-    const data = await getDashboardData();
+    const { data, source } = await getDashboardData();
     const alerts = await evaluateAllRules(data);
 
     this.cachedAlerts = alerts;
+    this.cachedSource = source;
     this.cacheExpiresAt = now + CACHE_TTL_MS;
-    return alerts;
+    return { alerts, source };
   }
 
   getRegisteredRules(): Omit<Rule, "evaluate">[] {

@@ -5,7 +5,8 @@ const router: IRouter = Router();
 
 // GET /api/drive/status — Google Drive connectivity/configuration status
 router.get("/status", (_req, res) => {
-  res.json({ ok: true, data: driveStatus(), ts: new Date().toISOString() });
+  // Connectivity status is computed from the live runtime, never cached/mocked.
+  res.json({ ok: true, data: driveStatus(), source: "live", ts: new Date().toISOString() });
 });
 
 export default router;

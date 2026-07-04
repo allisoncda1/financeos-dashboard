@@ -1,11 +1,17 @@
 import { Router, type IRouter } from "express";
-import { buildAIContext } from "../ai/context";
+import { buildAIContextWithSource } from "../ai/context";
 import { getCacheStats, getCached, getUsageStats, setCached, withDedupe } from "../ai/cache";
 import { formatAnalysisResponse, formatBriefingResponse } from "../ai/formatter";
 import { getAIOptions, getProvider } from "../ai/provider";
 import { ENTITY_SLUGS, type EntitySlug } from "../lib/types";
+import type { DataSourceKind } from "../lib/sourceTracker";
 
 const router: IRouter = Router();
+
+// Data source of the last computed briefing, keyed by cache key. Set inside
+// the dedupe closure before the promise resolves, so both the executor and
+// any deduplicated followers read the correct value after awaiting.
+const briefingSource = new Map<string, DataSourceKind>();
 
 function isEntitySlug(value: unknown): value is EntitySlug {
   return typeof value === "string" && (ENTITY_SLUGS as readonly string[]).includes(value);
@@ -27,6 +33,7 @@ router.get("/status", async (_req, res) => {
     const { maxTokens, temperature } = getAIOptions();
     res.json({
       ok: true,
+      source: "live",
       data: {
         provider: provider.name,
         model: provider.model,
@@ -53,6 +60,7 @@ router.get("/usage", async (_req, res) => {
     const { maxTokens, temperature } = getAIOptions();
     res.json({
       ok: true,
+      source: "live",
       data: {
         provider: provider.name,
         model: provider.model,
@@ -83,20 +91,22 @@ router.get("/briefing", async (req, res) => {
     if (cached) {
       // eslint-disable-next-line no-console
       console.log("[ai] cache hit: briefing");
-      res.json({ ok: true, data: formatBriefingResponse(cached), ts: new Date().toISOString() });
+      res.json({ ok: true, data: formatBriefingResponse(cached), source: "cache", ts: new Date().toISOString() });
       return;
     }
 
     // eslint-disable-next-line no-console
     console.log("[ai] cache miss: briefing");
     const response = await withDedupe(cacheKey, async () => {
-      const context = await buildAIContext();
+      const { context, source: contextSource } = await buildAIContextWithSource();
       const result = await getProvider().generateBriefing(context);
+      briefingSource.set(cacheKey, contextSource);
       setCached(cacheKey, result);
       return result;
     });
+    const source = briefingSource.get(cacheKey) ?? "live";
 
-    res.json({ ok: true, data: formatBriefingResponse(response), ts: new Date().toISOString() });
+    res.json({ ok: true, data: formatBriefingResponse(response), source, ts: new Date().toISOString() });
   } catch (err) {
     req.log.error({ err }, "Failed to generate AI briefing");
     res.status(500).json({ ok: false, error: "Failed to generate AI briefing", ts: new Date().toISOString() });
@@ -107,11 +117,11 @@ router.get("/briefing", async (req, res) => {
 router.post("/report-summary", async (req, res) => {
   try {
     const { sections } = req.body as { template?: string; sections?: Record<string, unknown> };
-    const context = await buildAIContext();
+    const { context, source } = await buildAIContextWithSource();
     context.reportSections = sections;
 
     const response = await getProvider().summarizeReport(context);
-    res.json({ ok: true, data: { summary: response.content }, ts: new Date().toISOString() });
+    res.json({ ok: true, data: { summary: response.content }, source, ts: new Date().toISOString() });
   } catch (err) {
     req.log.error({ err }, "Failed to generate report summary");
     res.status(500).json({ ok: false, error: "Failed to generate report summary", ts: new Date().toISOString() });
@@ -123,10 +133,10 @@ router.post("/analyze", async (req, res) => {
   try {
     const { entities } = req.body as { entities?: unknown };
     const slugs = parseEntitySlugs(entities);
-    const context = await buildAIContext(slugs);
+    const { context, source } = await buildAIContextWithSource(slugs);
 
     const response = await getProvider().analyzeFinancials(context);
-    res.json({ ok: true, data: formatAnalysisResponse(response), ts: new Date().toISOString() });
+    res.json({ ok: true, data: formatAnalysisResponse(response), source, ts: new Date().toISOString() });
   } catch (err) {
     req.log.error({ err }, "Failed to analyze financials");
     res.status(500).json({ ok: false, error: "Failed to analyze financials", ts: new Date().toISOString() });
@@ -143,13 +153,14 @@ router.post("/question", async (req, res) => {
     }
 
     const slugs = parseEntitySlugs(entities);
-    const context = await buildAIContext(slugs);
+    const { context, source } = await buildAIContextWithSource(slugs);
     context.question = question;
 
     const response = await getProvider().answerQuestion(context);
     res.json({
       ok: true,
       data: { answer: response.content, provider: response.provider },
+      source,
       ts: new Date().toISOString(),
     });
   } catch (err) {

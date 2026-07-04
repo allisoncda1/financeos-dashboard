@@ -7,7 +7,8 @@ const router: IRouter = Router();
 router.get("/rules", async (req, res) => {
   try {
     const data = RulesEngine.getRegisteredRules();
-    res.json({ ok: true, data, ts: new Date().toISOString() });
+    // Rule metadata is static application config, not fetched data.
+    res.json({ ok: true, data, source: "live", ts: new Date().toISOString() });
   } catch (err) {
     req.log.error({ err }, "Failed to load rules");
     res.status(500).json({
@@ -21,8 +22,8 @@ router.get("/rules", async (req, res) => {
 // GET /api/alerts — every active alert produced by the Rules Engine
 router.get("/alerts", async (req, res) => {
   try {
-    const data = await RulesEngine.run();
-    res.json({ ok: true, data, ts: new Date().toISOString() });
+    const { alerts: data, source } = await RulesEngine.runWithSource();
+    res.json({ ok: true, data, source, ts: new Date().toISOString() });
   } catch (err) {
     req.log.error({ err }, "Failed to evaluate alerts");
     res.status(500).json({
@@ -36,11 +37,11 @@ router.get("/alerts", async (req, res) => {
 // GET /api/alerts/:entity — alerts filtered to a single entity name
 router.get("/alerts/:entity", async (req, res) => {
   try {
-    const alerts = await RulesEngine.run();
+    const { alerts, source } = await RulesEngine.runWithSource();
     const data = alerts.filter(
       (alert) => alert.entity.toLowerCase() === req.params.entity.toLowerCase(),
     );
-    res.json({ ok: true, data, ts: new Date().toISOString() });
+    res.json({ ok: true, data, source, ts: new Date().toISOString() });
   } catch (err) {
     req.log.error({ err }, "Failed to evaluate alerts for entity");
     res.status(500).json({

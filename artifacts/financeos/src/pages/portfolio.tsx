@@ -22,7 +22,7 @@ export default function PortfolioPage() {
         return Number.isNaN(parsed.getTime()) ? null : format(parsed, "MMM d, yyyy h:mm a");
       })()
     : null;
-  const staleStatus = pipeline.failed ? null : pipeline.data?.staleStatus ?? null;
+  const staleStatus = pipeline.data?.staleStatus ?? null;
   const staleDotClass =
     staleStatus === "fresh"
       ? "bg-emerald-500"

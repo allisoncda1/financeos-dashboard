@@ -15,6 +15,7 @@ router.get("/health", (_req, res) => {
   const provider = getProvider();
   res.json({
     ok: true,
+    source: "live",
     data: {
       status: "healthy",
       version: "1.0.0",

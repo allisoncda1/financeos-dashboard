@@ -17,6 +17,7 @@ import {
 } from "../lib/dataSource";
 import { RulesEngine } from "../rules/engine";
 import { generateBriefing } from "../ai/briefing";
+import { combineSources, type DataSourceKind } from "../lib/sourceTracker";
 import { ENTITY_SLUGS, type EntitySlug } from "../lib/types";
 import { ENTITY_DEFINITIONS } from "../lib/entities";
 import { REPORT_TEMPLATES, type ReportTemplate, type ReportOutputFormat } from "./templates";
@@ -47,6 +48,8 @@ export type BuiltReport = {
   branding: ReportBranding;
   generatedAt: string;
   period: string;
+  /** Worst-case source (mock > cache > live) of all data in the report. */
+  source: DataSourceKind;
   sections: Record<string, unknown>;
   metadata: {
     entityCount: number;
@@ -116,14 +119,15 @@ export async function buildReport(request: ReportRequest): Promise<BuiltReport> 
 
   const resolvedEntities = resolveEntities(request.entities);
 
-  const freshness = (await getDataFreshness()).data;
+  const freshnessResult = await getDataFreshness();
+  const freshness = freshnessResult.data;
 
-  const [portfolioResult, validationResult, briefing, alerts, metricsResults, anomaliesResults, financialsResults] =
+  const [portfolioResult, validationResult, briefing, alertsResult, metricsResults, anomaliesResults, financialsResults] =
     await Promise.all([
       getPortfolioSummary(),
       getValidationSummary(),
       generateBriefing(),
-      RulesEngine.run(),
+      RulesEngine.runWithSource(),
       Promise.all(resolvedEntities.map((slug) => getEntityMetrics(slug))),
       Promise.all(resolvedEntities.map((slug) => getEntityAnomalies(slug))),
       Promise.all(resolvedEntities.map((slug) => getEntityFinancials(slug, freshness.data_as_of))),
@@ -131,9 +135,20 @@ export async function buildReport(request: ReportRequest): Promise<BuiltReport> 
 
   const portfolio = portfolioResult.data;
   const validation = validationResult.data;
+  const alerts = alertsResult.alerts;
   const metricsList = metricsResults.map((r) => r.data);
   const anomaliesList = anomaliesResults.map((r) => r.data);
   const financialsList = financialsResults.map((r) => r.data);
+
+  const source = combineSources([
+    freshnessResult.source,
+    portfolioResult.source,
+    validationResult.source,
+    alertsResult.source,
+    ...metricsResults.map((r) => r.source),
+    ...anomaliesResults.map((r) => r.source),
+    ...financialsResults.map((r) => r.source),
+  ]);
 
   const entitySet = new Set<string>(resolvedEntities);
   const scopedAlerts = alerts.filter((a) => {
@@ -203,6 +218,7 @@ export async function buildReport(request: ReportRequest): Promise<BuiltReport> 
     branding,
     generatedAt: new Date().toISOString(),
     period: request.period,
+    source,
     sections,
     metadata: {
       entityCount: resolvedEntities.length,

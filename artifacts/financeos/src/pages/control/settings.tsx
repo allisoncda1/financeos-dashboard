@@ -60,7 +60,9 @@ function Toggle({ label, enabled, note }: { label: string; enabled: boolean; not
 }
 
 function AiPlatformSection() {
-  const { data, loading, failed } = useAiStatus();
+  const { data, source } = useAiStatus();
+  const loading = source === "loading";
+  const failed = source === "unavailable";
 
   return (
     <SectionCard title="AI Platform" icon={Cpu} iconColor="#10B981">

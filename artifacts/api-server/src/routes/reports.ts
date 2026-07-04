@@ -17,7 +17,8 @@ router.get("/reports", (_req, res) => {
       supportedFormats,
       enabled,
     }));
-    res.json({ ok: true, data, ts: new Date().toISOString() });
+    // Template catalog is static application config, not fetched data.
+    res.json({ ok: true, data, source: "live", ts: new Date().toISOString() });
   } catch (err) {
     res.status(500).json({
       ok: false,
@@ -39,7 +40,7 @@ router.get("/reports/:template", (req, res) => {
       });
       return;
     }
-    res.json({ ok: true, data: template, ts: new Date().toISOString() });
+    res.json({ ok: true, data: template, source: "live", ts: new Date().toISOString() });
   } catch (err) {
     res.status(500).json({
       ok: false,
@@ -101,6 +102,7 @@ router.post("/reports/generate", async (req, res) => {
         metadata: report.metadata,
         output,
       },
+      source: report.source,
       ts: new Date().toISOString(),
     });
   } catch (err) {
