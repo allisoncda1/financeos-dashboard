@@ -2,12 +2,38 @@ import express, { type Express } from "express";
 import cors from "cors";
 import pinoHttp from "pino-http";
 import session from "express-session";
+import connectPgSimple from "connect-pg-simple";
+import { Pool } from "pg";
 import router from "./routes";
 import { logger } from "./lib/logger";
 
 const sessionSecret = process.env["SESSION_SECRET"];
 if (!sessionSecret) {
   throw new Error("SESSION_SECRET environment variable is required but was not provided.");
+}
+
+const databaseUrl = process.env["DATABASE_URL"];
+if (!databaseUrl) {
+  throw new Error("DATABASE_URL environment variable is required but was not provided.");
+}
+
+const PgSession = connectPgSimple(session);
+const sessionPool = new Pool({ connectionString: databaseUrl });
+
+// The bundled build breaks connect-pg-simple's createTableIfMissing (it reads
+// table.sql relative to the bundle), so we create the table ourselves.
+export async function ensureSessionTable(): Promise<void> {
+  await sessionPool.query(`
+    CREATE TABLE IF NOT EXISTS "session" (
+      "sid" varchar NOT NULL COLLATE "default",
+      "sess" json NOT NULL,
+      "expire" timestamp(6) NOT NULL,
+      CONSTRAINT "session_pkey" PRIMARY KEY ("sid")
+    );
+  `);
+  await sessionPool.query(
+    `CREATE INDEX IF NOT EXISTS "IDX_session_expire" ON "session" ("expire");`,
+  );
 }
 
 const app: Express = express();
@@ -35,13 +61,14 @@ app.use(cors());
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
-// Server-side sessions, backed by the default in-memory store for Phase 1.
-// NOTE: MemoryStore resets on every server restart/deploy — acceptable for
-// now (single-admin, low-traffic internal tool) but not multi-instance safe.
-// Swapping to connect-pg-simple (already installed) is a drop-in change
-// that only touches this `store` option — no route/middleware changes.
+// Server-side sessions, persisted in PostgreSQL via connect-pg-simple so
+// users stay signed in across server restarts and deploys.
 app.use(
   session({
+    store: new PgSession({
+      pool: sessionPool,
+      tableName: "session",
+    }),
     secret: sessionSecret,
     resave: false,
     saveUninitialized: false,
