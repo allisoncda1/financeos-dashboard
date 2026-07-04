@@ -347,6 +347,186 @@ class CoreLoader:
             row = cur.fetchone()
             return str(row["id"]) if row else ""
 
+    # ── FK cache builders ─────────────────────────────────────────────────────
+    # Build qbo_id → db_uuid maps in one query so normalizers never hit the DB
+    # per-record during batch processing.
+
+    def build_customer_id_cache(self, entity_id: str) -> dict:
+        """Return {customer_qbo_id: db_uuid} for all customers of this entity."""
+        with self._cursor() as cur:
+            cur.execute(
+                "SELECT qbo_id, id FROM customers WHERE entity_id = %s",
+                (entity_id,),
+            )
+            return {row["qbo_id"]: str(row["id"]) for row in cur.fetchall()}
+
+    def build_vendor_id_cache(self, entity_id: str) -> dict:
+        """Return {vendor_qbo_id: db_uuid} for all vendors of this entity."""
+        with self._cursor() as cur:
+            cur.execute(
+                "SELECT qbo_id, id FROM vendors WHERE entity_id = %s",
+                (entity_id,),
+            )
+            return {row["qbo_id"]: str(row["id"]) for row in cur.fetchall()}
+
+    def build_account_id_cache(self, entity_id: str) -> dict:
+        """Return {account_qbo_id: db_uuid} for all accounts of this entity."""
+        with self._cursor() as cur:
+            cur.execute(
+                "SELECT qbo_id, id FROM accounts WHERE entity_id = %s",
+                (entity_id,),
+            )
+            return {row["qbo_id"]: str(row["id"]) for row in cur.fetchall()}
+
+    def upsert_invoices_batch(self, records: list, batch_size: int = 500) -> int:
+        """Batch-upsert normalized invoice records. Returns total rows processed."""
+        if not records:
+            return 0
+        tuples = [
+            (
+                r["entity_id"], r["qbo_id"], r["customer_id"], r["customer_name"],
+                r["invoice_date"], r["due_date"], r["amount"], r["balance"],
+                r["status"], r["days_overdue"], r["currency"], r["memo"], r["is_deleted"],
+            )
+            for r in records
+        ]
+        total = 0
+        n_batches = (len(tuples) + batch_size - 1) // batch_size
+        for i in range(0, len(tuples), batch_size):
+            chunk = tuples[i : i + batch_size]
+            batch_num = i // batch_size + 1
+            with self._cursor() as cur:
+                psycopg2.extras.execute_values(
+                    cur,
+                    """
+                    INSERT INTO invoices (
+                        entity_id, qbo_id, customer_id, customer_name,
+                        invoice_date, due_date, amount, balance,
+                        status, days_overdue, currency, memo, is_deleted, synced_at
+                    )
+                    VALUES %s
+                    ON CONFLICT (entity_id, qbo_id)
+                    DO UPDATE SET
+                        customer_id   = EXCLUDED.customer_id,
+                        customer_name = EXCLUDED.customer_name,
+                        invoice_date  = EXCLUDED.invoice_date,
+                        due_date      = EXCLUDED.due_date,
+                        amount        = EXCLUDED.amount,
+                        balance       = EXCLUDED.balance,
+                        status        = EXCLUDED.status,
+                        days_overdue  = EXCLUDED.days_overdue,
+                        currency      = EXCLUDED.currency,
+                        memo          = EXCLUDED.memo,
+                        is_deleted    = EXCLUDED.is_deleted,
+                        synced_at     = now()
+                    """,
+                    chunk,
+                    template="(%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,now())",
+                    page_size=batch_size,
+                )
+                total += cur.rowcount
+            log.info(f"[loader] invoices batch {batch_num}/{n_batches}: {len(chunk)} records")
+        return total
+
+    def upsert_bills_batch(self, records: list, batch_size: int = 500) -> int:
+        """Batch-upsert normalized bill records. Returns total rows processed."""
+        if not records:
+            return 0
+        tuples = [
+            (
+                r["entity_id"], r["qbo_id"], r["vendor_id"], r["vendor_name"],
+                r["bill_date"], r["due_date"], r["amount"], r["balance"],
+                r["status"], r["days_overdue"], r["currency"], r["memo"], r["is_deleted"],
+            )
+            for r in records
+        ]
+        total = 0
+        n_batches = (len(tuples) + batch_size - 1) // batch_size
+        for i in range(0, len(tuples), batch_size):
+            chunk = tuples[i : i + batch_size]
+            batch_num = i // batch_size + 1
+            with self._cursor() as cur:
+                psycopg2.extras.execute_values(
+                    cur,
+                    """
+                    INSERT INTO bills (
+                        entity_id, qbo_id, vendor_id, vendor_name,
+                        bill_date, due_date, amount, balance,
+                        status, days_overdue, currency, memo, is_deleted, synced_at
+                    )
+                    VALUES %s
+                    ON CONFLICT (entity_id, qbo_id)
+                    DO UPDATE SET
+                        vendor_id    = EXCLUDED.vendor_id,
+                        vendor_name  = EXCLUDED.vendor_name,
+                        bill_date    = EXCLUDED.bill_date,
+                        due_date     = EXCLUDED.due_date,
+                        amount       = EXCLUDED.amount,
+                        balance      = EXCLUDED.balance,
+                        status       = EXCLUDED.status,
+                        days_overdue = EXCLUDED.days_overdue,
+                        currency     = EXCLUDED.currency,
+                        memo         = EXCLUDED.memo,
+                        is_deleted   = EXCLUDED.is_deleted,
+                        synced_at    = now()
+                    """,
+                    chunk,
+                    template="(%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,now())",
+                    page_size=batch_size,
+                )
+                total += cur.rowcount
+            log.info(f"[loader] bills batch {batch_num}/{n_batches}: {len(chunk)} records")
+        return total
+
+    def upsert_transactions_batch(self, records: list, batch_size: int = 500) -> int:
+        """Batch-upsert normalized transaction records. Returns total rows processed."""
+        if not records:
+            return 0
+        tuples = [
+            (
+                r["entity_id"], r["qbo_id"], r["transaction_type"], r["transaction_date"],
+                r["amount"], r["account_id"], r["account_name"], r["entity_ref"],
+                r["memo"], r["category"], r["currency"], r["is_reconciled"], r["is_deleted"],
+            )
+            for r in records
+        ]
+        total = 0
+        n_batches = (len(tuples) + batch_size - 1) // batch_size
+        for i in range(0, len(tuples), batch_size):
+            chunk = tuples[i : i + batch_size]
+            batch_num = i // batch_size + 1
+            with self._cursor() as cur:
+                psycopg2.extras.execute_values(
+                    cur,
+                    """
+                    INSERT INTO transactions (
+                        entity_id, qbo_id, transaction_type, transaction_date,
+                        amount, account_id, account_name, entity_ref,
+                        memo, category, currency, is_reconciled, is_deleted, synced_at
+                    )
+                    VALUES %s
+                    ON CONFLICT (entity_id, transaction_type, qbo_id)
+                    DO UPDATE SET
+                        transaction_date = EXCLUDED.transaction_date,
+                        amount           = EXCLUDED.amount,
+                        account_id       = EXCLUDED.account_id,
+                        account_name     = EXCLUDED.account_name,
+                        entity_ref       = EXCLUDED.entity_ref,
+                        memo             = EXCLUDED.memo,
+                        category         = EXCLUDED.category,
+                        currency         = EXCLUDED.currency,
+                        is_reconciled    = EXCLUDED.is_reconciled,
+                        is_deleted       = EXCLUDED.is_deleted,
+                        synced_at        = now()
+                    """,
+                    chunk,
+                    template="(%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,now())",
+                    page_size=batch_size,
+                )
+                total += cur.rowcount
+            log.info(f"[loader] transactions batch {batch_num}/{n_batches}: {len(chunk)} records")
+        return total
+
     def get_account_id(self, entity_id: str, qbo_id: str) -> Optional[str]:
         """Look up the DB UUID for an account by entity + QBO ID."""
         with self._cursor() as cur:

@@ -140,17 +140,25 @@ class QBOExtractor:
         # Entities that must be filtered to active-only (inactive records skew counts)
         ACTIVE_ONLY = {"Customer", "Vendor"}
 
+        # QBO SQL requires MetaData.LastUpdatedTime (not bare LastUpdatedTime)
+        # and a full ISO timestamp with timezone offset.
+        def _qbo_timestamp(dt_str: str) -> str:
+            """Ensure dt_str has a time+offset component for QBO SQL."""
+            if "T" not in dt_str:
+                return dt_str + "T00:00:00+00:00"
+            return dt_str
+
         if since_time and object_type in INCREMENTAL_ENTITIES:
-            # Incremental: only records modified since last sync
+            ts = _qbo_timestamp(since_time)
             if object_type in ACTIVE_ONLY:
                 sql = (
                     f"SELECT * FROM {object_type} "
-                    f"WHERE Active = true AND LastUpdatedTime >= '{since_time}'"
+                    f"WHERE Active = true AND MetaData.LastUpdatedTime >= '{ts}'"
                 )
             else:
                 sql = (
                     f"SELECT * FROM {object_type} "
-                    f"WHERE LastUpdatedTime >= '{since_time}'"
+                    f"WHERE MetaData.LastUpdatedTime >= '{ts}'"
                 )
         elif object_type in ACTIVE_ONLY:
             # Full backfill — active records only
@@ -179,6 +187,42 @@ class QBOExtractor:
     @with_retry(max_attempts=5, base_delay=1.0, max_delay=60.0)
     def _query_page_with_retry(self, sql: str, start: int, page_size: int):
         return _query_page(self._env, self._token, self._realm, sql, start, page_size)
+
+    def extract_entity_by_txn_date(
+        self,
+        object_type: str,
+        since_date: str,
+    ) -> "ExtractedObjects":
+        """
+        Extract records filtered by TxnDate >= since_date.
+        Used for controlled date-range validation (e.g. 2026-only AR/AP).
+        TxnDate is the transaction's actual date, not its update time.
+        Never raises — errors captured in ExtractedObjects.error.
+        """
+        result = ExtractedObjects(object_type=object_type, realm_id=self._realm)
+        try:
+            sql = f"SELECT * FROM {object_type} WHERE TxnDate >= '{since_date}'"
+            rows = self._paginate_by_sql(sql)
+            result.records = rows
+            result.fetched = len(rows)
+        except Exception as exc:
+            result.error = str(exc)
+            log.error(f"[extractor] {object_type}/{self._realm} (TxnDate): unexpected error: {exc}")
+        return result
+
+    def _paginate_by_sql(self, sql: str) -> List[dict]:
+        """Paginate through QBO results for an arbitrary SQL query."""
+        rows: List[dict] = []
+        start = 1
+        page_size = 1000
+        while True:
+            self._limiter.acquire()
+            page, _ = self._query_page_with_retry(sql, start, page_size)
+            rows.extend(page)
+            if len(page) < page_size:
+                break
+            start += page_size
+        return rows
 
     # ── Report extraction ─────────────────────────────────────────────────────
 
