@@ -99,10 +99,17 @@ export function Sidebar({ onClose }: { onClose?: () => void }) {
     >
       {/* Logo row */}
       <div className="px-4 pt-4 pb-3 flex items-center gap-2.5">
-        <div className="w-7 h-7 rounded-lg bg-emerald-500 flex items-center justify-center flex-shrink-0">
-          <BarChart3 className="w-4 h-4 text-white" />
-        </div>
-        <span className="text-white font-bold text-[13px] tracking-widest flex-1">FINANCEOS</span>
+        <Link
+          href="/home"
+          aria-label="Back to launcher"
+          title="Back to launcher"
+          className="flex items-center gap-2.5 flex-1 min-w-0 rounded-lg transition-opacity hover:opacity-80"
+        >
+          <div className="w-7 h-7 rounded-lg bg-emerald-500 flex items-center justify-center flex-shrink-0">
+            <BarChart3 className="w-4 h-4 text-white" />
+          </div>
+          <span className="text-white font-bold text-[13px] tracking-widest flex-1 truncate">FINANCEOS</span>
+        </Link>
         {onClose && (
           <button
             onClick={onClose}
