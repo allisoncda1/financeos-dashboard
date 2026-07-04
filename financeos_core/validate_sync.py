@@ -58,8 +58,11 @@ def _load_companies() -> list:
 def _find_company(companies: list, slug: Optional[str]) -> dict:
     """Return the target company. If slug is None, returns first active company."""
     if slug:
+        def _slugify(name: str) -> str:
+            return name.lower().replace(" ", "_").replace(".", "_").replace("-", "_")
+
         for c in companies:
-            if c.get("slug") == slug or c.get("name", "").lower().replace(" ", "_") == slug:
+            if c.get("slug") == slug or _slugify(c.get("name", "")) == slug:
                 return c
         raise ValueError(
             f"Company '{slug}' not found in companies.json. "
