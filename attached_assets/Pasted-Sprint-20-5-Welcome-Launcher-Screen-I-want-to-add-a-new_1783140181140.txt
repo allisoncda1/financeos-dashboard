@@ -1,0 +1,107 @@
+Sprint 20.5 — Welcome Launcher Screen
+
+I want to add a new post-login welcome screen that matches the attached reference image as closely as possible.
+
+This should become the first screen users see after login.
+
+Do NOT redesign the existing dashboard.
+Do NOT remove the existing Reporting dashboard.
+Do NOT change backend logic.
+
+Goal:
+After login, user lands on a clean FINANCEOS launcher page with 6 module cards.
+
+Design must match the reference image very closely.
+
+Layout:
+- Full page, light background
+- FINANCEOS logo top-left
+- Sign out button top-right
+- No sidebar
+- No notification bell
+- No portfolio selector
+- Centered welcome section:
+  “Welcome back, Allison 👋”
+  Subtitle:
+  “All your finance. One platform. Total clarity.”
+- “Total clarity.” should be green/teal like the FINANCEOS brand accent
+- 6 cards in a 3x2 grid, centered
+
+Cards:
+1. Reporting
+   - Active card
+   - Blue icon
+   - Blue title
+   - Text: “Financial reports and performance insights”
+   - Add a blue button: “Open Dashboard →”
+   - Clicking opens the current dashboard/reporting app
+
+2. Budget
+   - Coming soon badge top-right
+   - Green icon/title
+   - Text: “Plan, track and analyze your budgets”
+   - Disabled / no navigation
+
+3. Forecast
+   - Coming soon badge top-right
+   - Purple icon/title
+   - Text: “Predict future performance and cash flow”
+   - Disabled / no navigation
+
+4. Commission
+   - Coming soon badge top-right
+   - Orange icon/title
+   - Text: “Track commissions and payouts”
+   - Disabled / no navigation
+
+5. Accounting
+   - Coming soon badge top-right
+   - Blue icon/title
+   - Text: “Manage accounting and reconciliations”
+   - Disabled / no navigation
+
+6. AI Assistant
+   - Coming soon badge top-right
+   - Purple icon/title
+   - Text: “Ask, analyze and get intelligent answers”
+   - Disabled / no navigation
+
+Footer:
+Centered at bottom:
+“Built for finance. Powered by intelligence.”
+“intelligence.” should be blue.
+
+Style requirements:
+- Match the attached image almost pixel-perfect
+- White/light gray background
+- Large rounded cards
+- Soft shadows
+- Subtle border
+- Lots of whitespace
+- Modern SaaS look
+- Same FINANCEOS branding
+- Same typography feeling as current app
+- Cards should be large, premium, and centered
+- Responsive: on small screens, cards stack vertically
+
+Routing:
+- Add route: /home or /launcher
+- After login, redirect user to this launcher screen instead of directly to the dashboard
+- Reporting card should link to the existing dashboard route
+- Keep all existing dashboard routes unchanged
+
+Auth:
+- Sign out button must call existing logout flow
+- Page must be protected by existing auth
+
+Important:
+- This is a UI/navigation layer only
+- No backend changes unless required for logout routing
+- Do not change current Reporting dashboard
+- Do not break existing auth
+- Do not remove existing sidebar from the Reporting dashboard
+- The sidebar should not appear on the welcome launcher screen only
+
+Use the attached screenshot as the exact visual target.
+Run typecheck and build.
+Commit and push if clean.

@@ -22,7 +22,7 @@ export default function LoginPage() {
 
   useEffect(() => {
     if (status === "authenticated" && user) {
-      router.replace("/");
+      router.replace("/home");
     }
   }, [status, user, router]);
 
@@ -32,7 +32,7 @@ export default function LoginPage() {
     setSubmitting(true);
     try {
       await login(email, password);
-      router.replace("/");
+      router.replace("/home");
     } catch (err) {
       setError(err instanceof Error ? err.message : "Invalid email or password");
     } finally {

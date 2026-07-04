@@ -3,6 +3,7 @@ import { AppShell } from "@/components/layout/AppShell";
 import { CommandBar } from "@/components/layout/CommandBar";
 import NotFound from "@/pages/not-found";
 import LoginPage from "@/pages/login";
+import HomePage from "@/pages/home";
 import { AuthProvider } from "@/lib/auth";
 import { ProtectedRoute } from "@/components/auth/ProtectedRoute";
 
@@ -51,6 +52,11 @@ function Router() {
   return (
     <Switch>
       <Route path="/login" component={LoginPage} />
+      <Route path="/home">
+        <ProtectedRoute>
+          <HomePage />
+        </ProtectedRoute>
+      </Route>
       <Route>
         <ProtectedRoute>
           <AppShell>
