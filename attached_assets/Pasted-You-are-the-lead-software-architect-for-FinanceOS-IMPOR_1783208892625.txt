@@ -1,0 +1,112 @@
+You are the lead software architect for FinanceOS.
+
+IMPORTANT:
+Do NOT modify any code yet.
+
+Your first task is to perform a complete architectural analysis of the Dashboard project before proposing any migration.
+
+====================================================
+CURRENT ARCHITECTURE
+====================================================
+
+FinanceOS Core (Python)
+    ↓
+Neon PostgreSQL
+    ↓
+financial_periods
+entity_snapshots
+portfolio_snapshots
+validation_results
+sync_runs
+    ↓
+FinanceOS Dashboard (Node.js / Express / React)
+
+FinanceOS Core is COMPLETE.
+
+The Dashboard is still reading data from Google Drive.
+
+The objective is to migrate the Dashboard to Neon without changing the UI or business behavior.
+
+====================================================
+YOUR TASK
+====================================================
+
+Analyze the entire Dashboard codebase.
+
+Identify:
+
+1. Every place where Google Drive is used.
+2. Every driveLoader.ts dependency.
+3. Every CSV parser.
+4. Every JSON loader.
+5. Every endpoint that ultimately depends on Google Drive.
+6. Every service that currently transforms Drive data.
+7. Every cache built from Drive.
+8. Every TypeScript model currently fed from Drive.
+9. Every component affected by the migration.
+10. Every place where business logic exists inside the Dashboard instead of FinanceOS Core.
+
+====================================================
+THEN PRODUCE A REPORT
+====================================================
+
+I want a complete migration report.
+
+Include:
+
+SECTION 1
+Current Dashboard architecture.
+
+SECTION 2
+Google Drive dependency graph.
+
+SECTION 3
+List every endpoint.
+
+For each endpoint include:
+
+- current source
+- future Neon source
+- migration complexity
+- estimated risk
+
+SECTION 4
+Files to modify.
+
+For each file explain WHY.
+
+SECTION 5
+Files that should disappear after migration.
+
+SECTION 6
+Files that should remain untouched.
+
+SECTION 7
+Potential breaking changes.
+
+SECTION 8
+Recommended migration order.
+
+====================================================
+IMPORTANT
+====================================================
+
+Do NOT write code.
+
+Do NOT refactor.
+
+Do NOT rename files.
+
+Do NOT migrate anything.
+
+Do NOT change React.
+
+Do NOT change Express.
+
+Do NOT touch FinanceOS Core.
+
+I want a complete architectural review only.
+
+At the end, give me a migration roadmap from Sprint 5 to Sprint 8 with clear milestones and estimated complexity.
+
+Wait for my approval before changing any code.
