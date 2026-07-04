@@ -22,7 +22,13 @@ function fmtCF(n: number): string {
 }
 function pct(n: number): string { return `${n.toFixed(1)}%`; }
 
-const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun"];
+const MONTH_NAMES = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+
+/** "2026-01" → "Jan". Falls back to the raw string if unparseable. */
+function monthLabel(month: string): string {
+  const idx = Number(month.slice(5, 7)) - 1;
+  return MONTH_NAMES[idx] ?? month;
+}
 
 const PL_ROWS = [
   { label: "Revenue",      key: "revenue" as const,      bold: false, border: false, positive: true },
@@ -49,7 +55,10 @@ export default function FinancialsPage() {
 
   const grossMargin = ytd.revenue > 0 ? (ytd.gross_profit / ytd.revenue) * 100 : 0;
   const netMargin   = ytd.revenue > 0 ? (ytd.net_income  / ytd.revenue) * 100 : 0;
-  const displayMonths = fin.monthly_pl.slice(0, MONTHS.length);
+  const displayMonths = fin.monthly_pl;
+  const monthRangeLabel = displayMonths.length > 0
+    ? `${monthLabel(displayMonths[0].month)}–${monthLabel(displayMonths[displayMonths.length - 1].month)} ${displayMonths[0].month.slice(0, 4)}`
+    : "";
 
   const plPanel = (
     <div className="px-6 py-5 space-y-5">
@@ -73,15 +82,15 @@ export default function FinancialsPage() {
       {/* Monthly P&L table */}
       <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
         <div className="px-4 py-3 border-b border-gray-100">
-          <h3 className="text-[13px] font-semibold text-gray-900">Monthly P&L — Jan–Jun 2026</h3>
+          <h3 className="text-[13px] font-semibold text-gray-900">Monthly P&L{monthRangeLabel ? ` — ${monthRangeLabel}` : ""}</h3>
         </div>
         <div className="overflow-x-auto">
           <table className="w-full">
             <thead>
               <tr className="border-b border-gray-100">
                 <th className="text-left px-4 py-2.5 text-[10px] font-semibold text-gray-400 uppercase tracking-wide w-32">Line Item</th>
-                {MONTHS.map((m) => (
-                  <th key={m} className="text-right px-3 py-2.5 text-[10px] font-semibold text-gray-400 uppercase tracking-wide">{m}</th>
+                {displayMonths.map((mp) => (
+                  <th key={mp.month} className="text-right px-3 py-2.5 text-[10px] font-semibold text-gray-400 uppercase tracking-wide">{monthLabel(mp.month)}</th>
                 ))}
                 <th className="text-right px-4 py-2.5 text-[10px] font-semibold text-gray-600 uppercase tracking-wide bg-gray-50">YTD</th>
               </tr>
@@ -141,32 +150,14 @@ export default function FinancialsPage() {
     </div>
   );
 
-  const cfNetOps  = ytd.net_income + Math.round(ytd.opex * 0.08) - Math.round(ytd.revenue * 0.03) + Math.round(ytd.cogs * 0.02);
-  const cfInvest  = -Math.round(ytd.opex * 0.12);
-  const cfFinance = -Math.round(ytd.opex * 0.05);
-
   const cfPanel = (
-    <div className="px-6 py-5 space-y-4">
-      <CFCard title="Operating Activities" color="#10B981">
-        <CFRow label="Net Income"                      value={ytd.net_income} />
-        <CFRow label="Depreciation & Amortization"     value={Math.round(ytd.opex * 0.08)} />
-        <CFRow label="Change in Accounts Receivable"   value={-Math.round(ytd.revenue * 0.03)} />
-        <CFRow label="Change in Accounts Payable"      value={Math.round(ytd.cogs * 0.02)} />
-        <CFRow label="Net Cash from Operations"        value={cfNetOps} bold />
-      </CFCard>
-      <CFCard title="Investing Activities" color="#F59E0B">
-        <CFRow label="Purchase of Equipment"           value={cfInvest} />
-        <CFRow label="Net Cash from Investing"         value={cfInvest} bold />
-      </CFCard>
-      <CFCard title="Financing Activities" color="#8B5CF6">
-        <CFRow label="Loan Repayments"                 value={cfFinance} />
-        <CFRow label="Net Cash from Financing"         value={cfFinance} bold />
-      </CFCard>
-      <div className="bg-gray-900 text-white rounded-xl px-4 py-3 flex items-center justify-between">
-        <span className="text-[12px] font-bold">Net Change in Cash (YTD)</span>
-        <span className={`text-[14px] font-bold ${cfNetOps + cfInvest + cfFinance >= 0 ? "text-emerald-400" : "text-red-400"}`}>
-          {fmtCF(cfNetOps + cfInvest + cfFinance)}
-        </span>
+    <div className="px-6 py-5">
+      <div className="bg-white rounded-xl border border-gray-200 px-6 py-10 text-center">
+        <p className="text-[13px] font-semibold text-gray-900">Cash flow statement not available yet</p>
+        <p className="text-[12px] text-gray-500 mt-1 max-w-md mx-auto">
+          A cash flow statement requires transaction-level data that the pipeline doesn't provide for this entity yet.
+          Net income YTD is {fmtCF(ytd.net_income)} — see the P&L and Balance Sheet tabs for live figures.
+        </p>
       </div>
     </div>
   );
@@ -204,29 +195,6 @@ function BSRow({ label, value }: { label: string; value: number }) {
     <div className="flex items-center justify-between">
       <span className="text-[12px] text-gray-600">{label}</span>
       <span className="text-[12px] font-semibold text-gray-800">{fmt(value)}</span>
-    </div>
-  );
-}
-
-function CFCard({ title, color, children }: { title: string; color: string; children: React.ReactNode }) {
-  return (
-    <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
-      <div className="px-4 py-3 border-b border-gray-100 flex items-center gap-2">
-        <span className="w-2 h-2 rounded-full flex-shrink-0" style={{ background: color }} />
-        <h3 className="text-[13px] font-semibold text-gray-900">{title}</h3>
-      </div>
-      <div className="p-4 space-y-2">{children}</div>
-    </div>
-  );
-}
-
-function CFRow({ label, value, bold }: { label: string; value: number; bold?: boolean }) {
-  return (
-    <div className={`flex items-center justify-between ${bold ? "border-t border-gray-200 pt-2 mt-1" : ""}`}>
-      <span className={`text-[12px] ${bold ? "font-bold text-gray-900" : "text-gray-600"}`}>{label}</span>
-      <span className={`text-[12px] ${bold ? "font-bold" : "font-semibold"} ${value < 0 ? "text-red-700" : "text-gray-800"}`}>
-        {fmtCF(value)}
-      </span>
     </div>
   );
 }
