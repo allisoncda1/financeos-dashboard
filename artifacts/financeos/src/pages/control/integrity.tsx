@@ -51,7 +51,7 @@ export default function IntegrityPage() {
   return (
     <div className="h-full flex flex-col overflow-hidden bg-[#F4F5F7]">
       {/* Header */}
-      <div className="flex-shrink-0 bg-white border-b border-gray-200 px-6 py-4 flex items-center justify-between">
+      <div className="flex-shrink-0 bg-white border-b border-gray-200 px-4 sm:px-6 py-4 flex items-center justify-between">
         <div className="flex items-center gap-3">
           <div className="w-8 h-8 rounded-xl bg-emerald-50 flex items-center justify-center">
             <ShieldCheck className="w-4 h-4 text-emerald-600" />
@@ -71,10 +71,10 @@ export default function IntegrityPage() {
         </div>
       </div>
 
-      <div className="flex-1 overflow-y-auto px-6 py-5 space-y-5">
+      <div className="flex-1 overflow-y-auto px-4 sm:px-6 py-4 sm:py-5 space-y-5">
 
         {/* Pipeline status strip */}
-        <div className="grid grid-cols-6 gap-3">
+        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
           {PIPELINE_STEPS.map(({ label, icon: Icon, value }) => {
             const ss = statusStyle(value as string | boolean);
             return (
@@ -91,7 +91,7 @@ export default function IntegrityPage() {
         </div>
 
         {/* Pipeline health + validation summary */}
-        <div className="grid grid-cols-2 gap-4">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <div className="bg-white rounded-xl border border-gray-200 p-5">
             <h3 className="text-[13px] font-semibold text-gray-900 mb-4">Pipeline Health</h3>
             <div className="space-y-3">

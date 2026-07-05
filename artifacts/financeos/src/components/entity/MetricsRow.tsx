@@ -5,7 +5,7 @@ type Props = { metrics: EntityMetrics };
 
 export function MetricsRow({ metrics: m }: Props) {
   return (
-    <div className="grid grid-cols-4 gap-4">
+    <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
       <MetricCard label="Revenue YTD"  value={formatCurrency(m.revenue_ytd)} />
       <MetricCard label="Net Income"   value={formatCurrency(m.net_income_ytd)}
         sub={`${formatPercent(m.net_margin_pct)} net margin`} />
@@ -38,8 +38,8 @@ function MetricCard({
   label: string; value: string; sub?: string; warn?: boolean; warnNote?: string;
 }) {
   return (
-    <div className={`bg-white rounded-xl border p-4 ${warn ? "border-amber-200" : "border-gray-200"}`}>
-      <p className="text-xs text-gray-500 mb-1">{label}</p>
+    <div className={`bg-white rounded-xl border p-4 h-full ${warn ? "border-amber-200" : "border-gray-200"}`}>
+      <p className="text-[10px] text-gray-400 uppercase tracking-wide font-semibold mb-1">{label}</p>
       <p className={`text-lg font-bold leading-tight ${warn ? "text-amber-600" : "text-gray-900"}`}>
         {value}
       </p>

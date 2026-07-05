@@ -42,10 +42,10 @@ export default function CustomersPage() {
     <div className="h-full flex flex-col overflow-hidden bg-[#F4F5F7]">
       <PageHeader entitySlug={eSlug} pageTitle="Customers & AR" asOf={cust.as_of} />
 
-      <div className="flex-1 overflow-y-auto px-6 py-5 space-y-5">
+      <div className="flex-1 overflow-y-auto px-4 sm:px-6 py-4 sm:py-5 space-y-5">
 
         {/* Summary banner */}
-        <div className="grid grid-cols-4 gap-3">
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
           <SummaryCard label="Open AR" value={formatCurrency(cust.open_ar)} sub="total outstanding" color="text-gray-900" />
           <SummaryCard label="Overdue AR" value={formatCurrency(overdueAmt)} sub={overduePct !== null ? `${formatPercent(overduePct)} of total` : DASH} color={overdueAmt > 0 ? "text-red-600" : "text-emerald-600"} />
           <div className="bg-white rounded-xl border border-gray-200 p-4">

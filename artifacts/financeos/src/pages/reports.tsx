@@ -185,7 +185,7 @@ export default function ReportCenterPage() {
     <div className="h-full flex flex-col overflow-hidden bg-[#F4F5F7]">
 
       {/* ── Header ──────────────────────────────────────────────────────── */}
-      <div className="flex-shrink-0 bg-white border-b border-gray-200 px-6 py-4 flex items-center justify-between">
+      <div className="flex-shrink-0 bg-white border-b border-gray-200 px-4 sm:px-6 py-4 flex items-center justify-between">
         <div className="flex items-center gap-3">
           <div className="w-8 h-8 rounded-xl bg-violet-50 flex items-center justify-center">
             <FileText className="w-4 h-4 text-violet-600" />

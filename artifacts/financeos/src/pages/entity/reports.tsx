@@ -47,12 +47,12 @@ export default function ReportsPage() {
     <div className="h-full flex flex-col overflow-hidden bg-[#F4F5F7]">
       <PageHeader entitySlug={eSlug} pageTitle="Reports" asOf={asOf} />
 
-      <div className="flex-1 overflow-y-auto px-6 py-5 space-y-5">
+      <div className="flex-1 overflow-y-auto px-4 sm:px-6 py-4 sm:py-5 space-y-5">
 
         {/* Report types */}
         <div>
           <p className="text-[11px] font-semibold text-gray-500 uppercase tracking-widest mb-3">Available Reports</p>
-          <div className="grid grid-cols-3 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3">
             {REPORT_TYPES.map((r) => (
               <Link
                 key={r.id}

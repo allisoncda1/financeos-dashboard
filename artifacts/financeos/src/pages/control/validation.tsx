@@ -91,7 +91,7 @@ export default function ValidationPage() {
   return (
     <div className="h-full flex flex-col overflow-hidden bg-[#F4F5F7]">
       {/* Header */}
-      <div className="flex-shrink-0 bg-white border-b border-gray-200 px-6 py-4 flex items-center justify-between">
+      <div className="flex-shrink-0 bg-white border-b border-gray-200 px-4 sm:px-6 py-4 flex items-center justify-between">
         <div className="flex items-center gap-3">
           <div className="w-8 h-8 rounded-xl bg-amber-50 flex items-center justify-center">
             <CheckCircle2 className="w-4 h-4 text-amber-600" />
@@ -119,7 +119,7 @@ export default function ValidationPage() {
       <div className="flex-1 overflow-hidden flex gap-0">
 
         {/* Left: matrix + run details */}
-        <div className="flex-1 overflow-y-auto px-6 py-5 space-y-5 min-w-0">
+        <div className="flex-1 overflow-y-auto px-4 sm:px-6 py-4 sm:py-5 space-y-5 min-w-0">
 
           {/* Discrepancy banner — the pipeline's own numbers don't add up */}
           {discrepancies.length > 0 && (
@@ -144,7 +144,7 @@ export default function ValidationPage() {
           )}
 
           {/* Overview KPI row — reported by the pipeline, not recomputed */}
-          <div className="grid grid-cols-4 gap-3">
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
             {[
               { label: "Expected Checks",  value: data.expected_checks,          color: "text-gray-900",    sub: `${ruleIds.length} rules × ${entitySlugs.length} entities` },
               { label: "Reported Passed",  value: reported.passed ?? "—",         color: "text-emerald-600", sub: "as published by pipeline" },

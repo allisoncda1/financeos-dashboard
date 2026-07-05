@@ -39,10 +39,10 @@ export default function VendorsPage() {
     <div className="h-full flex flex-col overflow-hidden bg-[#F4F5F7]">
       <PageHeader entitySlug={eSlug} pageTitle="Vendors & AP" asOf={vend.as_of} />
 
-      <div className="flex-1 overflow-y-auto px-6 py-5 space-y-5">
+      <div className="flex-1 overflow-y-auto px-4 sm:px-6 py-4 sm:py-5 space-y-5">
 
         {/* Summary banner */}
-        <div className="grid grid-cols-4 gap-3">
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
           <SummaryCard label="Open AP" value={formatCurrency(vend.open_ap)} sub="total outstanding" color="text-gray-900" />
           <SummaryCard
             label="Overdue AP"

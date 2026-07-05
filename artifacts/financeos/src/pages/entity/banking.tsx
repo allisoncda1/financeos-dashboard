@@ -80,7 +80,7 @@ export default function BankingPage() {
     <div className="h-full flex flex-col overflow-hidden bg-[#F4F5F7]">
       <PageHeader entitySlug={eSlug} pageTitle="Banking" asOf={bank.as_of} />
 
-      <div className="flex-1 overflow-y-auto px-6 py-5 space-y-5">
+      <div className="flex-1 overflow-y-auto px-4 sm:px-6 py-4 sm:py-5 space-y-5">
 
         {/* Reconciliation banner */}
         <div className={`flex items-center gap-3 px-4 py-3 rounded-xl border ${sc.bg} ${sc.border}`}>
@@ -127,7 +127,7 @@ export default function BankingPage() {
               No active accounts.
             </div>
           ) : (
-            <div className="grid grid-cols-3 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
               {active.map((acct) => <AccountCard key={acct.id} acct={acct} />)}
             </div>
           )}
@@ -145,7 +145,7 @@ export default function BankingPage() {
             <p className="text-[11px] text-gray-400 mb-2.5">
               No transaction history. Hidden from the active view — kept on file, not deleted.
             </p>
-            <div className="grid grid-cols-3 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
               {dead.map((acct) => <AccountCard key={acct.id} acct={acct} muted />)}
             </div>
           </div>
@@ -172,7 +172,7 @@ export default function BankingPage() {
               </span>
             </button>
             {inactiveOpen && (
-              <div className="px-4 pb-4 pt-1 grid grid-cols-3 gap-4">
+              <div className="px-4 pb-4 pt-1 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
                 {inactive.map((acct) => <AccountCard key={acct.id} acct={acct} muted />)}
               </div>
             )}

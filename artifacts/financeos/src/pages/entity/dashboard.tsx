@@ -105,11 +105,11 @@ export default function EntityPage() {
       </div>
 
       {/* ── Dashboard content ───────────────────────────── */}
-      <div className="flex-1 px-6 py-5 space-y-4 max-w-[1400px] w-full mx-auto">
+      <div className="flex-1 px-4 sm:px-6 py-4 sm:py-5 space-y-4 max-w-[1400px] w-full mx-auto">
 
         {/* Row 1 — 5 KPI cards. Deltas omitted: no comparable prior period
             is published yet, so a neutral "—" is shown instead of a fake trend. */}
-        <div className="grid grid-cols-5 gap-4">
+        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-4">
           <KpiCard
             label="NET PROFIT"
             value={fmt(m.net_income_ytd)}
@@ -142,8 +142,8 @@ export default function EntityPage() {
           />
         </div>
 
-        {/* Row 2 — 3-column grid */}
-        <div className="grid gap-4" style={{ gridTemplateColumns: "1fr 220px 260px" }}>
+        {/* Row 2 — 3-column grid (stacks on smaller screens) */}
+        <div className="grid gap-4 grid-cols-1 lg:grid-cols-[1fr_220px_260px]">
 
           {/* Column 1: Chart + Alerts */}
           <div className="flex flex-col gap-4">

@@ -57,9 +57,9 @@ export default function FinancialsPage() {
     : "";
 
   const plPanel = (
-    <div className="px-6 py-5 space-y-5">
+    <div className="px-4 sm:px-6 py-4 sm:py-5 space-y-5">
       {/* YTD summary cards */}
-      <div className="grid grid-cols-5 gap-3">
+      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
         {[
           { label: "Revenue",      value: fmt(ytd.revenue),      sub: "100%" },
           { label: "Gross Profit", value: fmt(ytd.gross_profit),  sub: pct(grossMargin) + " margin" },
@@ -136,7 +136,7 @@ export default function FinancialsPage() {
   );
 
   const bsPanel = (
-    <div className="px-6 py-5 grid grid-cols-3 gap-4">
+    <div className="px-4 sm:px-6 py-4 sm:py-5 grid grid-cols-1 md:grid-cols-3 gap-4">
       <BSCard title="Assets" total={bs.assets.total} color="#10B981" items={[
         { label: "Cash & Equivalents",  value: bs.assets.cash },
         { label: "Accounts Receivable", value: bs.assets.accounts_receivable },
@@ -158,9 +158,9 @@ export default function FinancialsPage() {
 
   const cf = fin.cash_flow;
   const cfPanel = cf ? (
-    <div className="px-6 py-5 space-y-4">
+    <div className="px-4 sm:px-6 py-4 sm:py-5 space-y-4">
       {/* Summary cards */}
-      <div className="grid grid-cols-3 gap-3">
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
         {[
           ...cf.sections.map((s) => ({ label: `Net Cash — ${s.name}`, value: s.net_cash })),
           ...(cf.net_cash_change !== null ? [{ label: "Net Cash Change", value: cf.net_cash_change }] : []),
@@ -226,7 +226,7 @@ export default function FinancialsPage() {
       </div>
     </div>
   ) : (
-    <div className="px-6 py-5">
+    <div className="px-4 sm:px-6 py-4 sm:py-5">
       <div className="bg-white rounded-xl border border-gray-200 px-6 py-10 text-center">
         <p className="text-[13px] font-semibold text-gray-900">Cash flow statement is not available yet from FinanceOS Core.</p>
         <p className="text-[12px] text-gray-500 mt-1 max-w-md mx-auto">

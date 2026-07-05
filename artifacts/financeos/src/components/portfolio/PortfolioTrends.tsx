@@ -67,7 +67,7 @@ export function PortfolioTrends() {
   const period = `${months[0]} – ${months[months.length - 1]} · all entities`;
 
   return (
-    <div className="grid grid-cols-3 gap-4">
+    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
       <TrendCard
         label="Revenue Trend"
         value={fmt(revenue[revenue.length - 1])}
