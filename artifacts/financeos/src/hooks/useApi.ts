@@ -35,6 +35,11 @@ function useTrackedFetch<T>(
       : { data: null, source: 'loading', lastSuccessfulFetch: null },
   );
   const lastGoodRef = useRef<T | null>(USE_MOCK_FALLBACK && mockInit ? mockInit() : null);
+  const mountedRef = useRef(true);
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => { mountedRef.current = false; };
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -56,13 +61,33 @@ function useTrackedFetch<T>(
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, deps);
 
+  // Manual refetch — re-runs the same fetcher on demand (e.g. a Refresh
+  // button). Reuses the identical success/failure handling as the mount
+  // effect; hits the same endpoint with no extra side effects.
+  const refetch = useCallback(async () => {
+    try {
+      const { data, source } = await fetcher();
+      if (!mountedRef.current) return;
+      lastGoodRef.current = data;
+      setState({ data, source, lastSuccessfulFetch: new Date().toISOString() });
+    } catch {
+      if (!mountedRef.current) return;
+      setState((prev) => ({
+        data: lastGoodRef.current,
+        source: lastGoodRef.current ? prev.source : 'unavailable',
+        lastSuccessfulFetch: prev.lastSuccessfulFetch,
+      }));
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, deps);
+
   useEffect(() => {
     if (!reportGlobal) return;
     reportDataSource(key, { source: state.source, lastSuccessfulFetch: state.lastSuccessfulFetch });
     return () => clearDataSource(key);
   }, [key, state.source, state.lastSuccessfulFetch, reportGlobal]);
 
-  return state;
+  return { ...state, refetch };
 }
 
 export function useDashboardData(): FetchState<DashboardData> {

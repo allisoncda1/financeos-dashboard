@@ -10,6 +10,8 @@ export type FetchState<T> = {
   data: T | null;
   source: DataSourceState;
   lastSuccessfulFetch: string | null;
+  /** Manually re-runs the fetch (same endpoint, no side effects). */
+  refetch?: () => Promise<void>;
 };
 
 /**
