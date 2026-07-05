@@ -6,6 +6,11 @@ import { transformCustomers } from "../transformers/customers";
 import { transformVendors } from "../transformers/vendors";
 import { transformBanking } from "../transformers/banking";
 import { trackSource, reportSource, type DataSourceKind } from "./sourceTracker";
+import {
+  getPortfolioSummaryFromNeon,
+  getValidationSummaryFromNeon,
+  getDataFreshnessFromNeon,
+} from "./neonSource";
 import type {
   PortfolioSummary,
   ValidationSummary,
@@ -33,6 +38,14 @@ export const USE_DRIVE = Boolean(
 
 export async function getPortfolioSummary(): Promise<{ data: PortfolioSummary; source: DataSourceKind }> {
   return trackSource(async () => {
+    // Primary: Neon (FinanceOS Core). Falls through to Drive, then mock.
+    try {
+      const data = await getPortfolioSummaryFromNeon();
+      reportSource("db");
+      return data;
+    } catch (err) {
+      console.warn("[dataSource] Neon portfolio summary unavailable, falling back to Drive/mock:", err);
+    }
     if (USE_DRIVE) {
       try {
         // The live portfolio/summary.json only carries a subset of totals
@@ -166,6 +179,14 @@ export async function getPortfolioSummary(): Promise<{ data: PortfolioSummary; s
 
 export async function getValidationSummary(): Promise<{ data: ValidationSummary; source: DataSourceKind }> {
   return trackSource(async () => {
+    // Primary: Neon (FinanceOS Core). Falls through to Drive, then mock.
+    try {
+      const data = await getValidationSummaryFromNeon();
+      reportSource("db");
+      return data;
+    } catch (err) {
+      console.warn("[dataSource] Neon validation summary unavailable, falling back to Drive/mock:", err);
+    }
     if (USE_DRIVE) {
       try {
         return await driveLoadJson<ValidationSummary>("validation/validation_summary.json");
@@ -180,6 +201,14 @@ export async function getValidationSummary(): Promise<{ data: ValidationSummary;
 
 export async function getDataFreshness(): Promise<{ data: DataFreshness; source: DataSourceKind }> {
   return trackSource(async () => {
+    // Primary: Neon (FinanceOS Core). Falls through to Drive, then mock.
+    try {
+      const data = await getDataFreshnessFromNeon();
+      reportSource("db");
+      return data;
+    } catch (err) {
+      console.warn("[dataSource] Neon freshness unavailable, falling back to Drive/mock:", err);
+    }
     if (USE_DRIVE) {
       try {
         return await driveLoadJson<DataFreshness>("audit/data_freshness.json");

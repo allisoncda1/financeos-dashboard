@@ -19,3 +19,8 @@
 
 export * from "./runtimeTables";
 export * from "./entities";
+export * from "./financialPeriods";
+export * from "./entitySnapshots";
+export * from "./portfolioSnapshots";
+export * from "./validationResults";
+export * from "./syncRuns";

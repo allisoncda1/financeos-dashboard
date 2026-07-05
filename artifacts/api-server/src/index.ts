@@ -1,4 +1,4 @@
-import app, { ensureSessionTable } from "./app";
+import app, { initSession } from "./app";
 import { logger } from "./lib/logger";
 
 const rawPort = process.env["PORT"];
@@ -15,7 +15,7 @@ if (Number.isNaN(port) || port <= 0) {
   throw new Error(`Invalid PORT value: "${rawPort}"`);
 }
 
-ensureSessionTable()
+initSession()
   .then(() => {
     app.listen(port, (err) => {
       if (err) {
@@ -27,6 +27,6 @@ ensureSessionTable()
     });
   })
   .catch((err) => {
-    logger.error({ err }, "Failed to ensure session table");
+    logger.error({ err }, "Failed to initialize session store");
     process.exit(1);
   });

@@ -1,6 +1,9 @@
 import { AsyncLocalStorage } from "async_hooks";
 
-export type DataSourceKind = "live" | "cache" | "mock";
+// "db" = served from Neon (FinanceOS Core's Postgres, the primary/live source
+// as of Sprint 5). "live"/"cache" = served from Google Drive (the fallback).
+// "mock" = local bundled sample data (last resort).
+export type DataSourceKind = "live" | "cache" | "mock" | "db";
 
 type Store = { sources: DataSourceKind[] };
 
@@ -18,18 +21,26 @@ export function getSourceSummary(): {
   live: number;
   cache: number;
   mock: number;
+  db: number;
   total: number;
 } {
-  const counts = { live: 0, cache: 0, mock: 0 };
+  const counts = { live: 0, cache: 0, mock: 0, db: 0 };
   for (const s of recent) counts[s]++;
   return { ...counts, total: recent.length };
 }
 
-/** Combine multiple observed sources using worst-wins priority: mock > cache > live. */
+/**
+ * Combine multiple observed sources using worst-wins priority:
+ * mock > cache > live > db. "db" (Neon) only surfaces when every reported
+ * source was Neon; any Drive/mock read in the same call graph downgrades the
+ * combined result accordingly.
+ */
 export function combineSources(sources: DataSourceKind[]): DataSourceKind {
   if (sources.length === 0) return "live";
   if (sources.includes("mock")) return "mock";
   if (sources.includes("cache")) return "cache";
+  if (sources.includes("live")) return "live";
+  if (sources.includes("db")) return "db";
   return "live";
 }
 
