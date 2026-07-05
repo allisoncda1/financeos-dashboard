@@ -1,3 +1,5 @@
+import { formatCurrency, formatPercent, DASH } from "@/lib/format";
+
 type Metric = {
   label: string;
   value: string;
@@ -14,43 +16,37 @@ type Props = {
   monthlyBurn: number | null;
 };
 
-function fmt(n: number) {
-  if (n >= 1_000_000) return `$${(n / 1_000_000).toFixed(2)}M`;
-  if (n >= 1_000) return `$${(n / 1_000).toFixed(0)}K`;
-  return `$${n.toFixed(0)}`;
-}
-
 export function TopMetrics({ grossMarginPct, netMarginPct, openAR, openAP, monthlyBurn }: Props) {
   const maxDollar = Math.max(openAR, openAP, monthlyBurn ?? 0) || 1;
 
   const metrics: Metric[] = [
     {
       label: "Gross Margin",
-      value: `${grossMarginPct.toFixed(1)}%`,
+      value: formatPercent(grossMarginPct),
       barPct: Math.min(grossMarginPct, 100),
       barColor: "#10B981",
     },
     {
       label: "Net Margin",
-      value: `${netMarginPct.toFixed(1)}%`,
+      value: formatPercent(netMarginPct),
       barPct: Math.min(netMarginPct, 100),
       barColor: "#10B981",
     },
     {
       label: "Accounts Receivable",
-      value: fmt(openAR),
+      value: formatCurrency(openAR),
       barPct: (openAR / maxDollar) * 100,
       barColor: "#F97316",
     },
     {
       label: "Accounts Payable",
-      value: fmt(openAP),
+      value: formatCurrency(openAP),
       barPct: (openAP / maxDollar) * 100,
       barColor: "#EF4444",
     },
     {
       label: "Monthly Burn Rate",
-      value: monthlyBurn === null ? "—" : fmt(monthlyBurn),
+      value: monthlyBurn === null ? DASH : formatCurrency(monthlyBurn),
       barPct: monthlyBurn === null ? 0 : (monthlyBurn / maxDollar) * 100,
       barColor: "#3B82F6",
     },

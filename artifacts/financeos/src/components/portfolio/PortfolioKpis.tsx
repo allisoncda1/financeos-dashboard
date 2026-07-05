@@ -1,6 +1,7 @@
 import Link from "@/lib/next-compat";
 import type { PortfolioSummary, EntityMetrics, Anomaly, EntitySlug } from "@/lib/types";
 import { ENTITY_CONFIG, ENTITY_SLUGS } from "@/lib/entities";
+import { formatCurrency, formatPercent, formatDays, NA } from "@/lib/format";
 
 type Props = {
   portfolio: PortfolioSummary;
@@ -10,15 +11,8 @@ type Props = {
 
 // ─── Formatters ──────────────────────────────────────────────────────────────
 
-function fmt(n: number) {
-  if (n >= 1_000_000) return `$${(n / 1_000_000).toFixed(2)}M`;
-  if (n >= 1_000)     return `$${(n / 1_000).toFixed(0)}K`;
-  return `$${n}`;
-}
-
-function pct(n: number) {
-  return `${n.toFixed(1)}%`;
-}
+const fmt = (n: number) => formatCurrency(n);
+const pct = (n: number) => formatPercent(n);
 
 // ─── Component ───────────────────────────────────────────────────────────────
 
@@ -83,7 +77,7 @@ export function PortfolioKpis({ portfolio, metrics, anomalies }: Props) {
                   <KpiCell label="Net Income"   value={fmt(m.net_income_ytd)} sub={pct(m.net_margin_pct)} />
                   <KpiCell label="Gross Margin" value={pct(m.gross_margin_pct)} />
                   <KpiCell label="Open AR"      value={fmt(m.open_ar)} warn={m.ar_overdue_pct > 15} />
-                  <KpiCell label="DSO"          value={`${m.dso_days}d`} warn={m.dso_days > 60} />
+                  <KpiCell label="DSO"          value={m.open_ar > 0 ? formatDays(m.dso_days) : NA} warn={m.open_ar > 0 && m.dso_days > 60} />
                   <KpiCell label="Cash"         value={fmt(m.cash_on_hand)} />
                 </div>
 

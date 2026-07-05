@@ -2,6 +2,7 @@ import { useMemo } from "react";
 import { SparklineChart } from "@/components/shared/SparklineChart";
 import { useAllEntityFinancials } from "@/hooks/useApi";
 import { ENTITY_SLUGS } from "@/lib/entities";
+import { formatCurrency, formatPercent } from "@/lib/format";
 
 function pctChange(data: number[]): number {
   const first = data[0];
@@ -9,13 +10,7 @@ function pctChange(data: number[]): number {
   return first === 0 ? 0 : ((last - first) / first) * 100;
 }
 
-function fmt(n: number): string {
-  const sign = n < 0 ? "-" : "";
-  const abs = Math.abs(n);
-  if (abs >= 1_000_000) return `${sign}$${(abs / 1_000_000).toFixed(2)}M`;
-  if (abs >= 1_000) return `${sign}$${(abs / 1_000).toFixed(1)}K`;
-  return `${sign}$${Math.round(abs)}`;
-}
+const fmt = (n: number) => formatCurrency(n);
 
 type TrendCardProps = {
   label: string;
@@ -33,7 +28,7 @@ function TrendCard({ label, value, data, color, period }: TrendCardProps) {
       <div className="flex items-center justify-between mb-1">
         <p className="text-[11px] font-medium text-gray-500">{label}</p>
         <span className={`text-[10px] font-semibold ${positive ? "text-emerald-600" : "text-red-500"}`}>
-          {positive ? "+" : ""}{pct.toFixed(1)}%
+          {formatPercent(pct, { signed: true })}
         </span>
       </div>
       <p className="text-[20px] font-bold text-gray-900 mb-3">{value}</p>

@@ -1,4 +1,5 @@
 import type { BankingData } from "@/lib/types";
+import { formatCurrency } from "@/lib/format";
 
 const PALETTE = ["#003087", "#016FD0", "#5B5BD6", "#0E7490", "#7C3AED", "#059669"];
 
@@ -56,7 +57,7 @@ export function BankAccounts({ banking }: Props) {
                 <p className="text-[11px] font-medium text-gray-700 truncate">{label}</p>
               </div>
               <p className="text-[11px] font-semibold text-gray-900 flex-shrink-0">
-                ${acct.balance.toLocaleString()}
+                {formatCurrency(acct.balance, { abbreviate: false })}
               </p>
             </div>
           );
@@ -66,7 +67,7 @@ export function BankAccounts({ banking }: Props) {
       <div className="border-t border-gray-100 pt-2.5 flex items-center justify-between">
         <span className="text-[11px] font-semibold text-gray-600">Total Cash</span>
         <span className="text-[13px] font-bold text-gray-900">
-          ${banking.total_cash.toLocaleString()}
+          {formatCurrency(banking.total_cash, { abbreviate: false })}
         </span>
       </div>
     </div>

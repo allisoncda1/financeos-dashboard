@@ -4,31 +4,27 @@ import { ENTITY_SLUGS, type EntitySlug } from "@/lib/entities";
 import { useEntityFinancials } from "@/hooks/useApi";
 import { PageHeader } from "@/components/shared/PageHeader";
 import { TabSwitcher } from "@/components/shared/TabSwitcher";
+import {
+  formatCurrency,
+  formatPercent,
+  formatMonthShort,
+  isPartialMonth,
+  PARTIAL_MONTH_NOTE,
+} from "@/lib/format";
 
 
 export function generateStaticParams() {
   return ENTITY_SLUGS.map((slug) => ({ slug }));
 }
 
-function fmt(n: number): string {
-  if (n >= 1_000_000) return `$${(n / 1_000_000).toFixed(2)}M`;
-  if (n >= 1_000) return `$${(n / 1_000).toFixed(1)}K`;
-  return `$${n}`;
-}
+const fmt = (n: number) => formatCurrency(n);
+/** Accountant-style cash-flow amounts: negatives in parentheses. */
 function fmtCF(n: number): string {
-  const abs = Math.abs(n);
-  const s = abs >= 1000 ? `$${(abs / 1000).toFixed(1)}K` : `$${abs}`;
+  const s = formatCurrency(Math.abs(n));
   return n < 0 ? `(${s})` : s;
 }
-function pct(n: number): string { return `${n.toFixed(1)}%`; }
-
-const MONTH_NAMES = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
-
-/** "2026-01" → "Jan". Falls back to the raw string if unparseable. */
-function monthLabel(month: string): string {
-  const idx = Number(month.slice(5, 7)) - 1;
-  return MONTH_NAMES[idx] ?? month;
-}
+const pct = (n: number) => formatPercent(n);
+const monthLabel = formatMonthShort;
 
 const PL_ROWS = [
   { label: "Revenue",      key: "revenue" as const,      bold: false, border: false, positive: true },
@@ -90,7 +86,12 @@ export default function FinancialsPage() {
               <tr className="border-b border-gray-100">
                 <th className="text-left px-4 py-2.5 text-[10px] font-semibold text-gray-400 uppercase tracking-wide w-32">Line Item</th>
                 {displayMonths.map((mp) => (
-                  <th key={mp.month} className="text-right px-3 py-2.5 text-[10px] font-semibold text-gray-400 uppercase tracking-wide">{monthLabel(mp.month)}</th>
+                  <th key={mp.month} className="text-right px-3 py-2.5 text-[10px] font-semibold text-gray-400 uppercase tracking-wide">
+                    {monthLabel(mp.month)}
+                    {isPartialMonth(mp.month) && (
+                      <span className="text-amber-500" title={PARTIAL_MONTH_NOTE}> *</span>
+                    )}
+                  </th>
                 ))}
                 <th className="text-right px-4 py-2.5 text-[10px] font-semibold text-gray-600 uppercase tracking-wide bg-gray-50">YTD</th>
               </tr>
@@ -125,6 +126,11 @@ export default function FinancialsPage() {
             </tbody>
           </table>
         </div>
+        {displayMonths.some((mp) => isPartialMonth(mp.month)) && (
+          <p className="px-4 py-2 text-[10px] text-gray-400 border-t border-gray-50">
+            <span className="text-amber-500">*</span> {PARTIAL_MONTH_NOTE}
+          </p>
+        )}
       </div>
     </div>
   );
@@ -222,10 +228,9 @@ export default function FinancialsPage() {
   ) : (
     <div className="px-6 py-5">
       <div className="bg-white rounded-xl border border-gray-200 px-6 py-10 text-center">
-        <p className="text-[13px] font-semibold text-gray-900">Cash flow statement not available yet</p>
+        <p className="text-[13px] font-semibold text-gray-900">Cash flow statement is not available yet from FinanceOS Core.</p>
         <p className="text-[12px] text-gray-500 mt-1 max-w-md mx-auto">
-          The data pipeline hasn't provided a cash flow statement for this entity yet.
-          Net income YTD is {fmtCF(ytd.net_income)} — see the P&L and Balance Sheet tabs for live figures.
+          See the P&amp;L and Balance Sheet tabs for available figures.
         </p>
       </div>
     </div>

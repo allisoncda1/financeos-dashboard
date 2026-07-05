@@ -1,16 +1,11 @@
 import type { AgingBucket } from "@/lib/types";
+import { formatCurrency, formatPercent } from "@/lib/format";
 
 type Props = {
   buckets: AgingBucket[];
   total: number;
   label: "AR" | "AP";
 };
-
-function fmt(n: number): string {
-  if (n >= 1_000_000) return `$${(n / 1_000_000).toFixed(2)}M`;
-  if (n >= 1_000) return `$${(n / 1_000).toFixed(1)}K`;
-  return `$${n}`;
-}
 
 const BAR_COLORS = ["#10B981", "#F59E0B", "#F97316", "#EF4444", "#991B1B"];
 
@@ -32,11 +27,11 @@ export function AgingTable({ buckets, total, label }: Props) {
         <h3 className="text-[13px] font-semibold text-gray-900">{label} Aging</h3>
         <div className="flex items-center gap-3">
           <span className="text-[11px] text-gray-500">
-            Total: <span className="font-semibold text-gray-800">{fmt(total)}</span>
+            Total: <span className="font-semibold text-gray-800">{formatCurrency(total)}</span>
           </span>
           {reconciles && overdueAmt > 0 && (
             <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-red-50 text-red-700">
-              {fmt(overdueAmt)} overdue ({overduePct.toFixed(1)}%)
+              {formatCurrency(overdueAmt)} overdue ({formatPercent(overduePct)})
             </span>
           )}
         </div>
@@ -46,7 +41,7 @@ export function AgingTable({ buckets, total, label }: Props) {
         <div className="px-4 py-6 text-center">
           <p className="text-[12px] font-medium text-gray-500">Aging detail unavailable</p>
           <p className="text-[11px] text-gray-400 mt-1">
-            Open {label} of {fmt(total)} is shown from the authoritative source; a per-bucket aging breakdown was not provided.
+            Open {label} of {formatCurrency(total)} is shown from the authoritative source; a per-bucket aging breakdown was not provided.
           </p>
         </div>
       ) : (
@@ -59,7 +54,7 @@ export function AgingTable({ buckets, total, label }: Props) {
               <div
                 key={b.label}
                 style={{ width: `${(b.amount / total) * 100}%`, background: BAR_COLORS[i] }}
-                title={`${b.label}: ${fmt(b.amount)}`}
+                title={`${b.label}: ${formatCurrency(b.amount)}`}
               />
             ) : null
           )}
@@ -108,11 +103,11 @@ export function AgingTable({ buckets, total, label }: Props) {
                   </div>
                 </td>
                 <td className={`px-4 py-2.5 text-right text-[12px] font-semibold ${isOverdue && b.amount > 0 ? "text-red-700" : "text-gray-800"}`}>
-                  {b.amount > 0 ? fmt(b.amount) : "—"}
+                  {formatCurrency(b.amount)}
                 </td>
                 <td className="px-4 py-2.5 text-right text-[12px] text-gray-500">{b.count}</td>
                 <td className="px-4 py-2.5 text-right text-[12px] text-gray-500">
-                  {pct > 0 ? `${pct.toFixed(1)}%` : "—"}
+                  {formatPercent(pct)}
                 </td>
               </tr>
             );
@@ -121,7 +116,7 @@ export function AgingTable({ buckets, total, label }: Props) {
         <tfoot>
           <tr className="border-t-2 border-gray-200 bg-gray-50">
             <td className="px-4 py-2.5 text-[12px] font-bold text-gray-900">Total</td>
-            <td className="px-4 py-2.5 text-right text-[12px] font-bold text-gray-900">{fmt(total)}</td>
+            <td className="px-4 py-2.5 text-right text-[12px] font-bold text-gray-900">{formatCurrency(total)}</td>
             <td className="px-4 py-2.5 text-right text-[12px] font-semibold text-gray-700">
               {buckets.reduce((s, b) => s + b.count, 0)}
             </td>

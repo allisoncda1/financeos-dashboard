@@ -4,6 +4,7 @@ import { useValidationMatrix } from "@/hooks/useApi";
 import { ENTITY_CONFIG } from "@/lib/entities";
 import type { ValidationCellStatus } from "@/lib/types";
 import { CheckCircle2, XCircle, AlertTriangle, HelpCircle, Info } from "lucide-react";
+import { formatPercent } from "@/lib/format";
 
 // Rule metadata for display — labels/descriptions keyed by the Core rule ids
 // published in validation_results.rule_results. Statuses always come from the
@@ -264,13 +265,13 @@ export default function ValidationPage() {
                       return (
                         <td key={slug} className="px-3 py-2.5 text-center">
                           <span className={`text-[11px] font-bold ${pct === 100 ? "text-emerald-600" : pct >= 80 ? "text-amber-600" : "text-red-600"}`}>
-                            {pct}%
+                            {formatPercent(pct, { decimals: 0 })}
                           </span>
                         </td>
                       );
                     })}
                     <td className="px-3 py-2.5 text-center text-[11px] font-black text-gray-600">
-                      {unknownCells === 0 && passPct !== null ? `${passPct}%` : "—"}
+                      {unknownCells === 0 && passPct !== null ? formatPercent(passPct, { decimals: 0 }) : "—"}
                     </td>
                   </tr>
                 </tfoot>

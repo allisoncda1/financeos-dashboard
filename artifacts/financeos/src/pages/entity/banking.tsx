@@ -6,19 +6,14 @@ import { useEntityBanking } from "@/hooks/useApi";
 import { PageHeader } from "@/components/shared/PageHeader";
 import type { BankAccount } from "@/lib/types";
 import { CheckCircle2, AlertTriangle, XCircle, ChevronDown, ChevronRight, Info, Archive } from "lucide-react";
+import { formatCurrency } from "@/lib/format";
 
 
 export function generateStaticParams() {
   return ENTITY_SLUGS.map((slug) => ({ slug }));
 }
 
-function fmt(n: number): string {
-  const abs = Math.abs(n);
-  const sign = n < 0 ? "-" : "";
-  if (abs >= 1_000_000) return `${sign}$${(abs / 1_000_000).toFixed(2)}M`;
-  if (abs >= 1_000) return `${sign}$${(abs / 1_000).toFixed(1)}K`;
-  return `${sign}$${abs}`;
-}
+const fmt = (n: number) => formatCurrency(n);
 
 const DAY_MS = 86_400_000;
 const INACTIVE_DAYS = 180;

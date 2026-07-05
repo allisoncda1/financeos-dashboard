@@ -5,15 +5,9 @@ import { computeHealthScore } from "@/lib/briefing";
 import { useEntitySelection } from "@/lib/entity-context";
 import type { MonthlyPL } from "@/lib/types";
 import { Clock, TrendingUp, TrendingDown, Minus, ArrowLeftRight } from "lucide-react";
+import { formatCurrency, formatPercent, isPartialMonth, PARTIAL_MONTH_NOTE } from "@/lib/format";
 
-function fmt(n: number) {
-  const sign = n < 0 ? "-" : "";
-  const abs = Math.abs(n);
-  if (abs >= 1_000_000) return `${sign}$${(abs / 1_000_000).toFixed(2)}M`;
-  if (abs >= 1_000) return `${sign}$${(abs / 1_000).toFixed(0)}K`;
-  return `${sign}$${Math.round(abs)}`;
-}
-function pct(n: number) { return `${n >= 0 ? "+" : ""}${n.toFixed(1)}%`; }
+const fmt = (n: number) => formatCurrency(n);
 
 type MonthlyPoint = {
   label: string;
@@ -290,7 +284,7 @@ export default function HistoryPage() {
                 <tbody>
                   <CompareRow label="Revenue" a={periodA.snap.revenue} b={periodB.snap.revenue} fmtFn={fmt} deltaMode="pct" testId="row-compare-revenue" />
                   <CompareRow label="Net Income" a={periodA.snap.net_income} b={periodB.snap.net_income} fmtFn={fmt} deltaMode="pct" testId="row-compare-net-income" />
-                  <CompareRow label="Net Margin" a={periodA.snap.net_margin} b={periodB.snap.net_margin} fmtFn={(n) => `${n.toFixed(1)}%`} deltaMode="pp" testId="row-compare-margin" />
+                  <CompareRow label="Net Margin" a={periodA.snap.net_margin} b={periodB.snap.net_margin} fmtFn={(n) => formatPercent(n)} deltaMode="pp" testId="row-compare-margin" />
                   <CompareRow label="Cash (end of period)" a={periodA.cash} b={periodB.cash} fmtFn={fmt} deltaMode="pct" testId="row-compare-cash" />
                 </tbody>
               </table>
@@ -332,9 +326,14 @@ export default function HistoryPage() {
               return <polyline points={pts} fill="none" stroke="#8B5CF6" strokeWidth="2" strokeLinejoin="round" />;
             })()}
             {monthlySeries.map((m, i) => (
-              <text key={m.label} x={i * 100 + 50} y={H + 14} textAnchor="middle" fontSize="10" fill="#9CA3AF">{m.label}</text>
+              <text key={m.label} x={i * 100 + 50} y={H + 14} textAnchor="middle" fontSize="10" fill={isPartialMonth(m.label) ? "#F59E0B" : "#9CA3AF"}>
+                {m.label}{isPartialMonth(m.label) ? " *" : ""}
+              </text>
             ))}
           </svg>
+          {monthlySeries.some(m => isPartialMonth(m.label)) && (
+            <p className="text-[10px] text-gray-400 mt-1"><span className="text-amber-500">*</span> {PARTIAL_MONTH_NOTE}</p>
+          )}
           <div className="flex items-center gap-5 mt-2">
             <div className="flex items-center gap-1.5"><div className="w-3 h-2 rounded-sm bg-gray-200" /><span className="text-[10px] text-gray-500">Revenue</span></div>
             <div className="flex items-center gap-1.5"><div className="w-3 h-2 rounded-sm bg-emerald-500" /><span className="text-[10px] text-gray-500">Net Income</span></div>
@@ -432,7 +431,12 @@ export default function HistoryPage() {
               <thead className="sticky top-0 z-10 bg-white border-b border-gray-100">
                 <tr>
                   <th className="text-left px-4 py-2.5 text-[10px] font-semibold text-gray-400 uppercase tracking-wide">Metric</th>
-                  {monthlySeries.map(m => <th key={m.label} className="text-right px-3 py-2.5 text-[10px] font-semibold text-gray-400 uppercase tracking-wide">{m.label}</th>)}
+                  {monthlySeries.map(m => (
+                    <th key={m.label} className="text-right px-3 py-2.5 text-[10px] font-semibold text-gray-400 uppercase tracking-wide">
+                      {m.label}
+                      {isPartialMonth(m.label) && <span className="text-amber-500" title={PARTIAL_MONTH_NOTE}> *</span>}
+                    </th>
+                  ))}
                 </tr>
               </thead>
               <tbody>
@@ -441,7 +445,7 @@ export default function HistoryPage() {
                   { label: "Gross Profit", values: monthlySeries.map(m => m.gross_profit), fmtFn: fmt,                                color: "text-gray-700" },
                   { label: "OpEx",         values: monthlySeries.map(m => m.opex),         fmtFn: fmt,                                color: "text-red-700" },
                   { label: "Net Income",   values: monthlySeries.map(m => m.net_income),   fmtFn: fmt,                                color: "text-emerald-700" },
-                  { label: "Net Margin",   values: monthlySeries.map(m => m.net_margin),   fmtFn: (n: number) => `${n.toFixed(1)}%`, color: "text-violet-700" },
+                  { label: "Net Margin",   values: monthlySeries.map(m => m.net_margin),   fmtFn: (n: number) => formatPercent(n), color: "text-violet-700" },
                 ].map(row => (
                   <tr key={row.label} className="border-t border-gray-50 hover:bg-gray-50 transition-colors">
                     <td className="px-4 py-2.5 text-[12px] font-medium text-gray-600">{row.label}</td>

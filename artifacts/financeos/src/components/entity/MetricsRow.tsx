@@ -1,38 +1,33 @@
 import type { EntityMetrics } from "@/lib/types";
+import { formatCurrency, formatPercent, formatDays } from "@/lib/format";
 
 type Props = { metrics: EntityMetrics };
-
-function fmt(n: number) {
-  if (n >= 1_000_000) return `$${(n / 1_000_000).toFixed(2)}M`;
-  if (n >= 1_000)     return `$${(n / 1_000).toFixed(1)}K`;
-  return `$${n}`;
-}
 
 export function MetricsRow({ metrics: m }: Props) {
   return (
     <div className="grid grid-cols-4 gap-4">
-      <MetricCard label="Revenue YTD"  value={fmt(m.revenue_ytd)} />
-      <MetricCard label="Net Income"   value={fmt(m.net_income_ytd)}
-        sub={`${m.net_margin_pct.toFixed(1)}% net margin`} />
-      <MetricCard label="Gross Margin" value={`${m.gross_margin_pct.toFixed(1)}%`} />
-      <MetricCard label="Cash on Hand" value={fmt(m.cash_on_hand)} />
+      <MetricCard label="Revenue YTD"  value={formatCurrency(m.revenue_ytd)} />
+      <MetricCard label="Net Income"   value={formatCurrency(m.net_income_ytd)}
+        sub={`${formatPercent(m.net_margin_pct)} net margin`} />
+      <MetricCard label="Gross Margin" value={formatPercent(m.gross_margin_pct)} />
+      <MetricCard label="Cash on Hand" value={formatCurrency(m.cash_on_hand)} />
 
       <MetricCard
         label="Open AR"
-        value={fmt(m.open_ar)}
-        sub={`DSO: ${m.dso_days}d`}
+        value={formatCurrency(m.open_ar)}
+        sub={`DSO: ${m.open_ar > 0 ? formatDays(m.dso_days) : "N/A"}`}
         warn={m.dso_days > 60 || m.ar_overdue_pct > 15}
-        warnNote={m.ar_overdue_pct > 0 ? `${m.ar_overdue_pct.toFixed(1)}% overdue` : undefined}
+        warnNote={m.ar_overdue_pct > 0 ? `${formatPercent(m.ar_overdue_pct)} overdue` : undefined}
       />
       <MetricCard
         label="Open AP"
-        value={fmt(m.open_ap)}
-        sub={`DPO: ${m.dpo_days}d`}
+        value={formatCurrency(m.open_ap)}
+        sub={`DPO: ${m.open_ap > 0 ? formatDays(m.dpo_days) : "N/A"}`}
         warn={m.ap_overdue_pct > 5}
-        warnNote={m.ap_overdue_pct > 0 ? `${m.ap_overdue_pct.toFixed(1)}% overdue` : undefined}
+        warnNote={m.ap_overdue_pct > 0 ? `${formatPercent(m.ap_overdue_pct)} overdue` : undefined}
       />
-      <MetricCard label="Total Assets"      value={fmt(m.total_assets)} />
-      <MetricCard label="Equity"            value={fmt(m.total_equity)} />
+      <MetricCard label="Total Assets"      value={formatCurrency(m.total_assets)} />
+      <MetricCard label="Equity"            value={formatCurrency(m.total_equity)} />
     </div>
   );
 }

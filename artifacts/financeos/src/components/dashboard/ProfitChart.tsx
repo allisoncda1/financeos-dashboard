@@ -1,5 +1,6 @@
 import { useState } from "react";
 import type { MonthlyPL } from "@/lib/types";
+import { formatCurrency, formatMonthTick } from "@/lib/format";
 
 const W = 560, H = 200;
 const PAD = { l: 52, r: 16, t: 20, b: 40 };
@@ -8,31 +9,8 @@ const CH = H - PAD.t - PAD.b;
 
 type Point = { label: string; revenue: number; expenses: number; profit: number };
 
-function monthLabel(month: string): string {
-  // month is "YYYY-MM"; render as "Jan '26"
-  const [y, m] = month.split("-");
-  const names = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
-  const idx = Number(m) - 1;
-  const name = names[idx] ?? month;
-  const yy = y ? `'${y.slice(2)}` : "";
-  return `${name} ${yy}`.trim();
-}
-
-function fmtAxis(v: number): string {
-  const abs = Math.abs(v);
-  const sign = v < 0 ? "-" : "";
-  if (abs >= 1_000_000) return `${sign}$${(abs / 1_000_000).toFixed(1)}M`;
-  if (abs >= 1_000)     return `${sign}$${Math.round(abs / 1_000)}K`;
-  return `${sign}$${abs}`;
-}
-
-function fmtTip(v: number): string {
-  const abs = Math.abs(v);
-  const sign = v < 0 ? "-" : "";
-  if (abs >= 1_000_000) return `${sign}$${(abs / 1_000_000).toFixed(2)}M`;
-  if (abs >= 1_000)     return `${sign}$${(abs / 1_000).toFixed(1)}K`;
-  return `${sign}$${abs.toLocaleString()}`;
-}
+const fmtAxis = (v: number) => formatCurrency(v);
+const fmtTip = (v: number) => formatCurrency(v);
 
 function niceStep(range: number): number {
   const rough = range / 4;
@@ -45,7 +23,7 @@ export function ProfitChart({ data }: { data: MonthlyPL[] | null }) {
   const [hovered, setHovered] = useState<number | null>(null);
 
   const points: Point[] = (data ?? []).map(d => ({
-    label: monthLabel(d.month),
+    label: formatMonthTick(d.month),
     revenue: d.revenue,
     expenses: d.cogs + d.opex,
     profit: d.net_income,

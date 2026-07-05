@@ -5,17 +5,12 @@ import { ENTITY_SLUGS, ENTITY_CONFIG, ENTITY_META, type EntitySlug } from "@/lib
 import { EntityLogo } from "@/components/ui/EntityLogo";
 import { useEntitySelection } from "@/lib/entity-context";
 import { Layers, ChevronUp, ChevronDown, Minus } from "lucide-react";
+import { formatCurrency, formatPercent, formatRatio, DASH } from "@/lib/format";
 
 type SortDir = "asc" | "desc" | null;
 
-function fmt(n: number) {
-  const sign = n < 0 ? "-" : "";
-  const abs = Math.abs(n);
-  if (abs >= 1_000_000) return `${sign}$${(abs / 1_000_000).toFixed(2)}M`;
-  if (abs >= 1_000) return `${sign}$${(abs / 1_000).toFixed(0)}K`;
-  return `${sign}$${Math.round(abs)}`;
-}
-function pct(n: number) { return `${n.toFixed(1)}%`; }
+const fmt = (n: number) => formatCurrency(n);
+const pct = (n: number) => formatPercent(n);
 
 const PL_ROWS = [
   { label: "Revenue",      key: "revenue"      as const, bold: false, indent: false, positive: true  },
@@ -270,7 +265,7 @@ export default function ConsolidatedPage() {
             <BSRow label="Total Equity" value={totalEquity} />
             <div className="mt-2 pt-2 border-t border-gray-100 flex items-center justify-between">
               <span className="text-[10px] text-gray-400">Debt-to-Equity</span>
-              <span className="text-[11px] font-semibold text-gray-700">{totalEquity > 0 ? (totalLiabilities / totalEquity).toFixed(2) : "—"}×</span>
+              <span className="text-[11px] font-semibold text-gray-700">{totalEquity > 0 ? formatRatio(totalLiabilities / totalEquity) : DASH}</span>
             </div>
           </BSCard>
         </div>

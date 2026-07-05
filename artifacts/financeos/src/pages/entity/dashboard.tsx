@@ -23,6 +23,7 @@ import { CashFlowChart }  from "@/components/dashboard/CashFlowChart";
 import { SystemStatus }   from "@/components/dashboard/SystemStatus";
 import { computeCompanyHealth } from "@/lib/healthScore";
 import type { DataSourceState } from "@/lib/dataState";
+import { formatCurrency, DASH } from "@/lib/format";
 
 
 export default function EntityPage() {
@@ -88,13 +89,7 @@ export default function EntityPage() {
     : realSources.includes("loading") ? "loading"
     : "live";
 
-  function fmt(n: number): string {
-    const abs = Math.abs(n);
-    const sign = n < 0 ? "-" : "";
-    if (abs >= 1_000_000) return `${sign}$${(abs / 1_000_000).toFixed(2)}M`;
-    if (abs >= 1_000)     return `${sign}$${(abs / 1_000).toFixed(1)}K`;
-    return `${sign}$${abs.toLocaleString()}`;
-  }
+  const fmt = (n: number) => formatCurrency(n);
 
   return (
     <div className="h-full overflow-y-auto flex flex-col" style={{ background: "#F4F5F7" }}>
@@ -141,7 +136,7 @@ export default function EntityPage() {
           />
           <KpiCard
             label="RUNWAY"
-            value={runway === null ? "—" : `${runway.toFixed(1)} Months`}
+            value={runway === null ? DASH : `${runway.toFixed(1)} Months`}
             icon={Timer}
             iconBg="#F97316"
           />
