@@ -1,0 +1,146 @@
+Sprint 8 — Customers / Vendors / Banking Migration
+
+Sprint 7 is complete.
+
+Current migrated endpoints:
+- Portfolio summary → Neon
+- Validation → Neon
+- Pipeline status → Neon
+- Entity metrics → Neon entity_snapshots
+- Financials → Neon financial_periods
+- History → Neon financial_periods
+
+Now migrate the last major Drive-heavy domain:
+
+- Customers
+- Vendors
+- Banking
+
+====================================================
+OBJECTIVE
+====================================================
+
+Move customer, vendor, and banking endpoints from Google Drive CSVs to FinanceOS Core / Neon.
+
+The Dashboard must stay visually identical.
+
+No frontend changes unless absolutely required.
+
+====================================================
+SCOPE
+====================================================
+
+Migrate:
+
+- getEntityCustomers()
+- getEntityVendors()
+- getEntityBanking()
+
+and dependent endpoints:
+
+- /api/model/:slug/customers
+- /api/model/:slug/vendors
+- /api/model/:slug/banking
+
+Use only Neon data through CORE_DATABASE_URL.
+
+====================================================
+DATA SOURCES
+====================================================
+
+Use existing Core tables where possible:
+
+Customers:
+- customers
+- invoices
+- payments
+- financial_periods
+- entity_snapshots if relevant
+
+Vendors:
+- vendors
+- bills
+- bill payments
+- financial_periods
+- entity_snapshots if relevant
+
+Banking:
+- accounts
+- transactions
+- financial_periods
+- entity_snapshots if relevant
+
+====================================================
+RULES
+====================================================
+
+Do NOT recompute financial KPIs already produced by Core.
+
+Only derive presentation lists if required:
+- customer lists
+- vendor lists
+- aging buckets
+- account balances
+- transaction summaries
+
+If a value is not available in Neon, report it as missing instead of fabricating it.
+
+Keep Google Drive fallback available.
+
+====================================================
+VALIDATION
+====================================================
+
+For each entity:
+- CarDealer.ai
+- TopMrktr
+- Smile More
+- T3 Marketing
+
+Verify:
+- response shape unchanged
+- TypeScript interfaces unchanged
+- null handling unchanged
+- no frontend changes
+- no secrets logged
+- one/few SQL queries per endpoint
+- no N+1 query pattern
+
+Compare Drive vs Neon:
+- row counts
+- totals
+- aging totals
+- account balances
+- top customers/vendors
+- banking summary
+
+Values may differ if Core is more accurate, but explain differences.
+
+====================================================
+DO NOT TOUCH
+====================================================
+
+- React frontend
+- AI logic
+- Rules engine
+- Reports generation
+- Authentication
+- Google Drive fallback
+- FinanceOS Core sync engine
+
+====================================================
+DELIVERABLES
+====================================================
+
+Provide:
+
+1. Files changed
+2. Endpoints migrated
+3. Query strategy per endpoint
+4. Field mapping table
+5. Drive vs Neon comparison
+6. Missing data / blockers
+7. Remaining Google Drive dependencies
+8. Recommended Sprint 9
+
+Stop after this migration.

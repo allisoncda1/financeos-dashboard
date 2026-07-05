@@ -13,6 +13,9 @@ import {
   getEntityMetricsFromNeon,
   getEntityFinancialsFromNeon,
   getEntityHistoryFromNeon,
+  getEntityCustomersFromNeon,
+  getEntityVendorsFromNeon,
+  getEntityBankingFromNeon,
 } from "./neonSource";
 import type {
   PortfolioSummary,
@@ -402,6 +405,14 @@ export async function getEntityCustomers(
   asOf: string,
 ): Promise<{ data: CustomersData; source: DataSourceKind }> {
   return trackSource(async () => {
+    // Primary: Neon (FinanceOS Core). Falls through to Drive, then mock.
+    try {
+      const data = await getEntityCustomersFromNeon(slug, asOf);
+      reportSource("db");
+      return data;
+    } catch (err) {
+      console.warn(`[dataSource] Neon customers unavailable for ${slug}, falling back to Drive/mock:`, err);
+    }
     if (USE_DRIVE) {
       try {
         return await transformCustomers(slug, asOf);
@@ -419,6 +430,14 @@ export async function getEntityVendors(
   asOf: string,
 ): Promise<{ data: VendorsData; source: DataSourceKind }> {
   return trackSource(async () => {
+    // Primary: Neon (FinanceOS Core). Falls through to Drive, then mock.
+    try {
+      const data = await getEntityVendorsFromNeon(slug, asOf);
+      reportSource("db");
+      return data;
+    } catch (err) {
+      console.warn(`[dataSource] Neon vendors unavailable for ${slug}, falling back to Drive/mock:`, err);
+    }
     if (USE_DRIVE) {
       try {
         return await transformVendors(slug, asOf);
@@ -436,6 +455,14 @@ export async function getEntityBanking(
   asOf: string,
 ): Promise<{ data: BankingData; source: DataSourceKind }> {
   return trackSource(async () => {
+    // Primary: Neon (FinanceOS Core). Falls through to Drive, then mock.
+    try {
+      const data = await getEntityBankingFromNeon(slug, asOf);
+      reportSource("db");
+      return data;
+    } catch (err) {
+      console.warn(`[dataSource] Neon banking unavailable for ${slug}, falling back to Drive/mock:`, err);
+    }
     if (USE_DRIVE) {
       try {
         return await transformBanking(slug, asOf);

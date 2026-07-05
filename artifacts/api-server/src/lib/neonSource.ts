@@ -18,6 +18,11 @@ import {
   portfolioSnapshotsTable,
   syncRunsTable,
   validationResultsTable,
+  invoicesTable,
+  billsTable,
+  accountsTable,
+  transactionsTable,
+  customersTable,
 } from "@workspace/db";
 import type {
   PortfolioSummary,
@@ -31,6 +36,14 @@ import type {
   PriorYearBalanceSheetSummary,
   MonthlyPL,
   BalanceSheet,
+  CustomersData,
+  VendorsData,
+  BankingData,
+  AgingBucket,
+  Customer,
+  Vendor,
+  BankAccount,
+  BankTransaction,
 } from "./types";
 
 /** Canonical display order, mirroring the Drive/mock `entities` array. */
@@ -599,4 +612,396 @@ export async function getEntityHistoryFromNeon(slug: EntitySlug): Promise<Entity
     });
 
   return { entity_slug: slug, prior_years };
+}
+
+// ---------------------------------------------------------------------------
+// Sprint 8: customers (AR), vendors (AP) and banking read from Core's base
+// tables (invoices / bills / accounts / transactions) plus the KPI columns of
+// financial_periods. Read-only, never recomputed:
+//   - Headline KPIs (open_ar, open_ap, total_cash) and the DSO/AP trend series
+//     are read straight from financial_periods columns Core already produces.
+//   - Presentation lists that Core does NOT publish (aging buckets, top
+//     customer/vendor lists, per-account balances, transaction summaries) are
+//     the only derived values, grouped in memory from the base rows.
+// Anything Core does not model (last payment date, per-account reconciliation
+// metadata, signed transaction direction) is reported as empty/unsigned rather
+// than fabricated. Each function issues a small fixed number of queries (no
+// N+1). If Core has no financial_periods for the entity the function throws so
+// the caller can fall through to the Drive path.
+// ---------------------------------------------------------------------------
+
+/** Integer column (`days_overdue`) surfaces as number|null — coerce to number. */
+function int(v: number | null | undefined): number {
+  return typeof v === "number" && Number.isFinite(v) ? v : 0;
+}
+
+/** The five fixed aging buckets, in the exact order and labels the frontend
+ * AgingTable / entity pages expect (they index buckets positionally, treating
+ * index >= 2 as "overdue"). Never reorder or rename. */
+const AGING_BUCKETS: { label: string; days: string }[] = [
+  { label: "Current", days: "0" },
+  { label: "1–30 days", days: "1-30" },
+  { label: "31–60 days", days: "31-60" },
+  { label: "61–90 days", days: "61-90" },
+  { label: "90+ days", days: "90+" },
+];
+
+/** Map a Core `days_overdue` (negative = not yet due) to a fixed bucket index. */
+function agingIndex(daysOverdue: number): number {
+  if (daysOverdue <= 0) return 0;
+  if (daysOverdue <= 30) return 1;
+  if (daysOverdue <= 60) return 2;
+  if (daysOverdue <= 90) return 3;
+  return 4;
+}
+
+/** Bucket open AR/AP rows into the five fixed aging buckets (always all five,
+ * zero-filled), matching the mock/Drive presentation shape. */
+function buildAging(rows: { balance: number; daysOverdue: number }[]): AgingBucket[] {
+  const buckets = AGING_BUCKETS.map((b) => ({ label: b.label, days: b.days, amount: 0, count: 0 }));
+  for (const r of rows) {
+    if (r.balance === 0) continue;
+    const b = buckets[agingIndex(r.daysOverdue)];
+    if (b) {
+      b.amount += r.balance;
+      b.count += 1;
+    }
+  }
+  return buckets;
+}
+
+/** Latest YTD financial_periods row (Core's authoritative current roll-up). */
+function latestYtd<T extends { periodType: string; periodEnd: string }>(rows: T[]): T | undefined {
+  return rows
+    .filter((r) => r.periodType === "ytd")
+    .sort((a, b) => dateStr(a.periodEnd).localeCompare(dateStr(b.periodEnd)))
+    .at(-1);
+}
+
+/** Trailing 12 monthly values of a KPI column (chronological), read straight
+ * from financial_periods — Core produces these, we never recompute them. */
+function trailingMonthly(
+  rows: { periodType: string; periodStart: string }[],
+  pick: (r: KpiPeriodRow) => number,
+): number[] {
+  return (rows as KpiPeriodRow[])
+    .filter((r) => r.periodType === "monthly")
+    .sort((a, b) => dateStr(a.periodStart).localeCompare(dateStr(b.periodStart)))
+    .map(pick)
+    .slice(-12);
+}
+
+type KpiPeriodRow = {
+  periodType: string;
+  periodStart: string;
+  periodEnd: string;
+  openAr: string | null;
+  openAp: string | null;
+  dsoDays: string | null;
+  cashOnHand: string | null;
+};
+
+/** ONE query: the AR/AP/cash KPI columns of every financial_periods row for the
+ * entity. Callers partition by period_type in memory (no N+1). */
+async function fetchEntityKpiPeriods(coreSlug: string): Promise<KpiPeriodRow[]> {
+  return db
+    .select({
+      periodType: financialPeriodsTable.periodType,
+      periodStart: financialPeriodsTable.periodStart,
+      periodEnd: financialPeriodsTable.periodEnd,
+      openAr: financialPeriodsTable.openAr,
+      openAp: financialPeriodsTable.openAp,
+      dsoDays: financialPeriodsTable.dsoDays,
+      cashOnHand: financialPeriodsTable.cashOnHand,
+    })
+    .from(financialPeriodsTable)
+    .innerJoin(entitiesTable, eq(entitiesTable.id, financialPeriodsTable.entityId))
+    .where(eq(entitiesTable.slug, coreSlug));
+}
+
+/**
+ * Customers / AR view for an entity, read from Core.
+ *   - open_ar    : the current YTD `open_ar` KPI (read, not recomputed)
+ *   - top_customers : Core's authoritative per-customer `customers.balance`
+ *                     (summed across nonzero rows this reconciles to open_ar;
+ *                     invoice-level sums do NOT, because Core nets credits and
+ *                     excludes not-yet-due invoices from a customer's balance)
+ *   - aging      : each customer's full balance placed in the fixed bucket for
+ *                  their worst open-invoice days_overdue (derived presentation;
+ *                  Core publishes no per-customer aging breakdown). This keeps
+ *                  the aging total tied to the same authoritative balances.
+ *   - dso_history: trailing 12 monthly `dso_days` values from Core
+ * dso_days per customer = worst days_overdue across their open invoices; status
+ * mirrors the Drive path (>60 late, >0 overdue, else current). Core has no
+ * payments table, so `last_payment_date` is reported empty.
+ */
+export async function getEntityCustomersFromNeon(
+  slug: EntitySlug,
+  asOf: string,
+): Promise<CustomersData> {
+  const coreSlug = slug.toLowerCase();
+  const [periods, customerRows, openInvoices] = await Promise.all([
+    fetchEntityKpiPeriods(coreSlug),
+    db
+      .select({
+        id: customersTable.id,
+        displayName: customersTable.displayName,
+        balance: customersTable.balance,
+      })
+      .from(customersTable)
+      .innerJoin(entitiesTable, eq(entitiesTable.id, customersTable.entityId))
+      .where(eq(entitiesTable.slug, coreSlug)),
+    // Open invoices supply only the days_overdue signal (joined by customer_id);
+    // their balances are NOT summed for AR — customers.balance is authoritative.
+    db
+      .select({
+        customerId: invoicesTable.customerId,
+        balance: invoicesTable.balance,
+        daysOverdue: invoicesTable.daysOverdue,
+      })
+      .from(invoicesTable)
+      .innerJoin(entitiesTable, eq(entitiesTable.id, invoicesTable.entityId))
+      .where(and(eq(entitiesTable.slug, coreSlug), eq(invoicesTable.isDeleted, false))),
+  ]);
+  if (periods.length === 0) {
+    throw new Error(`Neon has no financial_periods for "${slug}" (core slug "${coreSlug}")`);
+  }
+
+  // Worst (max) days_overdue per customer across their OPEN (nonzero) invoices.
+  const worstDaysByCustomer = new Map<string, number>();
+  for (const r of openInvoices) {
+    if (!r.customerId || num(r.balance) === 0) continue;
+    const d = int(r.daysOverdue);
+    const prev = worstDaysByCustomer.get(r.customerId);
+    if (prev === undefined || d > prev) worstDaysByCustomer.set(r.customerId, d);
+  }
+
+  const customers = customerRows
+    .map((c) => ({
+      name: (c.displayName ?? "").trim() || "Unknown",
+      balance: num(c.balance),
+      // No matching open invoice → no overdue signal → treat as current.
+      worstDays: worstDaysByCustomer.get(c.id) ?? 0,
+    }))
+    .filter((c) => c.balance !== 0);
+
+  // Aging: bucket each customer's full authoritative balance by their worst
+  // days_overdue, so the aging total tracks the same balances behind open_ar.
+  const aging = buildAging(
+    customers.map((c) => ({ balance: c.balance, daysOverdue: c.worstDays })),
+  );
+
+  const top_customers: Customer[] = customers
+    .map((c): Customer => ({
+      name: c.name,
+      balance: c.balance,
+      last_payment_date: "",
+      dso_days: Math.max(0, c.worstDays),
+      status: c.worstDays > 60 ? "late" : c.worstDays > 0 ? "overdue" : "current",
+    }))
+    .sort((a, b) => b.balance - a.balance)
+    .slice(0, 10);
+
+  const ytd = latestYtd(periods);
+  if (!ytd) {
+    throw new Error(`Neon has no YTD financial_periods for "${slug}" (core slug "${coreSlug}")`);
+  }
+  const open_ar = num(ytd.openAr);
+  const dso_history = trailingMonthly(periods, (r) => num(r.dsoDays));
+
+  return { entity_slug: slug, as_of: asOf, open_ar, aging, top_customers, dso_history };
+}
+
+/**
+ * Vendors / AP view for an entity, read from Core.
+ *   - open_ap    : the current YTD `open_ap` KPI (read, not recomputed)
+ *   - aging      : five fixed buckets derived from OPEN bills by days_overdue
+ *   - top_vendors: per-vendor roll-up of open-bill balances (derived)
+ *   - ap_history : trailing 12 monthly `open_ap` values from Core
+ */
+export async function getEntityVendorsFromNeon(
+  slug: EntitySlug,
+  asOf: string,
+): Promise<VendorsData> {
+  const coreSlug = slug.toLowerCase();
+  const [periods, openBills] = await Promise.all([
+    fetchEntityKpiPeriods(coreSlug),
+    db
+      .select({
+        vendorName: billsTable.vendorName,
+        balance: billsTable.balance,
+        daysOverdue: billsTable.daysOverdue,
+        dueDate: billsTable.dueDate,
+      })
+      .from(billsTable)
+      .innerJoin(entitiesTable, eq(entitiesTable.id, billsTable.entityId))
+      .where(and(eq(entitiesTable.slug, coreSlug), eq(billsTable.isDeleted, false))),
+  ]);
+  if (periods.length === 0) {
+    throw new Error(`Neon has no financial_periods for "${slug}" (core slug "${coreSlug}")`);
+  }
+
+  const open = openBills
+    .map((r) => ({
+      name: (r.vendorName ?? "").trim() || "Unknown",
+      balance: num(r.balance),
+      daysOverdue: int(r.daysOverdue),
+      dueDate: dateStr(r.dueDate),
+    }))
+    .filter((r) => r.balance !== 0);
+
+  const aging = buildAging(open);
+
+  const byVendor = new Map<string, { balance: number; maxDays: number; dueDate: string }>();
+  for (const r of open) {
+    const v = byVendor.get(r.name) ?? { balance: 0, maxDays: Number.NEGATIVE_INFINITY, dueDate: r.dueDate };
+    v.balance += r.balance;
+    v.maxDays = Math.max(v.maxDays, r.daysOverdue);
+    // Keep the earliest upcoming due date for display.
+    if (r.dueDate && (!v.dueDate || r.dueDate < v.dueDate)) v.dueDate = r.dueDate;
+    byVendor.set(r.name, v);
+  }
+  const top_vendors: Vendor[] = [...byVendor.entries()]
+    .map(([name, v]): Vendor => ({
+      name,
+      balance: v.balance,
+      due_date: v.dueDate,
+      status: v.maxDays > 0 ? "overdue" : "current",
+    }))
+    .sort((a, b) => b.balance - a.balance)
+    .slice(0, 10);
+
+  const ytd = latestYtd(periods);
+  if (!ytd) {
+    throw new Error(`Neon has no YTD financial_periods for "${slug}" (core slug "${coreSlug}")`);
+  }
+  const open_ap = num(ytd.openAp);
+  const ap_history = trailingMonthly(periods, (r) => num(r.openAp));
+
+  return { entity_slug: slug, as_of: asOf, open_ap, aging, top_vendors, ap_history };
+}
+
+/** Extract a 4-digit account suffix from a QBO account name, e.g.
+ * "Mercury Checking (7627) - 1" -> "7627" and "Chase 000000957561878" ->
+ * "1878". Uses the LAST four digits of the longest digit run (the account
+ * number) so long embedded numbers don't yield their leading zeros. Empty when
+ * the name has no 4+ digit run. */
+function parseLastFour(name: string): string {
+  const groups = name.match(/\d{4,}/g);
+  if (!groups || groups.length === 0) return "";
+  const longest = groups.reduce((a, b) => (b.length >= a.length ? b : a));
+  return longest.slice(-4);
+}
+
+/** Derive a human institution label from a QBO account name by stripping any
+ * account-number runs ("(7627)", "000000957561878") and a trailing "- N"
+ * duplicate marker: "Mercury Checking (7627) - 1" -> "Mercury Checking",
+ * "Chase 000000957561878" -> "Chase". Falls back to the trimmed name if
+ * stripping leaves nothing. */
+function parseInstitution(name: string): string {
+  const stripped = name
+    .replace(/\(\s*\d{3,}\s*\)/g, "")
+    .replace(/\s*-\s*\d+\s*$/g, "")
+    .replace(/\b\d{4,}\b/g, "")
+    .replace(/\s+/g, " ")
+    .trim();
+  return stripped || name.trim();
+}
+
+/**
+ * Banking view for an entity, read from Core.
+ *   - total_cash : the current YTD `cash_on_hand` KPI (read, not recomputed)
+ *   - accounts   : rows from `accounts` where account_type = 'Bank' (derived
+ *                  presentation of per-account balances)
+ *   - transactions : the 50 most-recent `transactions` rows (derived summary)
+ * Core does not model per-account reconciliation metadata, so `reconciled`
+ * mirrors the Drive path's `is_active` proxy and `color`/`last_reconciled` are
+ * reported empty. `transactions.amount` is Core's stored unsigned magnitude.
+ */
+export async function getEntityBankingFromNeon(
+  slug: EntitySlug,
+  asOf: string,
+): Promise<BankingData> {
+  const coreSlug = slug.toLowerCase();
+  const [periods, bankAccounts, recentTxns] = await Promise.all([
+    fetchEntityKpiPeriods(coreSlug),
+    db
+      .select({
+        id: accountsTable.id,
+        name: accountsTable.name,
+        accountType: accountsTable.accountType,
+        accountSubtype: accountsTable.accountSubtype,
+        currentBalance: accountsTable.currentBalance,
+        isActive: accountsTable.isActive,
+      })
+      .from(accountsTable)
+      .innerJoin(entitiesTable, eq(entitiesTable.id, accountsTable.entityId))
+      .where(and(eq(entitiesTable.slug, coreSlug), eq(accountsTable.accountType, "Bank"))),
+    db
+      .select({
+        id: transactionsTable.id,
+        accountId: transactionsTable.accountId,
+        transactionDate: transactionsTable.transactionDate,
+        transactionType: transactionsTable.transactionType,
+        amount: transactionsTable.amount,
+        accountName: transactionsTable.accountName,
+        memo: transactionsTable.memo,
+        category: transactionsTable.category,
+        isReconciled: transactionsTable.isReconciled,
+      })
+      .from(transactionsTable)
+      .innerJoin(entitiesTable, eq(entitiesTable.id, transactionsTable.entityId))
+      .where(and(eq(entitiesTable.slug, coreSlug), eq(transactionsTable.isDeleted, false)))
+      .orderBy(desc(transactionsTable.transactionDate))
+      .limit(50),
+  ]);
+  const ytd = latestYtd(periods);
+  if (!ytd) {
+    throw new Error(`Neon has no YTD financial_periods for "${slug}" (core slug "${coreSlug}")`);
+  }
+
+  const accounts: BankAccount[] = bankAccounts.map((a): BankAccount => {
+    const name = (a.name ?? "").trim();
+    return {
+      id: a.id,
+      name,
+      institution: parseInstitution(name),
+      account_type: (a.accountSubtype ?? a.accountType ?? "").trim(),
+      last_four: parseLastFour(name),
+      balance: num(a.currentBalance),
+      // Core does not publish an account brand colour or reconciliation date.
+      color: "",
+      reconciled: Boolean(a.isActive),
+      last_reconciled: "",
+    };
+  });
+
+  const transactions: BankTransaction[] = recentTxns.map((t): BankTransaction => ({
+    id: t.id,
+    account_id: t.accountId ?? "",
+    date: dateStr(t.transactionDate),
+    description: (t.memo ?? "").trim() || (t.accountName ?? "").trim() || (t.transactionType ?? "").trim(),
+    // Core stores an unsigned magnitude; direction lives in transaction_type.
+    amount: num(t.amount),
+    category: (t.category ?? t.transactionType ?? "").trim(),
+    reconciled: Boolean(t.isReconciled),
+  }));
+
+  const total_cash = num(ytd.cashOnHand);
+
+  // Core does not track transaction-level reconciliation, so reconciliation
+  // status mirrors the Drive path: derived from the account `is_active` proxy.
+  const unreconciled_count = accounts.filter((a) => !a.reconciled).length;
+  const reconciliation_status: BankingData["reconciliation_status"] =
+    unreconciled_count === 0 ? "clean" : unreconciled_count > 2 ? "needs_review" : "pending";
+
+  return {
+    entity_slug: slug,
+    as_of: asOf,
+    total_cash,
+    reconciliation_status,
+    unreconciled_count,
+    accounts,
+    transactions,
+  };
 }
