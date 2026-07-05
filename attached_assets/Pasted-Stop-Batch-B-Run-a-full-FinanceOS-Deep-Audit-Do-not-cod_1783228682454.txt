@@ -1,0 +1,126 @@
+Stop Batch B.
+
+Run a full FinanceOS Deep Audit.
+
+Do not code yet.
+
+Goal:
+Verify that the entire Dashboard is coherent, accurate, connected to Neon, and demo-ready.
+
+Audit scope:
+
+1. Data source audit
+- Verify every API endpoint
+- Confirm source=db where expected
+- Identify any Drive fallback
+- Identify any mock/demo fallback
+- Identify any endpoint not using Neon
+- Confirm CORE_DATABASE_URL vs DATABASE_URL separation
+
+2. Entity data audit
+For each entity:
+- CarDealer.ai
+- T3 Marketing
+- TopMrktr
+- Smile More
+
+Verify:
+- dashboard KPIs
+- financials
+- customers
+- vendors
+- banking
+- alerts
+- validation
+- reports
+- history
+
+Compare UI values against Neon Core tables:
+- entity_snapshots
+- financial_periods
+- customers
+- vendors
+- invoices
+- bills
+- transactions
+- accounts
+- validation_results
+- alerts
+
+3. Banking cleanup audit
+Check all bank/credit card accounts.
+
+Identify accounts that:
+- have no activity since 2025
+- are inactive
+- have zero balance
+- should be hidden from the default dashboard view
+
+Do not delete them.
+Recommend hide/filter rules only.
+
+4. Navigation audit
+Check every button and link:
+- Portfolio
+- Entity detail links
+- Financials
+- Customers
+- Vendors
+- Banking
+- Operations Inbox
+- Reports
+- Settings
+- Back to launcher
+- Sign out
+- Generate report buttons
+
+Report:
+- working
+- broken
+- decorative only
+- should be removed
+- should be wired
+
+5. Design audit
+Check:
+- entity pages
+- KPI cards
+- tables
+- spacing
+- typography
+- number formatting
+- negative values
+- N/A values
+- responsive layout
+- consistency with FinanceOS style
+
+6. Data quality audit
+Find:
+- NaN
+- $0 where it should be N/A
+- N/A where data exists
+- weird decimals
+- stale dates
+- partial-month issues
+- inactive accounts displayed
+- wrong basis
+- mismatched totals
+- balance sheet not balancing
+- AR/AP inconsistencies
+
+7. Final report
+
+Provide:
+
+A. Executive summary
+B. What is correct
+C. What is wrong
+D. Data issues
+E. Design issues
+F. Navigation/button issues
+G. Remaining Drive/mock dependencies
+H. Banking accounts to hide
+I. Top 20 fixes ranked by priority
+J. Recommended fix batches
+
+Do not implement anything until I approve the fix plan.
