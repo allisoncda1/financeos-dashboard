@@ -1,53 +1,48 @@
 ---
 name: FinanceOS AR/AP/Banking Core sources
-description: Which Core tables reconcile (and which don't) when deriving customer/vendor/banking presentation from Neon Core, and why AR and AP are handled asymmetrically.
+description: Which Neon Core tables reconcile to the financial_periods KPIs when deriving customer/vendor/banking views, and why AR and AP must be handled asymmetrically.
 ---
 
 # Deriving AR / AP / Banking from Neon Core
 
-When migrating the customers/vendors/banking entity views off Drive CSVs onto
-Neon Core, the base tables do NOT all reconcile to the Core `financial_periods`
-KPIs. Verify reconciliation per-domain before choosing a source.
+The Core base tables do NOT all reconcile to the `financial_periods` KPIs.
+Verify reconciliation per-domain before choosing a source; never assume the base
+rows sum to a published KPI.
 
 ## AR (customers)
-- `customers.balance` is Core's **authoritative per-customer AR**. Summed across
-  nonzero-balance rows it reconciles to the `open_ar` KPI (e.g. T3 both 45502.18).
-- Summing OPEN `invoices.balance` does **NOT** reconcile — it overstates because
-  Core nets credits and excludes not-yet-due (future-dated) invoices from a
-  customer's balance (T3 open invoices summed to 71669 vs open_ar 45502).
-- `invoices.customer_id` → `customers.id` joins cleanly (100% match observed).
-- Core publishes **no per-customer aging breakdown**; `customers`/`vendors`
-  tables have no aging columns, `entity_snapshots` has only counts,
-  `financial_periods` has a single `ar_overdue_pct`.
-- **Approach that works:** top_customers from `customers.balance`; aging = each
-  customer's full balance bucketed by their WORST open-invoice `days_overdue`
-  (joined via customer_id). This keeps the aging total tied to the same
-  authoritative balances behind open_ar.
-- Customers with credit (negative) balances net into the Current bucket, so an
-  aging bucket can be **negative**. The frontend AgingTable renders `amount <= 0`
-  as "—" and skips it in the stacked bar, so it does not break.
-- Residual mismatch: `open_ar` can still differ slightly from `sum(customers.balance)`
-  when Core excludes non-overdue "Open"-status invoices (TopMrktr: open_ar 28440
-  vs customer-balance sum 30440). Use the Core KPI for the headline; document it.
+- **`customers.balance` is authoritative** and reconciles to the `open_ar` KPI.
+  Summing OPEN `invoices.balance` does NOT — Core nets credits and excludes
+  not-yet-due invoices from a customer's balance, so invoice sums overstate AR.
+- Core publishes **no per-customer aging breakdown** (customers/vendors tables
+  have no aging columns; entity_snapshots has only counts).
+- Working approach: top-customer list from `customers.balance`; aging = each
+  customer's full balance bucketed by their worst open-invoice `days_overdue`
+  (invoices→customers join is reliable). This keeps aging tied to the same
+  authoritative balances behind `open_ar`.
+- Credit (negative) balances net into the Current bucket, so a bucket can be
+  **negative**; the frontend AgingTable renders `amount<=0` as "—" safely.
+- `open_ar` can still differ slightly from `sum(customers.balance)` when Core
+  excludes non-overdue "Open"-status invoices — use the Core KPI for the
+  headline and document the gap; do not reconcile by recomputing.
 
-## AP (vendors) — asymmetric, a real Core gap
-- `vendors.balance` is a **net** figure (can be negative for vendor credits) and
-  does **NOT** reconcile to `open_ap` (T3 vendors sum -126787 vs open_ap 2518.94).
-- `bills.vendor_id` does **NOT** join to `vendors.id` (0% match observed).
-- The `bills` table has essentially **no open bills** (nearly all Paid), yet the
-  `open_ap` KPI can be nonzero (T3 open_ap 2518.94 with zero open bills).
-- **Consequence:** AP aging / top-vendor breakdowns are effectively unavailable
-  from Core. Read `open_ap` + monthly `open_ap` (ap_history) from
-  `financial_periods` for the headline/trend; derive aging/top_vendors from open
-  bills (usually empty) and report the breakdown as unavailable. Do NOT fabricate.
+## AP (vendors) — a genuine Core gap, handled asymmetrically
+- `vendors.balance` is a net figure (can be negative) that does NOT reconcile to
+  `open_ap`; `bills.vendor_id` does not join `vendors.id`; and `bills` is often
+  effectively empty (nearly all Paid) even when `open_ap` is nonzero.
+- Consequence: read `open_ap` + monthly `open_ap` from `financial_periods` for
+  the headline/trend; derive aging/top-vendors from open bills (usually empty)
+  and report the breakdown as unavailable rather than fabricating it.
 
 ## Banking
-- Bank accounts = `accounts` where `account_type = 'Bank'`; the human "type"
-  label comes from `account_subtype` (e.g. Checking/Savings/CashOnHand).
-- `total_cash` = `financial_periods.cash_on_hand` KPI (can be negative). Do not
-  recompute from account balances.
-- Core has no per-account brand color, reconciliation date, or txn-level
-  reconciliation; report empty and mirror the Drive `is_active` proxy.
-- Account names embed the full account number; extract last-four as the LAST 4
-  digits of the LONGEST digit run (not the first 4-digit match, which yields
-  leading zeros), and strip digit runs to get the institution label.
+- Bank accounts = `accounts` where `account_type='Bank'`; the display "type"
+  label is `account_subtype`. `total_cash` = `cash_on_hand` KPI (can be
+  negative) — do not recompute from account balances.
+- Core has no per-account color, reconciliation date, or txn-level
+  reconciliation; report empty / mirror the `is_active` proxy.
+- Account names embed the full account number: derive last-four as the LAST 4
+  digits of the LONGEST digit run (a naive first-4 match yields leading zeros).
+
+## KPI discipline (applies to all three)
+Headline KPIs (`open_ar`, `open_ap`, `total_cash`) and trend series must be read
+straight from `financial_periods`. If the entity has no YTD KPI row, THROW so the
+caller falls through to Drive — never recompute a KPI from derived lists.
