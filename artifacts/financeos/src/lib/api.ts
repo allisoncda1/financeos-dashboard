@@ -11,7 +11,7 @@ const BASE = "/api";
 export type Sourced<T> = { data: T; source: ApiSource };
 
 function normalizeSource(value: unknown): ApiSource {
-  return value === "live" || value === "cache" || value === "mock" ? value : "live";
+  return value === "db" || value === "live" || value === "cache" || value === "mock" ? value : "live";
 }
 
 /**

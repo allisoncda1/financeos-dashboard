@@ -3,7 +3,7 @@
 // DataSourceBanner can reflect whatever hooks are actually mounted on the
 // current page, without every page having to render its own banner.
 
-export type ApiSource = "live" | "cache" | "mock";
+export type ApiSource = "db" | "live" | "cache" | "mock";
 export type DataSourceState = ApiSource | "loading" | "unavailable";
 
 export type FetchState<T> = {
@@ -54,6 +54,9 @@ const SEVERITY: Record<DataSourceState, number> = {
   cache: 2,
   loading: 1,
   live: 0,
+  // "db" = served directly from the primary datastore (Neon Core). It is the
+  // most trustworthy source, so it never triggers a degraded-source banner.
+  db: 0,
 };
 
 type Snapshot = { source: DataSourceState; lastSuccessfulFetch: string | null };

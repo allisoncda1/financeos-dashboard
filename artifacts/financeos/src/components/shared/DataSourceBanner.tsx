@@ -14,7 +14,7 @@ export function DataSourceBanner() {
   const snapshot = useSyncExternalStore(subscribeDataSource, getDataSourceSnapshot);
   const { source, lastSuccessfulFetch } = snapshot;
 
-  if (source === "live" || source === "loading") return null;
+  if (source === "db" || source === "live" || source === "loading") return null;
 
   const config = {
     mock: {

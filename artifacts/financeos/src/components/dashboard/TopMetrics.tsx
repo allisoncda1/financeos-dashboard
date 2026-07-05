@@ -10,7 +10,8 @@ type Props = {
   netMarginPct: number;
   openAR: number;
   openAP: number;
-  monthlyBurn: number;
+  /** null when it can't be derived from real data (no monthly P&L) → shows "—". */
+  monthlyBurn: number | null;
 };
 
 function fmt(n: number) {
@@ -20,7 +21,7 @@ function fmt(n: number) {
 }
 
 export function TopMetrics({ grossMarginPct, netMarginPct, openAR, openAP, monthlyBurn }: Props) {
-  const maxDollar = Math.max(openAR, openAP, monthlyBurn) || 1;
+  const maxDollar = Math.max(openAR, openAP, monthlyBurn ?? 0) || 1;
 
   const metrics: Metric[] = [
     {
@@ -49,8 +50,8 @@ export function TopMetrics({ grossMarginPct, netMarginPct, openAR, openAP, month
     },
     {
       label: "Monthly Burn Rate",
-      value: fmt(monthlyBurn),
-      barPct: (monthlyBurn / maxDollar) * 100,
+      value: monthlyBurn === null ? "—" : fmt(monthlyBurn),
+      barPct: monthlyBurn === null ? 0 : (monthlyBurn / maxDollar) * 100,
       barColor: "#3B82F6",
     },
   ];

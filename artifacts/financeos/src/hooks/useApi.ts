@@ -24,7 +24,7 @@ import {
  */
 function useTrackedFetch<T>(
   key: string,
-  fetcher: () => Promise<{ data: T; source: 'live' | 'cache' | 'mock' }>,
+  fetcher: () => Promise<{ data: T; source: 'db' | 'live' | 'cache' | 'mock' }>,
   mockInit: (() => T) | null,
   deps: unknown[],
   reportGlobal: boolean = true,
@@ -122,7 +122,7 @@ export function useAllEntityFinancials(): FetchState<Record<EntitySlug, Financia
       );
       const data = Object.fromEntries(entries.map(([s, r]) => [s, r.data])) as Record<EntitySlug, FinancialsData>;
       const sources = entries.map(([, r]) => r.source);
-      const source = sources.includes('mock') ? 'mock' : sources.includes('cache') ? 'cache' : 'live';
+      const source = sources.includes('mock') ? 'mock' : sources.includes('cache') ? 'cache' : sources.includes('live') ? 'live' : 'db';
       return { data, source };
     },
     mockInit,
@@ -146,7 +146,7 @@ export function useAllEntityHistory(): FetchState<Record<EntitySlug, EntityHisto
       );
       const data = Object.fromEntries(entries.map(([s, r]) => [s, r.data])) as Record<EntitySlug, EntityHistoryData>;
       const sources = entries.map(([, r]) => r.source);
-      const source = sources.includes('mock') ? 'mock' : sources.includes('cache') ? 'cache' : 'live';
+      const source = sources.includes('mock') ? 'mock' : sources.includes('cache') ? 'cache' : sources.includes('live') ? 'live' : 'db';
       return { data, source };
     },
     null,
@@ -209,7 +209,7 @@ export function useAllEntityBanking(): FetchState<Record<EntitySlug, BankingData
       );
       const data = Object.fromEntries(entries.map(([s, r]) => [s, r.data])) as Record<EntitySlug, BankingData>;
       const sources = entries.map(([, r]) => r.source);
-      const source = sources.includes('mock') ? 'mock' : sources.includes('cache') ? 'cache' : 'live';
+      const source = sources.includes('mock') ? 'mock' : sources.includes('cache') ? 'cache' : sources.includes('live') ? 'live' : 'db';
       return { data, source };
     },
     mockInit,

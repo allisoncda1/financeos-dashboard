@@ -355,6 +355,8 @@ export type Alert = {
   id: string;
   ruleId: string;
   entity: string;
+  entitySlug?: string;
+  scope?: "entity" | "portfolio";
   severity: AlertSeverity;
   category: AlertCategory;
   title: string;

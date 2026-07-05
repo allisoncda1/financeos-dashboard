@@ -1,65 +1,67 @@
-type BankAccount = {
-  name: string;
-  mask: string;
-  balance: number;
-  icon: "chase" | "amex" | "mercury";
-};
+import type { BankingData } from "@/lib/types";
 
-const ICON_COLORS: Record<BankAccount["icon"], string> = {
-  chase:   "#003087",
-  amex:    "#016FD0",
-  mercury: "#5B5BD6",
-};
+const PALETTE = ["#003087", "#016FD0", "#5B5BD6", "#0E7490", "#7C3AED", "#059669"];
 
-const ICON_INITIALS: Record<BankAccount["icon"], string> = {
-  chase:   "C",
-  amex:    "A",
-  mercury: "M",
-};
+function colorFor(seed: string): string {
+  let h = 0;
+  for (let i = 0; i < seed.length; i++) h = (h * 31 + seed.charCodeAt(i)) >>> 0;
+  return PALETTE[h % PALETTE.length];
+}
 
-type Props = { cashOnHand: number };
+type Props = { banking: BankingData | null };
 
-export function BankAccounts({ cashOnHand }: Props) {
-  const accounts: BankAccount[] = [
-    { name: "Chase OpEx",             mask: "*1234", balance: Math.round(cashOnHand * 0.87), icon: "chase" },
-    { name: "American Express Bus.",  mask: "*5678", balance: Math.round(cashOnHand * 0.03), icon: "amex" },
-    { name: "Mercury Checking",       mask: "*9012", balance: Math.round(cashOnHand * 0.10), icon: "mercury" },
-  ];
+export function BankAccounts({ banking }: Props) {
+  const header = (
+    <div className="flex items-center justify-between">
+      <p className="text-[10px] text-gray-400 uppercase tracking-wider font-semibold">Bank Accounts</p>
+    </div>
+  );
+
+  if (!banking) {
+    return (
+      <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-4 flex flex-col gap-3">
+        {header}
+        <div className="py-6 text-center text-[12px] text-gray-400">Not available yet</div>
+      </div>
+    );
+  }
+
+  const accounts = [...banking.accounts].sort((a, b) => b.balance - a.balance);
 
   return (
     <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-4 flex flex-col gap-3">
-      <div className="flex items-center justify-between">
-        <p className="text-[10px] text-gray-400 uppercase tracking-wider font-semibold">Bank Accounts</p>
-        <button className="text-[10px] font-semibold text-emerald-600 hover:text-emerald-700">
-          View All →
-        </button>
-      </div>
+      {header}
 
       <div className="space-y-2.5">
-        {accounts.map((acct) => (
-          <div key={acct.mask} className="flex items-center gap-2.5">
-            <div
-              className="w-7 h-7 rounded-lg flex items-center justify-center flex-shrink-0"
-              style={{ background: ICON_COLORS[acct.icon] }}
-            >
-              <span className="text-white text-[10px] font-bold">{ICON_INITIALS[acct.icon]}</span>
-            </div>
-            <div className="flex-1 min-w-0">
-              <p className="text-[11px] font-medium text-gray-700 truncate">
-                {acct.name} {acct.mask}
+        {accounts.length === 0 && (
+          <p className="text-[11px] text-gray-400 py-2">No accounts reported.</p>
+        )}
+        {accounts.map((acct) => {
+          const initial = (acct.institution || acct.name || "?").trim().charAt(0).toUpperCase();
+          const label = acct.last_four ? `${acct.name} *${acct.last_four}` : acct.name;
+          return (
+            <div key={acct.id} className="flex items-center gap-2.5">
+              <div
+                className="w-7 h-7 rounded-lg flex items-center justify-center flex-shrink-0"
+                style={{ background: acct.color || colorFor(acct.institution || acct.name) }}
+              >
+                <span className="text-white text-[10px] font-bold">{initial}</span>
+              </div>
+              <div className="flex-1 min-w-0">
+                <p className="text-[11px] font-medium text-gray-700 truncate">{label}</p>
+              </div>
+              <p className="text-[11px] font-semibold text-gray-900 flex-shrink-0">
+                ${acct.balance.toLocaleString()}
               </p>
             </div>
-            <p className="text-[11px] font-semibold text-gray-900 flex-shrink-0">
-              ${acct.balance.toLocaleString()}
-            </p>
-          </div>
-        ))}
+          );
+        })}
       </div>
 
       <div className="border-t border-gray-100 pt-2.5 flex items-center justify-between">
-        <span className="text-[11px] font-semibold text-gray-600">Total Balance</span>
+        <span className="text-[11px] font-semibold text-gray-600">Total Cash</span>
         <span className="text-[13px] font-bold text-gray-900">
-          ${cashOnHand.toLocaleString()}
+          ${banking.total_cash.toLocaleString()}
         </span>
       </div>
     </div>

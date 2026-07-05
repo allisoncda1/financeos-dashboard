@@ -32,14 +32,17 @@ AI briefing/context, reports/builder, the validation pipeline, and the
 `/api/rules` static-metadata endpoint. Those were intentionally left out of the
 alerts-migration scope — migrating them to Core is future work.
 
-# normalizeSource intentionally coerces "db" → "live"
+# "db" is now a first-class ApiSource (preserved, not coerced)
 
-Frontend `ApiSource` is `live|cache|mock`; `api.ts` `normalizeSource` coerces
-`"db"` (and any unknown) to `"live"`. This is deliberate, NOT a bug: a Core DB
-read is live, current data, so the DataSourceBanner/Badge should show no
-degraded-source warning.
+Frontend `ApiSource`/`DataSourceState` now include `"db"`; `api.ts`
+`normalizeSource` PRESERVES `"db"` (only truly-unknown values fall back to
+`"live"`). `db` is treated as healthy everywhere: `SEVERITY.db = 0`, and
+`DataSourceBanner` early-returns for `db` (same "no warning" as `live`).
 
-**Why:** Adding `"db"` to the union would ripple through the `SEVERITY`
-`Record<DataSourceState,…>` and `DataSourceBadge` prop union app-wide (a
-frontend badge redesign), for no UX benefit — db-sourced data deserves the same
-"no warning" treatment as live.
+**Why:** the entity-dashboard trust cleanup needed to distinguish real Core DB
+reads from the nondeterministic `/api/model` live/cache source, so the dashboard
+SourcePill can honestly show "Live DB". This reversed the earlier decision to
+coerce `db`→`live`.
+
+**How to apply:** when adding a `Record<DataSourceState,…>` or a source-aware
+prop union, remember `db` is a valid member — omitting it is a type error.

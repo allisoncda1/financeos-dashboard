@@ -6,14 +6,18 @@ type LucideIcon = ComponentType<{ className?: string }>;
 export type KpiCardData = {
   label: string;
   value: string;
-  delta: string;
-  positive: boolean;
+  /** Period-over-period change. Omit when no comparable prior period exists. */
+  delta?: string;
+  positive?: boolean;
   icon: LucideIcon;
   iconBg: string;
   compare?: string;
 };
 
 export function KpiCard({ label, value, delta, positive, icon: Icon, iconBg, compare = "vs prev month" }: KpiCardData) {
+  // No real comparable prior period → show a neutral placeholder, never a
+  // fabricated trend.
+  const hasDelta = delta !== undefined;
   return (
     <div className="bg-white rounded-xl border border-gray-100 p-4 shadow-sm flex flex-col gap-3 h-full">
       <div className="flex items-start gap-3">
@@ -31,17 +35,24 @@ export function KpiCard({ label, value, delta, positive, icon: Icon, iconBg, com
           <p className="text-[22px] font-bold text-gray-900 leading-tight">{value}</p>
         </div>
       </div>
-      <div
-        className={`flex items-center gap-0.5 text-[11px] font-semibold ${positive ? "text-emerald-600" : "text-red-500"}`}
-      >
-        {positive ? (
-          <ArrowUpRight className="w-3.5 h-3.5" />
-        ) : (
-          <ArrowDownRight className="w-3.5 h-3.5" />
-        )}
-        <span>{delta}</span>
-        <span className="text-gray-400 font-normal ml-1">{compare}</span>
-      </div>
+      {hasDelta ? (
+        <div
+          className={`flex items-center gap-0.5 text-[11px] font-semibold ${positive ? "text-emerald-600" : "text-red-500"}`}
+        >
+          {positive ? (
+            <ArrowUpRight className="w-3.5 h-3.5" />
+          ) : (
+            <ArrowDownRight className="w-3.5 h-3.5" />
+          )}
+          <span>{delta}</span>
+          <span className="text-gray-400 font-normal ml-1">{compare}</span>
+        </div>
+      ) : (
+        <div className="flex items-center gap-0.5 text-[11px] font-semibold text-gray-300">
+          <span>—</span>
+          <span className="text-gray-400 font-normal ml-1">no prior period</span>
+        </div>
+      )}
     </div>
   );
 }
