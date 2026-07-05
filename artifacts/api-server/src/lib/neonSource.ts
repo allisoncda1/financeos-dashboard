@@ -23,6 +23,7 @@ import {
   accountsTable,
   transactionsTable,
   customersTable,
+  alertsTable,
 } from "@workspace/db";
 import type {
   PortfolioSummary,
@@ -1004,4 +1005,135 @@ export async function getEntityBankingFromNeon(
     accounts,
     transactions,
   };
+}
+
+// ─── Alerts (Sprint 10) ─────────────────────────────────────────────────────
+// Read business alerts from FinanceOS Core's `alerts` table. The Dashboard
+// NEVER calculates alerts — it only projects Core's rows into the existing Alert
+// shape the frontend already renders (Operations Inbox / AI). Read-only; no
+// Drive/mock fallback (Core is the sole source of truth for alerts).
+
+type AlertSeverity = "critical" | "high" | "medium" | "low" | "info";
+type AlertCategory =
+  | "receivables"
+  | "payables"
+  | "cash"
+  | "revenue"
+  | "validation"
+  | "portfolio";
+type AlertStatus = "open" | "acknowledged" | "resolved";
+
+export type CoreAlert = {
+  id: string;
+  ruleId: string;
+  entity: string;
+  entitySlug: string | null;
+  scope: "entity" | "portfolio";
+  severity: AlertSeverity;
+  category: AlertCategory;
+  title: string;
+  description: string;
+  recommendedAction: string;
+  createdAt: string;
+  status: AlertStatus;
+};
+
+// Core `alert_type` → the frontend's fixed AlertCategory enum. Unknown types
+// fall back by prefix, then to "validation", so a new Core rule never breaks
+// the typed UI (categories drive Operations Inbox type/href mapping).
+const ALERT_CATEGORY_BY_TYPE: Record<string, AlertCategory> = {
+  cash_negative: "cash",
+  ar_overdue_critical: "receivables",
+  dso_elevated: "receivables",
+  ap_overdue_high: "payables",
+  revenue_decline_mom: "revenue",
+  net_loss_annual: "revenue",
+  negative_assets: "validation",
+  negative_equity: "validation",
+};
+
+function alertCategory(alertType: string): AlertCategory {
+  const known = ALERT_CATEGORY_BY_TYPE[alertType];
+  if (known) return known;
+  if (alertType.startsWith("ar_") || alertType.startsWith("dso")) return "receivables";
+  if (alertType.startsWith("ap_")) return "payables";
+  if (alertType.startsWith("cash")) return "cash";
+  if (alertType.startsWith("revenue") || alertType.startsWith("net_")) return "revenue";
+  return "validation";
+}
+
+const SEVERITY_SET = new Set<AlertSeverity>(["critical", "high", "medium", "low", "info"]);
+function alertSeverity(s: string): AlertSeverity {
+  return SEVERITY_SET.has(s as AlertSeverity) ? (s as AlertSeverity) : "medium";
+}
+
+const STATUS_SET = new Set<AlertStatus>(["open", "acknowledged", "resolved"]);
+function alertStatus(s: string): AlertStatus {
+  return STATUS_SET.has(s as AlertStatus) ? (s as AlertStatus) : "open";
+}
+
+// Core has no `recommendation` column; provide a stable, category-based label
+// for the Operations Inbox action button. This is presentation formatting, not
+// alert calculation.
+const ACTION_BY_CATEGORY: Record<AlertCategory, string> = {
+  receivables: "Review AR aging",
+  payables: "Review vendor bills",
+  cash: "Review cash position",
+  revenue: "Review revenue trend",
+  validation: "Review financials",
+  portfolio: "Review portfolio",
+};
+
+const SEVERITY_RANK: Record<AlertSeverity, number> = {
+  critical: 0,
+  high: 1,
+  medium: 2,
+  low: 3,
+  info: 4,
+};
+
+/**
+ * All alerts from Core, projected into the frontend Alert shape and sorted by
+ * severity (critical → info). `entity` is Core's display_name (which matches the
+ * Dashboard's ENTITY_CONFIG names), so the frontend name→slug mapping resolves.
+ */
+export async function getAlertsFromNeon(): Promise<CoreAlert[]> {
+  const rows = await db
+    .select({
+      id: alertsTable.id,
+      entityId: alertsTable.entityId,
+      entitySlug: entitiesTable.slug,
+      displayName: entitiesTable.displayName,
+      alertType: alertsTable.alertType,
+      severity: alertsTable.severity,
+      status: alertsTable.status,
+      title: alertsTable.title,
+      message: alertsTable.message,
+      firstSeenAt: alertsTable.firstSeenAt,
+    })
+    .from(alertsTable)
+    .leftJoin(entitiesTable, eq(entitiesTable.id, alertsTable.entityId));
+
+  const mapped: CoreAlert[] = rows.map((r) => {
+    const category = alertCategory(r.alertType);
+    const scope: CoreAlert["scope"] = r.entityId ? "entity" : "portfolio";
+    return {
+      id: r.id,
+      ruleId: r.alertType,
+      entity: r.displayName ?? "Portfolio",
+      entitySlug: r.entitySlug ?? null,
+      scope,
+      severity: alertSeverity(r.severity),
+      category,
+      title: r.title,
+      description: r.message,
+      recommendedAction: ACTION_BY_CATEGORY[category],
+      createdAt:
+        r.firstSeenAt instanceof Date ? r.firstSeenAt.toISOString() : String(r.firstSeenAt),
+      status: alertStatus(r.status),
+    };
+  });
+
+  mapped.sort((a, b) => SEVERITY_RANK[a.severity] - SEVERITY_RANK[b.severity]);
+  return mapped;
 }

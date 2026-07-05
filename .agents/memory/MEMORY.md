@@ -12,3 +12,4 @@
 - [Replit DB shadowed by user secrets](replit-db-shadowed-by-secrets.md) — user DATABASE_URL/PG* secrets shadow Replit built-in DB; createDatabase falsely says alreadyExisted; agent can't delete secrets, user must remove them.
 - [TS project references need db declarations rebuilt](ts-project-references-db-declarations.md) — after editing lib/db schema, run `tsc -b lib/db` or api-server typecheck fails on missing exports though runtime works.
 - [FinanceOS AR/AP/Banking Core sources](financeos-ar-ap-banking-core-sources.md) — customers.balance reconciles to open_ar (invoices don't); AP is a Core gap (bills empty, vendor_id unjoinable, vendors.balance net); bank last-four = longest digit run.
+- [FinanceOS alerts come from Core](financeos-alerts-core-source.md) — Dashboard READS alerts from Core `alerts` table (entity_id NULL=portfolio); RulesEngine still calcs for AI/reports only; normalizeSource coerces db→live on purpose.

@@ -343,11 +343,13 @@ export type BriefingResponse = {
   generatedAt: string;
 };
 
-// ─── Rules Engine alerts (Sprint 14) ────────────────────────────────────────
-// Mirrors artifacts/api-server/src/rules/evaluator.ts Alert type.
+// ─── Alerts (Sprint 10) ─────────────────────────────────────────────────────
+// Read from FinanceOS Core's `alerts` table via GET /api/alerts. The Dashboard
+// never calculates alerts; `status` mirrors Core's alert lifecycle.
 
 export type AlertSeverity = "critical" | "high" | "medium" | "low" | "info";
 export type AlertCategory = "receivables" | "payables" | "cash" | "revenue" | "validation" | "portfolio";
+export type AlertStatus = "open" | "acknowledged" | "resolved";
 
 export type Alert = {
   id: string;
@@ -359,5 +361,5 @@ export type Alert = {
   description: string;
   recommendedAction: string;
   createdAt: string;
-  status: "active";
+  status: AlertStatus;
 };
