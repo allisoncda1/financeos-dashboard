@@ -1,6 +1,5 @@
 import { useDashboardData } from "@/hooks/useApi";
 import { ENTITY_SLUGS, ENTITY_CONFIG } from "@/lib/entities";
-import { computeHealthScore } from "@/lib/briefing";
 import { ShieldCheck, CheckCircle2, AlertCircle, Database, RefreshCw, HardDrive, Archive, History } from "lucide-react";
 
 function fmtTs(iso: string) {
@@ -35,7 +34,7 @@ export default function IntegrityPage() {
   const entityFreshness = ENTITY_SLUGS.map((slug) => {
     const m = data.metrics[slug];
     const cfg = ENTITY_CONFIG[slug];
-    const health = computeHealthScore(m);
+    const health = m.health_score;
     return { slug, cfg, m, health };
   });
 

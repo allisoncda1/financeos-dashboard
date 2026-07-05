@@ -1,6 +1,7 @@
 import { Pool } from "pg";
 import type { EntityMetrics, EntitySlug, MetricSnapshot, MetricSnapshotsData } from "./types";
 import { ENTITY_SLUGS } from "./types";
+import { withHealth } from "./health";
 
 /**
  * Postgres-backed monthly snapshots of per-entity metrics. One row per
@@ -88,7 +89,10 @@ export async function getMetricSnapshots(): Promise<MetricSnapshotsData> {
   for (const row of result.rows) {
     const slug = row.slug as EntitySlug;
     if (!ENTITY_SLUGS.includes(slug)) continue;
-    data[slug].push({ month: row.month, as_of: row.as_of, metrics: row.metrics });
+    // Re-derive health from the single source so historical snapshots (even
+    // those archived before health injection existed) expose the same field
+    // the frontend reads — never recomputed client-side.
+    data[slug].push({ month: row.month, as_of: row.as_of, metrics: withHealth(row.metrics) });
   }
   return data;
 }

@@ -153,7 +153,7 @@ export default function EntityPage() {
 
           {/* Column 2: Company Health + Cash Flow */}
           <div className="flex flex-col gap-4">
-            <CompanyHealth health={health} />
+            <CompanyHealth health={health} score={m.health_score} label={m.health_label} />
             <CashFlowChart />
           </div>
 

@@ -5,15 +5,16 @@ import { ArrowUpRight, CheckCircle2, AlertCircle } from "lucide-react";
 import type { EntitySlug, EntityMetrics } from "@/lib/types";
 import { ENTITY_META } from "@/lib/entities";
 import { EntityLogo } from "@/components/ui/EntityLogo";
-import { computeHealthScore, healthLabel, generateEntityInsight } from "@/lib/briefing";
+import { generateEntityInsight } from "@/lib/briefing";
 import { formatCurrency, formatPercent, formatDays } from "@/lib/format";
 
 type Props = { slug: EntitySlug; metrics: EntityMetrics; validationPassed: boolean };
 
 export function EntityCard({ slug, metrics: m, validationPassed }: Props) {
   const meta   = ENTITY_META[slug];
-  const score  = computeHealthScore(m);
-  const label  = healthLabel(score);
+  // Single source of truth — the server-computed health score, never recomputed.
+  const score  = m.health_score;
+  const label  = m.health_label;
   const insight = generateEntityInsight(m);
 
   const insightBg   = insight.type === "positive" ? "bg-emerald-50"  : insight.type === "critical" ? "bg-red-50"   : "bg-amber-50";

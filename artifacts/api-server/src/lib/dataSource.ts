@@ -6,6 +6,7 @@ import { transformCustomers } from "../transformers/customers";
 import { transformVendors } from "../transformers/vendors";
 import { transformBanking } from "../transformers/banking";
 import { trackSource, reportSource, type DataSourceKind } from "./sourceTracker";
+import { withHealth } from "./health";
 import {
   getPortfolioSummaryFromNeon,
   getValidationSummaryFromNeon,
@@ -291,7 +292,7 @@ export async function getEntityMetrics(slug: EntitySlug): Promise<{ data: Entity
     try {
       const data = await getEntityMetricsFromNeon(slug);
       reportSource("db");
-      return data;
+      return withHealth(data);
     } catch (err) {
       console.warn(
         `[dataSource] Neon entity metrics unavailable for ${slug}, falling back to Drive/mock:`,
@@ -301,13 +302,13 @@ export async function getEntityMetrics(slug: EntitySlug): Promise<{ data: Entity
     if (USE_DRIVE) {
       try {
         const raw = await driveLoadJson<RawDriveMetrics>(`entities/${slug}/metrics.json`);
-        return await enrichMetricsFromFinancials(slug, raw);
+        return withHealth(await enrichMetricsFromFinancials(slug, raw));
       } catch {
         // fall through to mock
       }
     }
     reportSource("mock");
-    return loadMockData().metrics[slug];
+    return withHealth(loadMockData().metrics[slug]);
   });
 }
 

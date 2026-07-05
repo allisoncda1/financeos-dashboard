@@ -3,7 +3,6 @@ import { useDashboardData, useAllEntityFinancials } from "@/hooks/useApi";
 import { useMemo, useState } from "react";
 import { ENTITY_SLUGS, ENTITY_CONFIG, type EntitySlug } from "@/lib/entities";
 import { useEntitySelection } from "@/lib/entity-context";
-import { computeHealthScore } from "@/lib/briefing";
 import { TrendingUp, TrendingDown, Minus, ChevronUp, ChevronDown } from "lucide-react";
 import { formatCurrency, formatPercent, formatDays, NA } from "@/lib/format";
 
@@ -67,7 +66,7 @@ export default function PerformancePage() {
       const m = data.metrics[slug];
       const cfg = ENTITY_CONFIG[slug];
       const fin = allFins[slug];
-      const health = computeHealthScore(m);
+      const health = m.health_score;
       const monthlyRevenue = fin.monthly_pl.map(p => p.revenue);
       const monthlyNet     = fin.monthly_pl.map(p => p.net_income);
       const revTrend = monthlyRevenue.length >= 2 ? monthlyRevenue[monthlyRevenue.length - 1] - monthlyRevenue[0] : 0;

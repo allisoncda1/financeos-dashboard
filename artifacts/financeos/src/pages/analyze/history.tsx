@@ -1,7 +1,6 @@
 import { useMemo, useState } from "react";
 import { useDashboardData, useAllEntityFinancials, useAllEntityHistory, useHealthSnapshots } from "@/hooks/useApi";
 import { ENTITY_SLUGS, ENTITY_CONFIG, type EntitySlug } from "@/lib/entities";
-import { computeHealthScore } from "@/lib/briefing";
 import { useEntitySelection } from "@/lib/entity-context";
 import type { MonthlyPL } from "@/lib/types";
 import { Clock, TrendingUp, TrendingDown, Minus, ArrowLeftRight } from "lucide-react";
@@ -175,8 +174,8 @@ export default function HistoryPage() {
     const rows = slugs.map(slug => ({
       slug,
       cfg: ENTITY_CONFIG[slug],
-      byMonth: new Map((snapshots?.[slug] ?? []).map(s => [s.month, computeHealthScore(s.metrics)])),
-      current: data ? computeHealthScore(data.metrics[slug]) : null,
+      byMonth: new Map((snapshots?.[slug] ?? []).map(s => [s.month, s.metrics.health_score])),
+      current: data ? data.metrics[slug].health_score : null,
     }));
     return { trendMonths, rows };
   }, [slugs, snapshots, data]);

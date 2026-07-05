@@ -36,6 +36,13 @@ export type EntityMetrics = {
   cash_on_hand: number;
   ar_overdue_pct: number;
   ap_overdue_pct: number;
+
+  // Company Health Score — injected server-side (lib/health.ts) so every
+  // surface renders one authoritative value. Optional here because raw
+  // producers (Neon/Drive/mock) build metrics before the score is attached;
+  // withHealth() populates these before the data leaves the API.
+  health_score?: number;
+  health_label?: "Excellent" | "Good" | "Needs Attention";
 };
 
 export type Anomaly = {

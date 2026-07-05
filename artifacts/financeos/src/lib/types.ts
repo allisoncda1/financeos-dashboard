@@ -61,6 +61,12 @@ export type EntityMetrics = {
   cash_on_hand: number;
   ar_overdue_pct: number;
   ap_overdue_pct: number;
+
+  // Company Health Score — computed once, server-side (single source of
+  // truth). Every surface renders these values verbatim; the UI never
+  // recomputes a headline health score.
+  health_score: number;
+  health_label: "Excellent" | "Good" | "Needs Attention";
 };
 
 /** 08_DATA_MODEL/entities/{slug}/anomalies.json — one item per anomaly */
