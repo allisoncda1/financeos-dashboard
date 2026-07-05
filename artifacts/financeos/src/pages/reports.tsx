@@ -119,32 +119,6 @@ const TEMPLATES: Template[] = [
   },
 ];
 
-// ── Recent generated reports (mock) ───────────────────────────────────────
-
-type RecentReport = {
-  id: string;
-  template: TemplateId;
-  name: string;
-  generated: string;
-  period: string;
-  entities: string;
-  format: "PDF" | "Excel";
-  size: string;
-  pages: number;
-};
-
-const RECENT_REPORTS: RecentReport[] = [
-  { id: "r-009", template: "monthly-close",     name: "Monthly Close — Jun 2026",           generated: "2026-07-02 09:14 AM", period: "Jun 2026",    entities: "All 4",       format: "PDF",   size: "842 KB",  pages: 11 },
-  { id: "r-008", template: "executive-package",  name: "Executive Package — Jun 2026",        generated: "2026-07-02 09:18 AM", period: "Jun 2026",    entities: "All 4",       format: "PDF",   size: "284 KB",  pages: 5  },
-  { id: "r-007", template: "quarterly-close",    name: "Quarterly Close — Q1 2026",           generated: "2026-04-03 08:52 AM", period: "Q1 2026",     entities: "All 4",       format: "PDF",   size: "1.4 MB",  pages: 22 },
-  { id: "r-006", template: "board-package",      name: "Board Package — Q1 2026",             generated: "2026-04-05 10:00 AM", period: "Q1 2026",     entities: "All 4",       format: "PDF",   size: "2.1 MB",  pages: 28 },
-  { id: "r-005", template: "monthly-close",      name: "Monthly Close — May 2026",            generated: "2026-06-03 09:05 AM", period: "May 2026",    entities: "All 4",       format: "Excel", size: "318 KB",  pages: 10 },
-  { id: "r-004", template: "bank-package",       name: "Bank Package — Q1 2026 (CarDealer)", generated: "2026-04-10 11:20 AM", period: "Q1 2026",     entities: "CarDealer.ai", format: "PDF",  size: "640 KB",  pages: 15 },
-  { id: "r-003", template: "investor-update",    name: "Investor Update — FY 2025",           generated: "2026-02-14 09:00 AM", period: "FY 2025",     entities: "All 4",       format: "PDF",   size: "980 KB",  pages: 14 },
-  { id: "r-002", template: "monthly-close",      name: "Monthly Close — Apr 2026",            generated: "2026-05-02 09:10 AM", period: "Apr 2026",    entities: "All 4",       format: "PDF",   size: "824 KB",  pages: 11 },
-  { id: "r-001", template: "executive-package",  name: "Executive Package — May 2026",        generated: "2026-06-01 08:30 AM", period: "May 2026",    entities: "All 4",       format: "PDF",   size: "272 KB",  pages: 5  },
-];
-
 const TEMPLATE_MAP = Object.fromEntries(TEMPLATES.map((t) => [t.id, t])) as Record<TemplateId, Template>;
 
 const PERIODS = [
@@ -179,8 +153,6 @@ export default function ReportCenterPage() {
     setSelectedEntities((prev) =>
       prev.includes(slug) ? prev.filter((s) => s !== slug) : [...prev, slug]
     );
-
-  const recentForTemplate = RECENT_REPORTS.filter((r) => r.template === selectedTemplate);
 
   const handleGenerate = async () => {
     setResultOpen(true);
@@ -228,13 +200,11 @@ export default function ReportCenterPage() {
           </div>
         </div>
         <div className="flex items-center gap-2">
-          <span className="text-[10px] px-2.5 py-1 bg-violet-50 text-violet-700 rounded-full font-semibold">Phase 1</span>
           {liveTemplate?.enabled && (
             <span className="text-[10px] px-2.5 py-1 bg-emerald-50 text-emerald-700 rounded-full font-semibold flex items-center gap-1">
               <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" /> Live
             </span>
           )}
-          <span className="text-[10px] px-2.5 py-1 bg-gray-100 text-gray-500 rounded-full font-semibold">{RECENT_REPORTS.length} generated</span>
         </div>
       </div>
 
@@ -306,48 +276,6 @@ export default function ReportCenterPage() {
               </motion.div>
             </div>
 
-            {/* Recent reports for selected template */}
-            <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
-              <div className="px-4 py-3 border-b border-gray-100 flex items-center justify-between">
-                <div>
-                  <h3 className="text-[13px] font-semibold text-gray-900">Recent Reports</h3>
-                  <p className="text-[11px] text-gray-400">{recentForTemplate.length > 0 ? `${recentForTemplate.length} for ${template.name}` : `No ${template.name} reports yet`}</p>
-                </div>
-                <button
-                  onClick={() => {}}
-                  className="text-[11px] text-gray-400 hover:text-gray-600 transition-colors"
-                >
-                  View all {RECENT_REPORTS.length} →
-                </button>
-              </div>
-
-              {recentForTemplate.length === 0 ? (
-                <div className="px-4 py-8 text-center">
-                  <FileText className="w-6 h-6 text-gray-200 mx-auto mb-2" />
-                  <p className="text-[12px] text-gray-400">No {template.name} reports generated yet.</p>
-                  <p className="text-[11px] text-gray-300 mt-0.5">Configure and generate below.</p>
-                </div>
-              ) : (
-                <div className="divide-y divide-gray-50">
-                  {recentForTemplate.map((r) => (
-                    <RecentReportRow key={r.id} report={r} />
-                  ))}
-                </div>
-              )}
-            </div>
-
-            {/* All reports table */}
-            <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
-              <div className="px-4 py-3 border-b border-gray-100">
-                <h3 className="text-[13px] font-semibold text-gray-900">All Generated Reports</h3>
-                <p className="text-[11px] text-gray-400">Mock report history — {RECENT_REPORTS.length} total</p>
-              </div>
-              <div className="divide-y divide-gray-50">
-                {RECENT_REPORTS.map((r) => (
-                  <RecentReportRow key={r.id} report={r} showTemplate />
-                ))}
-              </div>
-            </div>
           </div>
         </div>
 
@@ -646,50 +574,3 @@ export default function ReportCenterPage() {
   );
 }
 
-// ── Sub-components ────────────────────────────────────────────────────────
-
-function RecentReportRow({ report, showTemplate }: { report: RecentReport; showTemplate?: boolean }) {
-  const template = TEMPLATE_MAP[report.template];
-  const Icon = template.icon;
-  return (
-    <div className="px-4 py-3 flex items-center gap-3 hover:bg-gray-50 transition-colors group">
-      <div
-        className="w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0"
-        style={{ background: `${template.color}1A` }}
-      >
-        <span style={{ color: template.color, display: "contents" }}><Icon className="w-4 h-4" /></span>
-      </div>
-      <div className="flex-1 min-w-0">
-        <p className="text-[12px] font-semibold text-gray-800 truncate">{report.name}</p>
-        <div className="flex items-center gap-2 mt-0.5">
-          {showTemplate && (
-            <>
-              <span className="text-[10px] text-gray-400">{template.name}</span>
-              <span className="text-gray-200 text-[10px]">·</span>
-            </>
-          )}
-          <span className="text-[10px] text-gray-400">{report.entities}</span>
-          <span className="text-gray-200 text-[10px]">·</span>
-          <span className="text-[10px] text-gray-400">{report.pages}p</span>
-          <span className="text-gray-200 text-[10px]">·</span>
-          <span className="text-[10px] text-gray-400">{report.size}</span>
-        </div>
-      </div>
-      <div className="flex items-center gap-2 flex-shrink-0">
-        <div className="text-right">
-          <span className={`text-[9px] font-semibold px-1.5 py-0.5 rounded ${
-            report.format === "PDF" ? "bg-red-50 text-red-600" : "bg-emerald-50 text-emerald-600"
-          }`}>{report.format}</span>
-          <p className="text-[9px] text-gray-400 mt-0.5">{report.generated.split(" ")[0]}</p>
-        </div>
-        <button
-          disabled
-          className="p-1.5 rounded-lg bg-gray-100 text-gray-400 cursor-not-allowed opacity-60"
-          title="Download disabled — Phase 2"
-        >
-          <Download className="w-3 h-3" />
-        </button>
-      </div>
-    </div>
-  );
-}

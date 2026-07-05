@@ -27,6 +27,7 @@ function useTrackedFetch<T>(
   fetcher: () => Promise<{ data: T; source: 'live' | 'cache' | 'mock' }>,
   mockInit: (() => T) | null,
   deps: unknown[],
+  reportGlobal: boolean = true,
 ): FetchState<T> {
   const [state, setState] = useState<FetchState<T>>(() =>
     USE_MOCK_FALLBACK && mockInit
@@ -56,9 +57,10 @@ function useTrackedFetch<T>(
   }, deps);
 
   useEffect(() => {
+    if (!reportGlobal) return;
     reportDataSource(key, { source: state.source, lastSuccessfulFetch: state.lastSuccessfulFetch });
     return () => clearDataSource(key);
-  }, [key, state.source, state.lastSuccessfulFetch]);
+  }, [key, state.source, state.lastSuccessfulFetch, reportGlobal]);
 
   return state;
 }
@@ -215,9 +217,14 @@ export function useAlerts(): FetchState<Alert[]> {
  * useBriefing — fetches the deterministic AI CFO briefing from /api/briefing.
  * Exposes {data, source, lastSuccessfulFetch}; data stays null on failure
  * (never throws) so callers can render a graceful fallback.
+ *
+ * Excluded from the global DataSourceBanner aggregation (reportGlobal=false):
+ * the briefing's "cache" source reflects AI-narrative response caching, not
+ * financial-data staleness, so it must not drive the page-level "cached data"
+ * banner. The underlying data source is still surfaced by useDashboardData.
  */
 export function useBriefing(): FetchState<BriefingResponse> {
-  return useTrackedFetch('briefing', () => api.briefing(), null, []);
+  return useTrackedFetch('briefing', () => api.briefing(), null, [], false);
 }
 
 /**
