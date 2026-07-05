@@ -1,31 +1,32 @@
 import { useSyncExternalStore } from "react";
-import { AlertTriangle, DatabaseZap, WifiOff, Loader2 } from "lucide-react";
+import { DatabaseZap, WifiOff, Loader2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { getDataSourceSnapshot, subscribeDataSource, DEV_MODE } from "@/lib/dataState";
 
 /**
  * DataSourceBanner — subscribes to every currently-mounted data hook via the
  * shared registry (see lib/dataState.ts) and shows the worst-case source
- * across them. Renders nothing when everything is live, so it never adds
+ * across them. Renders nothing when data is trustworthy, so it never adds
  * visual noise on the happy path — it only appears when data is not what a
- * user would expect (mock, cached, or unavailable).
+ * user would expect (mock or unavailable).
+ *
+ * "cache" is intentionally treated as healthy and renders nothing: it only
+ * means the api-server served the Drive fallback from its short-lived (5 min)
+ * in-memory cache, which is at most minutes old — not stale financial data.
+ * Actual data freshness is surfaced separately via the pipeline "Data as of"
+ * indicator (getDataFreshness / pipeline status), not by this banner.
  */
 export function DataSourceBanner() {
   const snapshot = useSyncExternalStore(subscribeDataSource, getDataSourceSnapshot);
   const { source, lastSuccessfulFetch } = snapshot;
 
-  if (source === "db" || source === "live" || source === "loading") return null;
+  if (source === "db" || source === "live" || source === "cache" || source === "loading") return null;
 
   const config = {
     mock: {
       icon: DatabaseZap,
       label: DEV_MODE ? "Sample data (dev mode)" : "Showing sample data",
       tone: "bg-amber-50 text-amber-800 border-amber-200 dark:bg-amber-950/40 dark:text-amber-300 dark:border-amber-900",
-    },
-    cache: {
-      icon: AlertTriangle,
-      label: "Showing cached data — live refresh unavailable",
-      tone: "bg-blue-50 text-blue-800 border-blue-200 dark:bg-blue-950/40 dark:text-blue-300 dark:border-blue-900",
     },
     unavailable: {
       icon: WifiOff,
