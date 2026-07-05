@@ -38,6 +38,7 @@ export default function CustomersPage() {
 
   const overdueBuckets = cust.aging.slice(2);
   const overdueAmt = overdueBuckets.reduce((s, b) => s + b.amount, 0);
+  const overduePct = cust.open_ar > 0 ? (overdueAmt / cust.open_ar) * 100 : null;
   const currentDso = cust.dso_history[cust.dso_history.length - 1];
   const prevDso    = cust.dso_history[0];
   const dsoDelta   = currentDso - prevDso;
@@ -51,7 +52,7 @@ export default function CustomersPage() {
         {/* Summary banner */}
         <div className="grid grid-cols-4 gap-3">
           <SummaryCard label="Open AR" value={fmt(cust.open_ar)} sub="total outstanding" color="text-gray-900" />
-          <SummaryCard label="Overdue AR" value={fmt(overdueAmt)} sub={`${((overdueAmt / cust.open_ar) * 100).toFixed(1)}% of total`} color={overdueAmt > 0 ? "text-red-600" : "text-emerald-600"} />
+          <SummaryCard label="Overdue AR" value={fmt(overdueAmt)} sub={overduePct !== null ? `${overduePct.toFixed(1)}% of total` : "—"} color={overdueAmt > 0 ? "text-red-600" : "text-emerald-600"} />
           <div className="bg-white rounded-xl border border-gray-200 p-4">
             <p className="text-[10px] text-gray-400 font-medium uppercase tracking-wide mb-1">DSO Trend (12M)</p>
             <div className="flex items-end justify-between gap-2">

@@ -10,6 +10,7 @@
  * needs to change. All reads are read-only; this module never writes.
  */
 import { and, desc, eq } from "drizzle-orm";
+import { ENTITY_SLUGS } from "./types";
 import {
   db,
   entitiesTable,
@@ -209,6 +210,26 @@ export async function getValidationSummaryFromNeon(): Promise<ValidationSummary>
   }
   const rulesChecked = [...ruleSet];
 
+  // Per-entity × per-rule pass/fail from Core's stored rule_results, keyed by
+  // the dashboard EntitySlug so the validation matrix can show real outcomes
+  // instead of inferring all-pass from summary counts.
+  const ruleMatrix: Record<string, Record<string, boolean>> = {};
+  for (const r of latest) {
+    const dashSlug = ENTITY_SLUGS.find(
+      (s) => s.toLowerCase() === r.slug.toLowerCase(),
+    );
+    if (!dashSlug) continue;
+    const perRule: Record<string, boolean> = {};
+    if (Array.isArray(r.ruleResults)) {
+      for (const rr of r.ruleResults as RuleResult[]) {
+        if (rr && typeof rr === "object" && typeof rr.rule === "string" && typeof rr.passed === "boolean") {
+          perRule[rr.rule] = rr.passed;
+        }
+      }
+    }
+    ruleMatrix[dashSlug] = perRule;
+  }
+
   const entities = [...latest]
     .sort((a, b) => slugRank(a.slug) - slugRank(b.slug))
     .map((r) => r.displayName);
@@ -226,6 +247,7 @@ export async function getValidationSummaryFromNeon(): Promise<ValidationSummary>
     rules_checked: rulesChecked,
     rule_count: rulesChecked.length,
     entity_count: latest.length,
+    rule_matrix: ruleMatrix,
   };
 }
 

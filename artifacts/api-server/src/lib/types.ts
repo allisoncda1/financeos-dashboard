@@ -74,6 +74,13 @@ export type ValidationSummary = {
   rules_checked: string[];
   rule_count: number;
   entity_count: number;
+  /**
+   * Per-entity × per-rule pass/fail, keyed entity_slug → rule_id → passed.
+   * Present only when the source publishes detailed rule_results (Core);
+   * undefined for summary-only sources (Drive/mock), which fall back to
+   * summary-count inference in the validation matrix.
+   */
+  rule_matrix?: Record<string, Record<string, boolean>>;
 };
 
 export type DataFreshness = {

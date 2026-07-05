@@ -45,8 +45,12 @@ export type ValidationMatrixData = {
   expected_checks: number;
   rule_ids: string[];
   entity_slugs: EntitySlug[];
-  /** The pipeline only publishes summary counts — never per-cell outcomes. */
-  granularity: "summary_only";
+  /**
+   * "per_rule" when the source publishes real per-entity, per-rule outcomes
+   * (Core's validation_results.rule_results); "summary_only" when only
+   * aggregate pass/fail counts are available and cells are inferred.
+   */
+  granularity: "summary_only" | "per_rule";
   /** Human explanation of how the cell statuses below were derived. */
   cell_basis: string;
   /** Internal inconsistencies in the pipeline's own summary, spelled out. */
@@ -61,8 +65,28 @@ export function buildValidationMatrix(rawSummary: unknown): ValidationMatrixData
   const rulesChecked = Array.isArray(raw["rules_checked"])
     ? (raw["rules_checked"] as unknown[]).filter((r): r is string => typeof r === "string")
     : null;
-  const ruleIds = rulesChecked && rulesChecked.length > 0 ? rulesChecked : [...CANONICAL_RULE_IDS];
   const entitySlugs = [...ENTITY_SLUGS];
+
+  // Real per-entity × per-rule outcomes, when the source publishes them
+  // (Core's validation_results.rule_results). Keyed entity_slug → rule → passed.
+  const ruleMatrixRaw =
+    raw["rule_matrix"] && typeof raw["rule_matrix"] === "object"
+      ? (raw["rule_matrix"] as Record<string, Record<string, boolean>>)
+      : null;
+  const hasPerRule =
+    !!ruleMatrixRaw && Object.values(ruleMatrixRaw).some((m) => m && Object.keys(m).length > 0);
+
+  // Prefer the declared rule list; when only the per-rule matrix is available,
+  // derive the rule ids from its keys. Fall back to the canonical ids last.
+  const perRuleIds = hasPerRule
+    ? [...new Set(Object.values(ruleMatrixRaw!).flatMap((m) => Object.keys(m)))]
+    : [];
+  const ruleIds =
+    rulesChecked && rulesChecked.length > 0
+      ? rulesChecked
+      : perRuleIds.length > 0
+        ? perRuleIds
+        : [...CANONICAL_RULE_IDS];
   const expectedChecks = ruleIds.length * entitySlugs.length;
 
   const totalChecks = s?.totalChecks ?? null;
@@ -91,26 +115,53 @@ export function buildValidationMatrix(rawSummary: unknown): ValidationMatrixData
     );
   }
 
-  // Cell derivation: only mark cells "pass" when the pipeline's summary is
-  // internally consistent and claims zero failures. Anything else is
-  // honestly "unknown" — the pipeline never publishes per-cell outcomes.
-  const consistent = discrepancies.length === 0;
-  const cellStatus: ValidationCellStatus =
-    consistent && failed === 0 && allPassed !== false ? "pass" : "unknown";
+  let matrix: Record<EntitySlug, Record<string, ValidationCellStatus>>;
+  let granularity: "summary_only" | "per_rule";
+  let cellBasis: string;
 
-  const cellBasis =
-    cellStatus === "pass"
-      ? "The pipeline publishes summary counts only (no per-rule outcomes). All cells are shown as passed because it reported 0 failed checks and a consistent total."
-      : failed !== null && failed > 0
-        ? `The pipeline reported ${failed} failed check(s) but does not publish which entity or rule failed, so individual cells cannot be attributed.`
-        : "The pipeline publishes summary counts only (no per-rule outcomes), and its latest summary is internally inconsistent — individual cell results cannot be confirmed.";
+  if (hasPerRule) {
+    // Real per-entity, per-rule outcomes from Core — each cell reflects that
+    // entity's actual pass/fail for the rule; anything not reported stays
+    // "unknown" rather than being guessed.
+    matrix = Object.fromEntries(
+      entitySlugs.map((slug) => [
+        slug,
+        Object.fromEntries(
+          ruleIds.map((r) => {
+            const passedCell = ruleMatrixRaw![slug]?.[r];
+            const status: ValidationCellStatus =
+              passedCell === true ? "pass" : passedCell === false ? "fail" : "unknown";
+            return [r, status];
+          }),
+        ),
+      ]),
+    ) as Record<EntitySlug, Record<string, ValidationCellStatus>>;
+    granularity = "per_rule";
+    cellBasis =
+      "Each cell reflects the entity's actual pass/fail from FinanceOS Core (validation_results.rule_results). Cells the source didn't report are shown as not reported.";
+  } else {
+    // No per-rule detail — fall back to honest summary-count inference: only
+    // mark cells "pass" when the summary is internally consistent and claims
+    // zero failures; otherwise every cell is "unknown".
+    const consistent = discrepancies.length === 0;
+    const cellStatus: ValidationCellStatus =
+      consistent && failed === 0 && allPassed !== false ? "pass" : "unknown";
 
-  const matrix = Object.fromEntries(
-    entitySlugs.map((slug) => [
-      slug,
-      Object.fromEntries(ruleIds.map((r) => [r, cellStatus])),
-    ]),
-  ) as Record<EntitySlug, Record<string, ValidationCellStatus>>;
+    cellBasis =
+      cellStatus === "pass"
+        ? "The pipeline publishes summary counts only (no per-rule outcomes). All cells are shown as passed because it reported 0 failed checks and a consistent total."
+        : failed !== null && failed > 0
+          ? `The pipeline reported ${failed} failed check(s) but does not publish which entity or rule failed, so individual cells cannot be attributed.`
+          : "The pipeline publishes summary counts only (no per-rule outcomes), and its latest summary is internally inconsistent — individual cell results cannot be confirmed.";
+
+    matrix = Object.fromEntries(
+      entitySlugs.map((slug) => [
+        slug,
+        Object.fromEntries(ruleIds.map((r) => [r, cellStatus])),
+      ]),
+    ) as Record<EntitySlug, Record<string, ValidationCellStatus>>;
+    granularity = "summary_only";
+  }
 
   return {
     generated_at: s?.runDate ?? null,
@@ -125,7 +176,7 @@ export function buildValidationMatrix(rawSummary: unknown): ValidationMatrixData
     expected_checks: expectedChecks,
     rule_ids: ruleIds,
     entity_slugs: entitySlugs,
-    granularity: "summary_only",
+    granularity,
     cell_basis: cellBasis,
     discrepancies,
     matrix,

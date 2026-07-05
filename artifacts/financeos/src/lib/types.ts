@@ -21,10 +21,12 @@ export const ENTITY_CONFIG: Record<
   EntitySlug,
   { name: string; basis: "Cash" | "Accrual"; color: string }
 > = {
-  CarDealer_ai: { name: "CarDealer.ai", basis: "Accrual", color: "#00d4b8" },
-  T3_Marketing: { name: "T3 Marketing", basis: "Cash",    color: "#f59e0b" },
-  TopMrktr:     { name: "TopMrktr",     basis: "Accrual", color: "#8b5cf6" },
-  Smile_More:   { name: "Smile More",   basis: "Accrual", color: "#3b82f6" },
+  // Accounting basis mirrors FinanceOS Core (the source of truth); all
+  // entities currently report on a Cash basis per Core.
+  CarDealer_ai: { name: "CarDealer.ai", basis: "Cash", color: "#00d4b8" },
+  T3_Marketing: { name: "T3 Marketing", basis: "Cash", color: "#f59e0b" },
+  TopMrktr:     { name: "TopMrktr",     basis: "Cash", color: "#8b5cf6" },
+  Smile_More:   { name: "Smile More",   basis: "Cash", color: "#3b82f6" },
 };
 
 // ─── 08_DATA_MODEL schemas ───────────────────────────────────────────────────
@@ -106,7 +108,7 @@ export type ValidationMatrixData = {
   expected_checks: number;
   rule_ids: string[];
   entity_slugs: EntitySlug[];
-  granularity: "summary_only";
+  granularity: "summary_only" | "per_rule";
   cell_basis: string;
   discrepancies: string[];
   matrix: Record<EntitySlug, Record<string, ValidationCellStatus>>;

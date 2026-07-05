@@ -18,6 +18,13 @@ export function AgingTable({ buckets, total, label }: Props) {
   const overdueAmt = buckets.slice(2).reduce((s, b) => s + b.amount, 0);
   const overduePct = total > 0 ? (overdueAmt / total) * 100 : 0;
 
+  // The aging buckets must reconcile to the authoritative total. When they
+  // don't (Core published a headline balance but no per-bucket detail), we
+  // keep the authoritative total and say the breakdown is unavailable rather
+  // than render misleading all-$0 buckets.
+  const bucketSum = buckets.reduce((s, b) => s + b.amount, 0);
+  const reconciles = Math.abs(bucketSum - total) <= 1;
+
   return (
     <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
       {/* Header */}
@@ -27,7 +34,7 @@ export function AgingTable({ buckets, total, label }: Props) {
           <span className="text-[11px] text-gray-500">
             Total: <span className="font-semibold text-gray-800">{fmt(total)}</span>
           </span>
-          {overdueAmt > 0 && (
+          {reconciles && overdueAmt > 0 && (
             <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-red-50 text-red-700">
               {fmt(overdueAmt)} overdue ({overduePct.toFixed(1)}%)
             </span>
@@ -35,6 +42,15 @@ export function AgingTable({ buckets, total, label }: Props) {
         </div>
       </div>
 
+      {!reconciles ? (
+        <div className="px-4 py-6 text-center">
+          <p className="text-[12px] font-medium text-gray-500">Aging detail unavailable</p>
+          <p className="text-[11px] text-gray-400 mt-1">
+            Open {label} of {fmt(total)} is shown from the authoritative source; a per-bucket aging breakdown was not provided.
+          </p>
+        </div>
+      ) : (
+      <>
       {/* Stacked bar */}
       <div className="px-4 pt-3 pb-2">
         <div className="flex rounded-full overflow-hidden h-2">
@@ -113,6 +129,8 @@ export function AgingTable({ buckets, total, label }: Props) {
           </tr>
         </tfoot>
       </table>
+      </>
+      )}
     </div>
   );
 }

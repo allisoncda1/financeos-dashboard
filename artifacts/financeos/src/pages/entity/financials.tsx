@@ -131,22 +131,22 @@ export default function FinancialsPage() {
 
   const bsPanel = (
     <div className="px-6 py-5 grid grid-cols-3 gap-4">
-      <BSCard title="Assets" total={bs.assets.total} color="#10B981">
-        <BSRow label="Cash & Equivalents"  value={bs.assets.cash} />
-        <BSRow label="Accounts Receivable" value={bs.assets.accounts_receivable} />
-        <BSRow label="Prepaid Expenses"    value={bs.assets.prepaid_expenses} />
-        <BSRow label="Equipment (net)"     value={bs.assets.equipment_net} />
-      </BSCard>
-      <BSCard title="Liabilities" total={bs.liabilities.total} color="#EF4444">
-        <BSRow label="Accounts Payable"    value={bs.liabilities.accounts_payable} />
-        <BSRow label="Accrued Liabilities" value={bs.liabilities.accrued_liabilities} />
-        <BSRow label="Deferred Revenue"    value={bs.liabilities.deferred_revenue} />
-        <BSRow label="Notes Payable"       value={bs.liabilities.notes_payable} />
-      </BSCard>
-      <BSCard title="Equity" total={bs.equity.total} color="#3B82F6">
-        <BSRow label="Paid-in Capital"     value={bs.equity.paid_in_capital} />
-        <BSRow label="Retained Earnings"   value={bs.equity.retained_earnings} />
-      </BSCard>
+      <BSCard title="Assets" total={bs.assets.total} color="#10B981" items={[
+        { label: "Cash & Equivalents",  value: bs.assets.cash },
+        { label: "Accounts Receivable", value: bs.assets.accounts_receivable },
+        { label: "Prepaid Expenses",    value: bs.assets.prepaid_expenses },
+        { label: "Equipment (net)",     value: bs.assets.equipment_net },
+      ]} />
+      <BSCard title="Liabilities" total={bs.liabilities.total} color="#EF4444" items={[
+        { label: "Accounts Payable",    value: bs.liabilities.accounts_payable },
+        { label: "Accrued Liabilities", value: bs.liabilities.accrued_liabilities },
+        { label: "Deferred Revenue",    value: bs.liabilities.deferred_revenue },
+        { label: "Notes Payable",       value: bs.liabilities.notes_payable },
+      ]} />
+      <BSCard title="Equity" total={bs.equity.total} color="#3B82F6" items={[
+        { label: "Paid-in Capital",     value: bs.equity.paid_in_capital },
+        { label: "Retained Earnings",   value: bs.equity.retained_earnings },
+      ]} />
     </div>
   );
 
@@ -243,14 +243,25 @@ export default function FinancialsPage() {
   );
 }
 
-function BSCard({ title, total, color, children }: { title: string; total: number; color: string; children: React.ReactNode }) {
+function BSCard({ title, total, color, items }: { title: string; total: number; color: string; items: { label: string; value: number }[] }) {
+  // Core provides only section totals for some entities — the sub-line
+  // breakdown comes through as all-zero. Rather than render misleading $0
+  // rows against a non-zero total, show the authoritative total only.
+  const allZero = items.every((i) => i.value === 0);
+  const breakdownUnavailable = allZero && total !== 0;
   return (
     <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
       <div className="px-4 py-3 border-b border-gray-100 flex items-center justify-between">
         <h3 className="text-[13px] font-semibold text-gray-900">{title}</h3>
         <span className="text-[14px] font-bold" style={{ color }}>{fmt(total)}</span>
       </div>
-      <div className="p-4 space-y-2">{children}</div>
+      <div className="p-4 space-y-2">
+        {breakdownUnavailable ? (
+          <p className="text-[11px] text-gray-400 italic py-1">Breakdown unavailable — total shown</p>
+        ) : (
+          items.map((i) => <BSRow key={i.label} label={i.label} value={i.value} />)
+        )}
+      </div>
       <div className="px-4 py-3 border-t-2 border-gray-200 bg-gray-50 flex items-center justify-between">
         <span className="text-[12px] font-bold text-gray-900">Total {title}</span>
         <span className="text-[12px] font-bold text-gray-900">{fmt(total)}</span>

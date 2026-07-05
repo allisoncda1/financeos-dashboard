@@ -5,25 +5,31 @@ import { ENTITY_CONFIG } from "@/lib/entities";
 import type { ValidationCellStatus } from "@/lib/types";
 import { CheckCircle2, XCircle, AlertTriangle, HelpCircle, Info } from "lucide-react";
 
-// Rule metadata for display — labels/descriptions for the pipeline's 10
-// canonical rule ids. Statuses always come from the API, never from here.
+// Rule metadata for display — labels/descriptions keyed by the Core rule ids
+// published in validation_results.rule_results. Statuses always come from the
+// API, never from here.
 const RULE_META: Record<string, { label: string; description: string; failCondition: string; category: string }> = {
-  "1":  { label: "Revenue ≥ 0",          category: "P&L",      description: "Total revenue for the period must be non-negative.",                    failCondition: "Revenue field is null, negative, or missing." },
-  "2":  { label: "COGS ≤ Revenue",        category: "P&L",      description: "Cost of goods sold must not exceed total revenue.",                     failCondition: "COGS > Revenue in any period." },
-  "2b": { label: "Gross Margin > 0%",     category: "P&L",      description: "Gross profit margin must be positive.",                                 failCondition: "Gross profit is zero or negative." },
-  "3":  { label: "Net Income checks",     category: "P&L",      description: "Net Income = Gross Profit − OpEx. Must balance to within $1.",          failCondition: "Net Income deviates from Gross Profit − OpEx by more than $1." },
-  "4":  { label: "AR aging sums",         category: "AR/AP",    description: "All AR aging bucket amounts must sum to total Open AR.",                 failCondition: "AR aging buckets do not sum to open_ar within $1." },
-  "5":  { label: "AP aging sums",         category: "AR/AP",    description: "All AP aging bucket amounts must sum to total Open AP.",                 failCondition: "AP aging buckets do not sum to open_ap within $1." },
-  "6":  { label: "Cash balance positive", category: "Banking",  description: "Cash on hand must be positive across all bank accounts.",               failCondition: "Any bank account balance is negative or total cash is zero." },
-  "7":  { label: "AP overdue threshold",  category: "AR/AP",    description: "AP overdue % must remain below 5% of total AP.",                        failCondition: "ap_overdue_pct > 5%." },
-  "8a": { label: "DSO within policy",     category: "AR/AP",    description: "Days Sales Outstanding must remain at or below 60 days.",               failCondition: "dso_days > 60." },
-  "8b": { label: "AR MoM variance",       category: "AR/AP",    description: "AR balance must not increase more than 20% month-over-month without a proportional revenue increase.", failCondition: "AR MoM growth > 20% with no corresponding revenue increase." },
+  balance_sheet_balances_current:  { label: "Balance sheet balances (current)",  category: "Balance Sheet", description: "For the current period, Assets must equal Liabilities + Equity.", failCondition: "Assets ≠ Liabilities + Equity beyond a small rounding tolerance." },
+  balance_sheet_balances_eoy_2025: { label: "Balance sheet balances (EOY 2025)", category: "Balance Sheet", description: "At end of year 2025, Assets must equal Liabilities + Equity.",   failCondition: "Assets ≠ Liabilities + Equity beyond a small rounding tolerance." },
+  pl_gross_profit_fy2025:          { label: "Gross profit present (FY2025)",      category: "P&L",           description: "The FY2025 P&L must report a gross profit figure.",                failCondition: "Gross profit is missing for FY2025." },
+  pl_gross_profit_ytd_2026:        { label: "Gross profit present (YTD 2026)",    category: "P&L",           description: "The YTD 2026 P&L must report a gross profit figure.",              failCondition: "Gross profit is missing for YTD 2026." },
+  ar_bs_vs_aging_match:            { label: "AR: balance sheet vs aging match",  category: "AR/AP",         description: "Accounts receivable on the balance sheet must match the AR aging total.", failCondition: "Balance-sheet AR and AR aging total differ beyond tolerance." },
+  annual_period_exists:            { label: "Annual period exists",              category: "Periods",       description: "An annual reporting period must be present.",                      failCondition: "No annual period found." },
+  ytd_period_exists:               { label: "YTD period exists",                 category: "Periods",       description: "A year-to-date reporting period must be present.",                 failCondition: "No YTD period found." },
+  monthly_periods_present:         { label: "Monthly periods present",           category: "Periods",       description: "Monthly reporting periods must be present.",                       failCondition: "Monthly periods are missing." },
+  quarterly_periods_present:       { label: "Quarterly periods present",         category: "Periods",       description: "Quarterly reporting periods must be present.",                     failCondition: "Quarterly periods are missing." },
+  annual_revenue_positive:         { label: "Annual revenue positive",           category: "P&L",           description: "Annual revenue must be positive.",                                failCondition: "Annual revenue is zero or negative." },
+  dso_plausible:                   { label: "DSO plausible",                     category: "AR/AP",         description: "Days Sales Outstanding must fall within a plausible range.",       failCondition: "DSO is negative or implausibly large." },
+  all_report_variants_present:     { label: "All report variants present",       category: "Reports",       description: "All expected report variants must be generated.",                  failCondition: "One or more expected report variants are missing." },
 };
 
 const categoryColors: Record<string, string> = {
-  "P&L":     "#10B981",
-  "AR/AP":   "#F59E0B",
-  "Banking": "#3B82F6",
+  "P&L":           "#10B981",
+  "AR/AP":         "#F59E0B",
+  "Banking":       "#3B82F6",
+  "Balance Sheet": "#6366F1",
+  "Periods":       "#8B5CF6",
+  "Reports":       "#EC4899",
 };
 
 function StatusIcon({ status, className = "w-4 h-4" }: { status: ValidationCellStatus; className?: string }) {
@@ -205,7 +211,7 @@ export default function ValidationPage() {
                               </div>
                             )}
                             <p className={`text-[12px] font-medium mt-0.5 group-hover:text-gray-900 ${isActiveRule ? "text-gray-900" : "text-gray-700"}`}>
-                              {rule}. {meta?.label ?? `Rule ${rule}`}
+                              {meta?.label ?? rule}
                             </p>
                           </button>
                         </td>
@@ -292,7 +298,9 @@ export default function ValidationPage() {
               </div>
               <div>
                 <p className="text-[10px] text-gray-400 uppercase tracking-wide font-medium">Detail Level</p>
-                <p className="text-[13px] font-bold text-gray-900 mt-0.5">Summary counts only</p>
+                <p className="text-[13px] font-bold text-gray-900 mt-0.5">
+                  {data.granularity === "per_rule" ? "Per-rule outcomes" : "Summary counts only"}
+                </p>
               </div>
             </div>
             {reported.note && (
@@ -327,9 +335,9 @@ export default function ValidationPage() {
                       {activeRuleMeta.category}
                     </span>
                   )}
-                  <span className="text-[10px] text-gray-400">Rule {activeRule}</span>
+                  <span className="text-[10px] text-gray-400">{activeRule}</span>
                 </div>
-                <p className="text-[14px] font-bold text-gray-900">{activeRuleMeta?.label ?? `Rule ${activeRule}`}</p>
+                <p className="text-[14px] font-bold text-gray-900">{activeRuleMeta?.label ?? activeRule}</p>
               </div>
 
               {/* Description */}
@@ -382,9 +390,9 @@ export default function ValidationPage() {
                   <div>
                     <p className="text-[9px] font-semibold text-blue-600 uppercase tracking-widest mb-1">Where these results come from</p>
                     <p className="text-[11px] text-blue-700 leading-relaxed">
-                      Statuses come directly from the data pipeline's published validation output.
-                      The pipeline currently publishes pass/fail counts only — when it doesn't report
-                      a per-rule outcome, the cell is shown as "not reported" rather than guessed.
+                      {data.granularity === "per_rule"
+                        ? "Statuses come directly from FinanceOS Core's per-entity, per-rule validation results. When Core doesn't report an outcome for a rule, the cell is shown as \"not reported\" rather than guessed."
+                        : "Statuses come directly from the data pipeline's published validation output. The pipeline currently publishes pass/fail counts only — when it doesn't report a per-rule outcome, the cell is shown as \"not reported\" rather than guessed."}
                     </p>
                   </div>
                 </div>
