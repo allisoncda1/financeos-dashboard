@@ -9,7 +9,7 @@
  * DataFreshness) so nothing downstream (routes, AI, rules, reports, frontend)
  * needs to change. All reads are read-only; this module never writes.
  */
-import { desc, eq } from "drizzle-orm";
+import { and, desc, eq } from "drizzle-orm";
 import {
   db,
   entitiesTable,
@@ -19,7 +19,13 @@ import {
   syncRunsTable,
   validationResultsTable,
 } from "@workspace/db";
-import type { PortfolioSummary, ValidationSummary, DataFreshness } from "./types";
+import type {
+  PortfolioSummary,
+  ValidationSummary,
+  DataFreshness,
+  EntityMetrics,
+  EntitySlug,
+} from "./types";
 
 /** Canonical display order, mirroring the Drive/mock `entities` array. */
 const SLUG_ORDER = ["cardealer_ai", "t3_marketing", "topmrktr", "smile_more"];
@@ -249,5 +255,131 @@ export async function getDataFreshnessFromNeon(): Promise<DataFreshness> {
     drive_upload: "complete",
     snapshot_archived: Boolean(snapshot),
     model_history_archived: true,
+  };
+}
+
+/**
+ * jsonb numbers already arrive as JS numbers (unlike NUMERIC columns, which
+ * Drizzle surfaces as strings). Coerce defensively and preserve negatives/zero
+ * (e.g. Smile_More carries a negative cash/equity position). Never fabricate a
+ * value — a missing field collapses to 0, mirroring the Drive `?? 0` behaviour.
+ */
+function toNum(v: unknown): number {
+  if (typeof v === "number") return Number.isFinite(v) ? v : 0;
+  if (typeof v === "string") {
+    const n = Number(v);
+    return Number.isFinite(n) ? n : 0;
+  }
+  return 0;
+}
+
+/**
+ * Shape of the nested `metrics` jsonb payload FinanceOS Core writes into
+ * entity_snapshots. This is NOT the Dashboard's flat EntityMetrics — Core owns
+ * a richer structure and we read (never recompute) the corresponding fields.
+ */
+type CoreFinancialPeriod = {
+  revenue?: number;
+  cogs?: number;
+  gross_profit?: number;
+  opex?: number;
+  net_income?: number;
+  net_margin_pct?: number;
+  gross_margin_pct?: number;
+};
+type CoreMetricsPayload = {
+  entity_name?: string;
+  as_of?: string;
+  financial_summary?: Record<string, CoreFinancialPeriod>;
+  balance_sheet?: {
+    current?: {
+      cash_on_hand?: number;
+      total_assets?: number;
+      total_equity?: number;
+      total_liabilities?: number;
+    };
+  };
+  ar_ap_metrics?: {
+    open_ap?: number;
+    open_ar?: number;
+    dpo_days?: number;
+    dso_days?: number;
+    ar_overdue_pct?: number;
+    ap_overdue_pct?: number;
+  };
+  cash_metrics?: { cash_current?: number };
+};
+
+/**
+ * Per-entity KPIs, read from the entity's current entity_snapshots row (Core is
+ * the source of truth as of Sprint 6). Exactly one SQL query per entity — the
+ * whole flat EntityMetrics is projected from a single nested `metrics` jsonb
+ * payload, so there is no N+1. Every field is read directly from Core; nothing
+ * is recomputed. `basis` is intentionally NOT sourced here (see getEntityMetrics
+ * in dataSource.ts) because it is not part of the entity_snapshots payload.
+ */
+export async function getEntityMetricsFromNeon(slug: EntitySlug): Promise<EntityMetrics> {
+  // Dashboard slugs (CarDealer_ai) are the lower-cased Core slugs (cardealer_ai).
+  const coreSlug = slug.toLowerCase();
+
+  const [row] = await db
+    .select({
+      metrics: entitySnapshotsTable.metrics,
+      pipelineRun: entitySnapshotsTable.pipelineRun,
+      displayName: entitiesTable.displayName,
+      accountingBasis: entitiesTable.accountingBasis,
+    })
+    .from(entitySnapshotsTable)
+    .innerJoin(entitiesTable, eq(entitiesTable.id, entitySnapshotsTable.entityId))
+    .where(and(eq(entitiesTable.slug, coreSlug), eq(entitySnapshotsTable.isCurrent, true)))
+    .orderBy(desc(entitySnapshotsTable.generatedAt))
+    .limit(1);
+
+  if (!row) {
+    throw new Error(
+      `Neon has no current entity_snapshot for "${slug}" (core slug "${coreSlug}")`,
+    );
+  }
+
+  const m = (row.metrics ?? {}) as CoreMetricsPayload;
+  const fs = m.financial_summary ?? {};
+  // Pick the latest YTD bucket deterministically (e.g. "ytd_2026") without
+  // hard-coding the year, so this keeps working as Core rolls forward. Prefer
+  // strict `ytd_YYYY` keys sorted by year; fall back to any `ytd*` key.
+  const strictYtdKeys = Object.keys(fs)
+    .filter((k) => /^ytd_\d{4}$/.test(k))
+    .sort();
+  const ytdKey =
+    strictYtdKeys.at(-1) ?? Object.keys(fs).find((k) => k.startsWith("ytd"));
+  const ytd = (ytdKey ? fs[ytdKey] : undefined) ?? {};
+  const bs = m.balance_sheet?.current ?? {};
+  const arap = m.ar_ap_metrics ?? {};
+  const cash = m.cash_metrics ?? {};
+
+  return {
+    entity: m.entity_name ?? row.displayName,
+    slug,
+    // `basis` is not in the metrics jsonb payload but IS an authoritative Core
+    // field (entities.accounting_basis) — read it rather than fabricate.
+    basis: row.accountingBasis === "Cash" ? "Cash" : "Accrual",
+    as_of: m.as_of ?? row.pipelineRun.toISOString().slice(0, 10),
+    pipeline_run: row.pipelineRun.toISOString(),
+    revenue_ytd: toNum(ytd.revenue),
+    cogs_ytd: toNum(ytd.cogs),
+    gross_profit_ytd: toNum(ytd.gross_profit),
+    gross_margin_pct: toNum(ytd.gross_margin_pct),
+    opex_ytd: toNum(ytd.opex),
+    net_income_ytd: toNum(ytd.net_income),
+    net_margin_pct: toNum(ytd.net_margin_pct),
+    total_assets: toNum(bs.total_assets),
+    total_liabilities: toNum(bs.total_liabilities),
+    total_equity: toNum(bs.total_equity),
+    open_ar: toNum(arap.open_ar),
+    open_ap: toNum(arap.open_ap),
+    dso_days: toNum(arap.dso_days),
+    dpo_days: toNum(arap.dpo_days),
+    cash_on_hand: toNum(cash.cash_current ?? bs.cash_on_hand),
+    ar_overdue_pct: toNum(arap.ar_overdue_pct),
+    ap_overdue_pct: toNum(arap.ap_overdue_pct),
   };
 }

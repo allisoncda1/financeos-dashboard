@@ -10,6 +10,7 @@ import {
   getPortfolioSummaryFromNeon,
   getValidationSummaryFromNeon,
   getDataFreshnessFromNeon,
+  getEntityMetricsFromNeon,
 } from "./neonSource";
 import type {
   PortfolioSummary,
@@ -280,6 +281,18 @@ async function enrichMetricsFromFinancials(slug: EntitySlug, raw: RawDriveMetric
 
 export async function getEntityMetrics(slug: EntitySlug): Promise<{ data: EntityMetrics; source: DataSourceKind }> {
   return trackSource(async () => {
+    // Primary source (Sprint 6): FinanceOS Core's entity_snapshots via Neon.
+    // Read-only, never recomputed. Falls back to Google Drive, then mock.
+    try {
+      const data = await getEntityMetricsFromNeon(slug);
+      reportSource("db");
+      return data;
+    } catch (err) {
+      console.warn(
+        `[dataSource] Neon entity metrics unavailable for ${slug}, falling back to Drive/mock:`,
+        err,
+      );
+    }
     if (USE_DRIVE) {
       try {
         const raw = await driveLoadJson<RawDriveMetrics>(`entities/${slug}/metrics.json`);
