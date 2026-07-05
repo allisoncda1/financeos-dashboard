@@ -11,6 +11,8 @@ import {
   getValidationSummaryFromNeon,
   getDataFreshnessFromNeon,
   getEntityMetricsFromNeon,
+  getEntityFinancialsFromNeon,
+  getEntityHistoryFromNeon,
 } from "./neonSource";
 import type {
   PortfolioSummary,
@@ -333,6 +335,18 @@ export async function getEntityFinancials(
   asOf: string,
 ): Promise<{ data: FinancialsData; source: DataSourceKind }> {
   return trackSource(async () => {
+    // Primary source (Sprint 7): FinanceOS Core's financial_periods via Neon.
+    // Read-only, never recomputed. Falls back to Google Drive, then mock.
+    try {
+      const data = await getEntityFinancialsFromNeon(slug, asOf);
+      reportSource("db");
+      return data;
+    } catch (err) {
+      console.warn(
+        `[dataSource] Neon financials unavailable for ${slug}, falling back to Drive/mock:`,
+        err,
+      );
+    }
     if (USE_DRIVE) {
       try {
         return await transformFinancials(slug, asOf);
@@ -359,6 +373,18 @@ export async function getEntityHistory(
   slug: EntitySlug,
 ): Promise<{ data: EntityHistoryData; source: DataSourceKind }> {
   return trackSource(async () => {
+    // Primary source (Sprint 7): FinanceOS Core's financial_periods via Neon.
+    // Read-only, never recomputed. Falls back to Google Drive, then empty.
+    try {
+      const data = await getEntityHistoryFromNeon(slug);
+      reportSource("db");
+      return data;
+    } catch (err) {
+      console.warn(
+        `[dataSource] Neon history unavailable for ${slug}, falling back to Drive:`,
+        err,
+      );
+    }
     if (USE_DRIVE) {
       try {
         return await transformHistory(slug);

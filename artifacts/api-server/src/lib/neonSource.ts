@@ -25,6 +25,12 @@ import type {
   DataFreshness,
   EntityMetrics,
   EntitySlug,
+  FinancialsData,
+  EntityHistoryData,
+  PriorYearHistory,
+  PriorYearBalanceSheetSummary,
+  MonthlyPL,
+  BalanceSheet,
 } from "./types";
 
 /** Canonical display order, mirroring the Drive/mock `entities` array. */
@@ -382,4 +388,215 @@ export async function getEntityMetricsFromNeon(slug: EntitySlug): Promise<Entity
     ar_overdue_pct: toNum(arap.ar_overdue_pct),
     ap_overdue_pct: toNum(arap.ap_overdue_pct),
   };
+}
+
+// ---------------------------------------------------------------------------
+// Sprint 7: financial history (getEntityFinancials / getEntityHistory) read
+// from Core's financial_periods. Read-only, never recomputed — every P&L and
+// balance-sheet figure comes straight from a financial_periods column. Each
+// public function issues exactly ONE SQL query (all of an entity's periods) and
+// partitions the rows in memory, so there is no N+1.
+// ---------------------------------------------------------------------------
+
+/** A `date` column surfaces as an ISO-ish string; guard against a Date too. */
+function dateStr(v: string | Date | null | undefined): string {
+  if (v instanceof Date) return v.toISOString().slice(0, 10);
+  return typeof v === "string" ? v : "";
+}
+/** Four-digit fiscal year from a period boundary (e.g. "2025-01-01" -> 2025). */
+function yearOf(v: string | Date | null | undefined): number {
+  return Number.parseInt(dateStr(v).slice(0, 4), 10);
+}
+/** Month label matching the Drive/mock `monthly_pl` shape ("2025-01"). */
+function monthLabel(v: string | Date | null | undefined): string {
+  return dateStr(v).slice(0, 7);
+}
+
+type PeriodRow = {
+  periodType: string;
+  periodStart: string;
+  periodEnd: string;
+  revenue: string | null;
+  cogs: string | null;
+  grossProfit: string | null;
+  opex: string | null;
+  netIncome: string | null;
+  totalAssets: string | null;
+  totalLiabilities: string | null;
+  totalEquity: string | null;
+  cashOnHand: string | null;
+  accountsReceivable: string | null;
+  accountsPayable: string | null;
+  generatedAt: Date;
+};
+
+/**
+ * ONE query: every financial_periods row for the entity (all period types),
+ * joined to entities on the lower-cased slug. Callers partition by period_type
+ * in memory so a single endpoint never fans out into per-period queries.
+ */
+async function fetchEntityPeriods(coreSlug: string): Promise<PeriodRow[]> {
+  return db
+    .select({
+      periodType: financialPeriodsTable.periodType,
+      periodStart: financialPeriodsTable.periodStart,
+      periodEnd: financialPeriodsTable.periodEnd,
+      revenue: financialPeriodsTable.revenue,
+      cogs: financialPeriodsTable.cogs,
+      grossProfit: financialPeriodsTable.grossProfit,
+      opex: financialPeriodsTable.opex,
+      netIncome: financialPeriodsTable.netIncome,
+      totalAssets: financialPeriodsTable.totalAssets,
+      totalLiabilities: financialPeriodsTable.totalLiabilities,
+      totalEquity: financialPeriodsTable.totalEquity,
+      cashOnHand: financialPeriodsTable.cashOnHand,
+      accountsReceivable: financialPeriodsTable.accountsReceivable,
+      accountsPayable: financialPeriodsTable.accountsPayable,
+      generatedAt: financialPeriodsTable.generatedAt,
+    })
+    .from(financialPeriodsTable)
+    .innerJoin(entitiesTable, eq(entitiesTable.id, financialPeriodsTable.entityId))
+    .where(eq(entitiesTable.slug, coreSlug));
+}
+
+function toMonthlyPl(r: PeriodRow): MonthlyPL {
+  return {
+    month: monthLabel(r.periodStart),
+    revenue: num(r.revenue),
+    cogs: num(r.cogs),
+    gross_profit: num(r.grossProfit),
+    opex: num(r.opex),
+    net_income: num(r.netIncome),
+  };
+}
+
+/**
+ * Current-year financials for an entity, read from financial_periods:
+ *   - monthly_pl  : the current fiscal year's `monthly` rows (asc by period)
+ *   - ytd_summary : the current `ytd` row (read directly, NOT re-summed)
+ *   - balance_sheet: aggregate totals from the same `ytd` row
+ * `financial_periods` stores only balance-sheet TOTALS (no line-item split) and
+ * no cash-flow statement, so the detailed BalanceSheet sub-lines are 0 and
+ * cash_flow is null — the exact same typed shape the Drive path produced.
+ */
+export async function getEntityFinancialsFromNeon(
+  slug: EntitySlug,
+  asOf: string,
+): Promise<FinancialsData> {
+  const coreSlug = slug.toLowerCase();
+  const rows = await fetchEntityPeriods(coreSlug);
+  if (rows.length === 0) {
+    throw new Error(`Neon has no financial_periods for "${slug}" (core slug "${coreSlug}")`);
+  }
+
+  // The authoritative current-period roll-up. Pick the latest ytd row by
+  // period_end (Core may retain more than one over time).
+  const ytdRow = rows
+    .filter((r) => r.periodType === "ytd")
+    .sort((a, b) => dateStr(a.periodEnd).localeCompare(dateStr(b.periodEnd)))
+    .at(-1);
+  if (!ytdRow) {
+    throw new Error(`Neon has no YTD financial_period for "${slug}"`);
+  }
+  const currentYear = yearOf(ytdRow.periodStart);
+
+  const monthly_pl = rows
+    .filter((r) => r.periodType === "monthly" && yearOf(r.periodStart) === currentYear)
+    .sort((a, b) => dateStr(a.periodStart).localeCompare(dateStr(b.periodStart)))
+    .map(toMonthlyPl);
+
+  const ytd_summary = {
+    revenue: num(ytdRow.revenue),
+    cogs: num(ytdRow.cogs),
+    gross_profit: num(ytdRow.grossProfit),
+    opex: num(ytdRow.opex),
+    net_income: num(ytdRow.netIncome),
+  };
+
+  // financial_periods carries only balance-sheet TOTALS plus cash/AR/AP; the
+  // line-item breakdown (prepaid, equipment, accrued, deferred, notes payable,
+  // paid-in capital, retained earnings) is not modeled, so those stay 0 while
+  // every total is read straight from Core.
+  const balance_sheet: BalanceSheet = {
+    as_of: asOf,
+    assets: {
+      cash: num(ytdRow.cashOnHand),
+      accounts_receivable: num(ytdRow.accountsReceivable),
+      prepaid_expenses: 0,
+      equipment_net: 0,
+      total: num(ytdRow.totalAssets),
+    },
+    liabilities: {
+      accounts_payable: num(ytdRow.accountsPayable),
+      accrued_liabilities: 0,
+      deferred_revenue: 0,
+      notes_payable: 0,
+      total: num(ytdRow.totalLiabilities),
+    },
+    equity: {
+      paid_in_capital: 0,
+      retained_earnings: 0,
+      total: num(ytdRow.totalEquity),
+    },
+  };
+
+  return {
+    entity_slug: slug,
+    as_of: asOf,
+    monthly_pl,
+    ytd_summary,
+    // financial_periods does not store a cash-flow statement.
+    balance_sheet,
+    cash_flow: null,
+  };
+}
+
+/**
+ * Prior-fiscal-year history for an entity, read from financial_periods. Each
+ * completed prior year is represented by an `annual` row (its summary + balance
+ * sheet come directly from that row — never recomputed); its `monthly` rows
+ * populate monthly_pl. Years >= the current fiscal year are excluded so this
+ * mirrors the Drive path (prior years only). No prior annual rows -> empty list.
+ */
+export async function getEntityHistoryFromNeon(slug: EntitySlug): Promise<EntityHistoryData> {
+  const coreSlug = slug.toLowerCase();
+  const rows = await fetchEntityPeriods(coreSlug);
+
+  const ytdYears = rows.filter((r) => r.periodType === "ytd").map((r) => yearOf(r.periodStart));
+  const monthlyYears = rows
+    .filter((r) => r.periodType === "monthly")
+    .map((r) => yearOf(r.periodStart));
+  const currentYear = ytdYears.length
+    ? Math.max(...ytdYears)
+    : monthlyYears.length
+      ? Math.max(...monthlyYears)
+      : new Date().getFullYear();
+
+  const prior_years: PriorYearHistory[] = rows
+    .filter((r) => r.periodType === "annual" && yearOf(r.periodStart) < currentYear)
+    .sort((a, b) => yearOf(a.periodStart) - yearOf(b.periodStart))
+    .map((annual) => {
+      const fiscalYear = yearOf(annual.periodStart);
+      const monthly_pl = rows
+        .filter((r) => r.periodType === "monthly" && yearOf(r.periodStart) === fiscalYear)
+        .sort((a, b) => dateStr(a.periodStart).localeCompare(dateStr(b.periodStart)))
+        .map(toMonthlyPl);
+      const summary = {
+        revenue: num(annual.revenue),
+        cogs: num(annual.cogs),
+        gross_profit: num(annual.grossProfit),
+        opex: num(annual.opex),
+        net_income: num(annual.netIncome),
+      };
+      const balance_sheet: PriorYearBalanceSheetSummary = {
+        as_of: dateStr(annual.periodEnd),
+        cash: num(annual.cashOnHand),
+        total_assets: num(annual.totalAssets),
+        total_liabilities: num(annual.totalLiabilities),
+        total_equity: num(annual.totalEquity),
+      };
+      return { fiscal_year: fiscalYear, monthly_pl, summary, balance_sheet };
+    });
+
+  return { entity_slug: slug, prior_years };
 }

@@ -2,6 +2,7 @@
 - [Google Drive OAuth debugging](google-drive-oauth-debugging.md) — silent try/catch fallbacks hide `invalid_grant` refresh-token errors; add temporary logging to confirm root cause before assuming code is broken.
 - [FinanceOS Drive CSV schemas](financeos-drive-csv-schemas.md) — real Drive CSV headers differ from assumed simplified schemas; always inspect real headers before writing transformers.
 - [FinanceOS entity_snapshots.metrics shape](financeos-entity-snapshots-metrics-shape.md) — Core metrics jsonb is nested, NOT flat EntityMetrics; map field-by-field, slug is lower-cased, basis not in payload.
+- [FinanceOS financial_periods coverage](financeos-financial-periods-coverage.md) — ytd/annual rows are authoritative (never re-sum); no BS line-items or cash-flow; quarterly exists but is intentionally not exposed by the API.
 - [FinanceOS validation pipeline output](financeos-validation-pipeline-output.md) — pipeline publishes summary counts only, no per-rule results; anomalies carry no rule ids; report "not reported" instead of fabricating cell statuses.
 - [Main agent git restrictions](main-agent-git-restrictions.md) — add/commit/amend/config blocked for main agent, plain push allowed; rely on platform checkpoint commits; custom authorship needs an isolated task agent.
 - [LLM structured output sanitization](llm-structured-output-sanitization.md) — prompt-level JSON schemas drift; sanitize LLM output server-side (enum coercion, field filtering) before it reaches typed UI.
