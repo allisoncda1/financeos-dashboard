@@ -26,7 +26,12 @@ export function BankAccounts({ banking }: Props) {
     );
   }
 
-  const accounts = [...banking.accounts].sort((a, b) => b.balance - a.balance);
+  // Hide seed-only / placeholder accounts (no transaction history) so the
+  // dashboard summary matches the Banking page's default active view. Legacy /
+  // mock payloads without stats keep showing every account.
+  const accounts = [...banking.accounts]
+    .filter((a) => a.transaction_count === undefined || a.transaction_count > 0)
+    .sort((a, b) => b.balance - a.balance);
 
   return (
     <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-4 flex flex-col gap-3">

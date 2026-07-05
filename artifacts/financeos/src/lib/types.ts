@@ -267,6 +267,10 @@ export type BankAccount = {
   color: string;
   reconciled: boolean;
   last_reconciled: string;
+  /** Total non-deleted transactions (0 = seed/placeholder). Absent on legacy/mock payloads. */
+  transaction_count?: number;
+  /** ISO date of the most recent transaction, or "" when none. Absent on legacy/mock payloads. */
+  last_transaction_date?: string;
 };
 
 export type BankTransaction = {

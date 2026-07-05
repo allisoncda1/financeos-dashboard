@@ -281,6 +281,18 @@ export type BankAccount = {
   color: string;
   reconciled: boolean;
   last_reconciled: string;
+  /**
+   * Total non-deleted transactions for this account (0 = seed/placeholder).
+   * Only populated by the authoritative Neon (source=db) path. Left undefined
+   * for the Drive fallback, where no reliable per-bank-account activity source
+   * exists — undefined signals the UI to show the account rather than hide it.
+   */
+  transaction_count?: number;
+  /**
+   * ISO date of the most recent transaction, or "" when none. Only populated
+   * by the authoritative Neon (source=db) path; undefined for Drive fallback.
+   */
+  last_transaction_date?: string;
 };
 
 export type BankTransaction = {

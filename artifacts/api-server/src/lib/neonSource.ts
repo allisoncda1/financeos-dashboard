@@ -9,7 +9,7 @@
  * DataFreshness) so nothing downstream (routes, AI, rules, reports, frontend)
  * needs to change. All reads are read-only; this module never writes.
  */
-import { and, desc, eq } from "drizzle-orm";
+import { and, desc, eq, sql } from "drizzle-orm";
 import { ENTITY_SLUGS } from "./types";
 import {
   db,
@@ -946,7 +946,7 @@ export async function getEntityBankingFromNeon(
   asOf: string,
 ): Promise<BankingData> {
   const coreSlug = slug.toLowerCase();
-  const [periods, bankAccounts, recentTxns] = await Promise.all([
+  const [periods, bankAccounts, recentTxns, txnStats] = await Promise.all([
     fetchEntityKpiPeriods(coreSlug),
     db
       .select({
@@ -977,14 +977,35 @@ export async function getEntityBankingFromNeon(
       .where(and(eq(entitiesTable.slug, coreSlug), eq(transactionsTable.isDeleted, false)))
       .orderBy(desc(transactionsTable.transactionDate))
       .limit(50),
+    // Per-account activity summary across ALL (non-deleted) transactions, not
+    // just the 50 most-recent shown above. Used by the frontend to hide dead /
+    // placeholder accounts and collapse inactive ones. Read-only aggregate.
+    db
+      .select({
+        accountId: transactionsTable.accountId,
+        count: sql<number>`count(*)::int`,
+        lastDate: sql<string | null>`max(${transactionsTable.transactionDate})`,
+      })
+      .from(transactionsTable)
+      .innerJoin(entitiesTable, eq(entitiesTable.id, transactionsTable.entityId))
+      .where(and(eq(entitiesTable.slug, coreSlug), eq(transactionsTable.isDeleted, false)))
+      .groupBy(transactionsTable.accountId),
   ]);
   const ytd = latestYtd(periods);
   if (!ytd) {
     throw new Error(`Neon has no YTD financial_periods for "${slug}" (core slug "${coreSlug}")`);
   }
 
+  const statsByAccount = new Map<string, { count: number; lastDate: string | null }>();
+  for (const s of txnStats) {
+    if (s.accountId) {
+      statsByAccount.set(s.accountId, { count: Number(s.count) || 0, lastDate: s.lastDate });
+    }
+  }
+
   const accounts: BankAccount[] = bankAccounts.map((a): BankAccount => {
     const name = (a.name ?? "").trim();
+    const stat = statsByAccount.get(a.id);
     return {
       id: a.id,
       name,
@@ -996,6 +1017,8 @@ export async function getEntityBankingFromNeon(
       color: "",
       reconciled: Boolean(a.isActive),
       last_reconciled: "",
+      transaction_count: stat?.count ?? 0,
+      last_transaction_date: stat?.lastDate ? dateStr(stat.lastDate) : "",
     };
   });
 
