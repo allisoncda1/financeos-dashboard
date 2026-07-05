@@ -21,58 +21,38 @@ const PgSession = connectPgSimple(session);
 const sessionPool = new Pool({ connectionString: databaseUrl });
 
 // The bundled build breaks connect-pg-simple's createTableIfMissing (it reads
-// table.sql relative to the bundle), so we create the table ourselves.
+// table.sql relative to the bundle), so we create the "session" table ourselves.
 //
-// The Neon database is owned by the upstream "Core" service and the dashboard
-// connects with a read-scoped role that has USAGE but not CREATE on the public
-// schema, so this DDL fails with "permission denied for schema public". When
-// that happens we fall back to express-session's in-memory store so the server
-// still boots. Sessions then live in memory (lost on restart) — provisioning a
-// persistent "session" table on Neon with the right grants is a Sprint 6 item.
-export async function ensureSessionTable(): Promise<boolean> {
-  try {
-    await sessionPool.query(`
-      CREATE TABLE IF NOT EXISTS "session" (
-        "sid" varchar NOT NULL COLLATE "default",
-        "sess" json NOT NULL,
-        "expire" timestamp(6) NOT NULL,
-        CONSTRAINT "session_pkey" PRIMARY KEY ("sid")
-      );
-    `);
-    await sessionPool.query(
-      `CREATE INDEX IF NOT EXISTS "IDX_session_expire" ON "session" ("expire");`,
+// DATABASE_URL is the Dashboard's own operational database, which is separate
+// from FinanceOS Core (Core is read-only via CORE_DATABASE_URL). The Dashboard
+// owns this database with full privileges, so creating the "session" table
+// succeeds. Any failure here (bad DATABASE_URL, network/TLS outage, missing
+// privileges) is a real problem and must fail startup loudly — there is no
+// in-memory fallback.
+export async function ensureSessionTable(): Promise<void> {
+  await sessionPool.query(`
+    CREATE TABLE IF NOT EXISTS "session" (
+      "sid" varchar NOT NULL COLLATE "default",
+      "sess" json NOT NULL,
+      "expire" timestamp(6) NOT NULL,
+      CONSTRAINT "session_pkey" PRIMARY KEY ("sid")
     );
-    return true;
-  } catch (err) {
-    // Only tolerate the specific "insufficient privilege" failure (Postgres
-    // SQLSTATE 42501) that the read-scoped Neon role produces. Any other error
-    // (bad DATABASE_URL, network/TLS outage, etc.) is a real problem that must
-    // not be silently downgraded to ephemeral in-memory sessions, so re-throw
-    // it and let startup fail loudly.
-    const code = (err as { code?: unknown } | null)?.code;
-    if (code !== "42501") {
-      throw err;
-    }
-    logger.warn(
-      { err },
-      "Could not create the PostgreSQL session table: the Neon role lacks CREATE on schema public. Falling back to an in-memory session store — sessions will not persist across restarts or scale across instances. Provisioning a persistent session table on Neon is a follow-up (Sprint 6) item.",
-    );
-    return false;
-  }
+  `);
+  await sessionPool.query(
+    `CREATE INDEX IF NOT EXISTS "IDX_session_expire" ON "session" ("expire");`,
+  );
 }
 
-// The session middleware is chosen at startup: PostgreSQL-backed when the table
-// is available, otherwise the default in-memory store. Until initSession() runs
-// this delegate is a no-op passthrough; index.ts awaits initSession() before it
-// starts listening, so no real request is served before the store is chosen.
+// The session middleware is initialized at startup once the "session" table is
+// ensured. Until initSession() runs this delegate is a no-op passthrough;
+// index.ts awaits initSession() before it starts listening, so no real request
+// is served before the PostgreSQL-backed store is ready.
 let sessionMiddleware: express.RequestHandler = (_req, _res, next) => next();
 
 export async function initSession(): Promise<void> {
-  const hasTable = await ensureSessionTable();
+  await ensureSessionTable();
   sessionMiddleware = session({
-    ...(hasTable
-      ? { store: new PgSession({ pool: sessionPool, tableName: "session" }) }
-      : {}),
+    store: new PgSession({ pool: sessionPool, tableName: "session" }),
     secret: sessionSecret as string,
     resave: false,
     saveUninitialized: false,
@@ -110,9 +90,9 @@ app.use(cors());
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
-// Server-side sessions. The concrete store (PostgreSQL via connect-pg-simple or
-// the in-memory fallback) is selected by initSession() at startup; this delegate
-// forwards to whichever middleware was chosen.
+// Server-side sessions, backed by PostgreSQL (connect-pg-simple) on the
+// Dashboard's operational database. initSession() wires up the store at startup;
+// this delegate forwards to it.
 app.use((req, res, next) => sessionMiddleware(req, res, next));
 
 app.use("/api", router);

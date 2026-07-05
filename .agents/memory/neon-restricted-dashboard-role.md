@@ -1,28 +1,33 @@
 ---
-name: Neon restricted dashboard role
-description: The FinanceOS Dashboard connects to Core's Neon DB with a read-scoped role that cannot CREATE tables; runtime tables must be handled defensively.
+name: FinanceOS two-database boundary (Core vs operational)
+description: FinanceOS Dashboard uses two separate Postgres databases — read-only Neon Core for financial data, and a writable Replit operational DB for sessions/metric_snapshots.
 ---
 
-# Neon restricted dashboard role
+# FinanceOS two-database boundary
 
-When `DATABASE_URL` points at FinanceOS Core's Neon database, the Dashboard
-connects as role **`financeos_dashboard`**, which has `USAGE` but **not
-`CREATE`** on schema `public`. Any DDL the Dashboard runs (e.g. creating its own
-`session` or `metric_snapshots` runtime tables) fails with Postgres SQLSTATE
-**`42501` "permission denied for schema public"**.
+The Dashboard connects to **two** separate Postgres databases. Keep them separate:
 
-**Why:** Core owns the schema and only grants the Dashboard a read-scoped role.
-Startup code that unconditionally `CREATE TABLE IF NOT EXISTS ...` will crash the
-process, and lazy table creation (metric_snapshots) will throw on first use.
+- **`CORE_DATABASE_URL`** — read-only Neon (FinanceOS Core). Holds financial
+  read-models: `portfolio_snapshots`, `entity_snapshots`, `financial_periods`,
+  `validation_results`, `sync_runs` (+ full Core schema). The Dashboard connects
+  as role **`financeos_dashboard`** (db `neondb`), which has `USAGE` but **not
+  `CREATE`** on `public` — any DDL fails with SQLSTATE `42501`. `lib/db`
+  (`@workspace/db`, used by `neonSource.ts`) points here. Financial reads only.
+- **`DATABASE_URL`** — writable Replit built-in operational DB (role `postgres`,
+  db `heliumdb`). Holds Dashboard operational tables: `session` (auth) and
+  `metric_snapshots`. `app.ts` (sessionPool) and `snapshotStore.ts` point here.
+
+**Why:** Core is owned upstream and grants the Dashboard only a read-scoped role,
+so the Dashboard must never write to Core and no session/UI tables may live there.
+Sessions need a writable DB; the operational DB provides it.
 
 **How to apply:**
-- Treat table creation against Neon as may-fail. Catch `err.code === "42501"`
-  specifically and degrade gracefully; re-throw other errors so genuine
-  connectivity/config failures still fail loudly.
-- Session storage falls back to express-session's in-memory store when the
-  `session` table can't be created (sessions then don't persist across restarts
-  or scale across instances) — acceptable for dev, but a real deployment needs
-  Core to provision `session` (and `metric_snapshots`) with proper grants, or a
-  separate session DB. This is a known Sprint 6 blocker.
-- These runtime tables (`session`, `metric_snapshots`) are NOT present in Neon;
-  they were previously created at runtime against the old built-in Postgres.
+- Financial-read code → `CORE_DATABASE_URL`. Session/UI/operational code →
+  `DATABASE_URL`. Never create session/metric tables against Core.
+- There is NO in-memory session fallback. Session-table DDL runs against the
+  writable operational DB and must succeed; failure should crash startup loudly.
+- `runtimeTables.ts` in `lib/db` mirrors `session`/`metric_snapshots` only so
+  `drizzle-kit push` won't drop them; the runtime creates them via raw SQL. Note
+  `lib/db`'s drizzle schema mixes Core read-models + these operational tables, so
+  `drizzle-kit push` against a single DB is semantically split — not run at
+  runtime, but a latent cleanup item.

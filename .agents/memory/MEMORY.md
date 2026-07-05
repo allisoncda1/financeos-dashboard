@@ -6,5 +6,6 @@
 - [LLM structured output sanitization](llm-structured-output-sanitization.md) — prompt-level JSON schemas drift; sanitize LLM output server-side (enum coercion, field filtering) before it reaches typed UI.
 - [express-rate-limit IPv6 keyGenerator](express-rate-limit-ipv6.md) — v8+ throws ERR_ERL_KEY_GEN_IPV6 at startup unless a custom IP-based keyGenerator is wrapped with the ipKeyGenerator helper.
 - [connect-pg-simple in bundled builds](connect-pg-simple-bundled-build.md) — createTableIfMissing breaks under esbuild bundling (ENOENT table.sql); create the session table yourself at startup.
-- [Neon restricted dashboard role](neon-restricted-dashboard-role.md) — Dashboard connects as read-scoped role with USAGE but no CREATE on public; runtime DDL fails 42501; degrade gracefully.
+- [FinanceOS two-database boundary](neon-restricted-dashboard-role.md) — CORE_DATABASE_URL=read-only Neon Core (financial reads, lib/db); DATABASE_URL=writable Replit operational DB (sessions/metric_snapshots); no in-memory session fallback.
+- [Replit DB shadowed by user secrets](replit-db-shadowed-by-secrets.md) — user DATABASE_URL/PG* secrets shadow Replit built-in DB; createDatabase falsely says alreadyExisted; agent can't delete secrets, user must remove them.
 - [TS project references need db declarations rebuilt](ts-project-references-db-declarations.md) — after editing lib/db schema, run `tsc -b lib/db` or api-server typecheck fails on missing exports though runtime works.
