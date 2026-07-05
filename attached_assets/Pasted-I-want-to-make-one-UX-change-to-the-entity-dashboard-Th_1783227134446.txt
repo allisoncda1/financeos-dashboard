@@ -1,0 +1,78 @@
+I want to make one UX change to the entity dashboard.
+
+The current "Data Integrity" card is technically useful, but it is taking prime dashboard real estate that should instead be used for business insight.
+
+### Goal
+
+Replace the current **Data Integrity** card with a **Company Health Score** card.
+
+This Health Score should represent the overall financial health of the company, not the integrity of the data.
+
+It should be calculated only from real financial data (no hardcoded values), for example using a weighted combination of:
+
+- Profitability
+- Liquidity
+- Cash position
+- Gross Margin
+- Net Margin
+- AR / AP quality
+- Growth (when available)
+- Validation status (small weight only)
+
+The exact formula is up to you, but it must:
+- be deterministic
+- use only real backend data
+- produce a score between 0 and 100
+- include a short rating:
+  - Excellent
+  - Good
+  - Fair
+  - At Risk
+  - Critical
+
+Under the score, display a small breakdown showing which categories are helping or hurting the score.
+
+Example:
+
+Company Health
+
+84 /100
+Good
+
+✓ Profitability
+✓ Revenue
+⚠ Liquidity
+⚠ Cash Position
+✓ Validation
+
+---
+
+### Data Integrity
+
+Do NOT remove Data Integrity.
+
+Instead, move it to the very bottom of the page as part of a "System Status" section.
+
+This section should contain technical information such as:
+
+- Validation checks passed
+- Pipeline status
+- Data source
+- Last refresh
+- Financial basis
+- Model version
+
+This information is important for accountants and auditors, but should not occupy premium dashboard space.
+
+---
+
+### Important rules
+
+- Do not use any hardcoded values.
+- Do not fabricate a health score.
+- Explain exactly which backend fields are used to compute it.
+- If some inputs are unavailable, gracefully exclude them from the calculation rather than inventing data.
+- Keep the existing visual style and layout consistent with FinanceOS.
+- Do not change any financial calculations outside of this new Health Score component.
+
+Before implementing, briefly explain the proposed scoring methodology.

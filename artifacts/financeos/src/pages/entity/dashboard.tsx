@@ -15,11 +15,13 @@ import {
 import { EntityHeader }   from "@/components/dashboard/EntityHeader";
 import { KpiCard }        from "@/components/dashboard/KpiCard";
 import { ProfitChart }    from "@/components/dashboard/ProfitChart";
-import { HealthScore }    from "@/components/dashboard/HealthScore";
+import { CompanyHealth }  from "@/components/dashboard/CompanyHealth";
 import { TopMetrics }     from "@/components/dashboard/TopMetrics";
 import { BankAccounts }   from "@/components/dashboard/BankAccounts";
 import { RecentAlerts }   from "@/components/dashboard/RecentAlerts";
 import { CashFlowChart }  from "@/components/dashboard/CashFlowChart";
+import { SystemStatus }   from "@/components/dashboard/SystemStatus";
+import { computeCompanyHealth } from "@/lib/healthScore";
 import type { DataSourceState } from "@/lib/dataState";
 
 
@@ -62,6 +64,16 @@ export default function EntityPage() {
     ? m.cash_on_hand / monthlyBurn
     : null;
   const totalExpenses   = m.cogs_ytd + m.opex_ytd;
+
+  // ── Company Health Score — deterministic, real-data-only (lib/healthScore) ──
+  const health = computeCompanyHealth({
+    metrics: m,
+    monthlyPL,
+    validation: {
+      passed: data.validation.passed ?? null,
+      totalChecks: data.validation.total_checks ?? null,
+    },
+  });
 
   // Effective source across every feed whose data is displayed on this page.
   // Includes `source` (from /api/model) because KPI values, Top Metrics and the
@@ -144,13 +156,9 @@ export default function EntityPage() {
             <RecentAlerts alerts={entityAlerts} />
           </div>
 
-          {/* Column 2: Data Integrity + Cash Flow */}
+          {/* Column 2: Company Health + Cash Flow */}
           <div className="flex flex-col gap-4">
-            <HealthScore
-              passed={data.validation.passed ?? null}
-              totalChecks={data.validation.total_checks ?? null}
-              allPassed={data.validation.all_passed ?? null}
-            />
+            <CompanyHealth health={health} />
             <CashFlowChart />
           </div>
 
@@ -167,62 +175,21 @@ export default function EntityPage() {
           </div>
         </div>
 
-        {/* Pipeline status footer — bound to real validation + pipeline data */}
-        <div className="flex items-center gap-6 px-1 py-2">
-          <StatusDot
-            label={
-              data.validation.total_checks != null
-                ? `${data.validation.passed}/${data.validation.total_checks} Validation`
-                : "Validation: not reported"
-            }
-            ok={!!data.validation.all_passed}
-          />
-          <StatusDot
-            label={`Model Build: ${pipeline.data?.modelBuild ?? data.freshness.model_build ?? "unknown"}`}
-            ok={(pipeline.data?.modelBuild ?? data.freshness.model_build) === "complete"
-              || (pipeline.data?.modelBuild ?? data.freshness.model_build) === "success"}
-          />
-          <StatusDot
-            label={`Pipeline: ${pipeline.data?.staleStatus ?? "unknown"}`}
-            ok={pipeline.data?.staleStatus === "fresh"}
-          />
-          <StatusDot label={`Data Freshness: ${m.as_of}`} ok={pipeline.data?.staleStatus !== "red"} />
-          <SourcePill source={pageSource} />
-          <span className="ml-auto text-[10px] text-gray-400">
-            Run: {new Date(m.pipeline_run).toLocaleString("en-US", { dateStyle: "short", timeStyle: "short" })}
-          </span>
-        </div>
+        {/* System Status — audit/technical info moved out of prime space */}
+        <SystemStatus
+          validation={{
+            passed: data.validation.passed ?? null,
+            totalChecks: data.validation.total_checks ?? null,
+            allPassed: data.validation.all_passed ?? null,
+          }}
+          pipeline={pipeline.data}
+          basis={m.basis}
+          asOf={m.as_of}
+          pipelineRun={m.pipeline_run}
+          source={pageSource}
+        />
       </div>
     </div>
-  );
-}
-
-function StatusDot({ label, ok }: { label: string; ok: boolean }) {
-  return (
-    <div className="flex items-center gap-1.5">
-      <span
-        className="w-1.5 h-1.5 rounded-full flex-shrink-0"
-        style={{ background: ok ? "#10B981" : "#EF4444" }}
-      />
-      <span className="text-[10px] text-gray-500">{label}</span>
-    </div>
-  );
-}
-
-function SourcePill({ source }: { source: DataSourceState }) {
-  const cfg: Record<DataSourceState, { text: string; cls: string }> = {
-    db:          { text: "Source: Live DB", cls: "bg-emerald-100 text-emerald-700" },
-    live:        { text: "Source: Live",    cls: "bg-emerald-100 text-emerald-700" },
-    cache:       { text: "Source: Cached",  cls: "bg-blue-100 text-blue-700" },
-    mock:        { text: "Source: Sample",  cls: "bg-amber-100 text-amber-800" },
-    loading:     { text: "Source: …",       cls: "bg-gray-100 text-gray-500" },
-    unavailable: { text: "Source: Unavailable", cls: "bg-red-100 text-red-700" },
-  };
-  const c = cfg[source];
-  return (
-    <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-semibold ${c.cls}`}>
-      {c.text}
-    </span>
   );
 }
 
