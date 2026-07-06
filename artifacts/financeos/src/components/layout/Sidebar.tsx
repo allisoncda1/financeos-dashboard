@@ -92,19 +92,19 @@ export function Sidebar({ onClose }: { onClose?: () => void }) {
       style={{ background: BG, width: 216, minHeight: "100vh" }}
     >
       {/* Logo row */}
-      <div className="px-4 pt-4 pb-3 flex items-center gap-2.5">
+      <div className="relative px-4 py-4 flex items-center justify-center">
         <Link
           href="/home"
           aria-label="Back to launcher"
           title="Back to launcher"
-          className="flex items-center gap-2.5 flex-1 min-w-0 rounded-lg transition-opacity hover:opacity-80"
+          className="flex items-center justify-center rounded-lg transition-opacity hover:opacity-80"
         >
           <FinanceOSLogo variant="sidebar" className="h-11 w-auto" />
         </Link>
         {onClose && (
           <button
             onClick={onClose}
-            className="md:hidden w-6 h-6 flex items-center justify-center rounded text-white/50 hover:text-white/80 transition-colors"
+            className="md:hidden absolute right-3 top-1/2 -translate-y-1/2 w-6 h-6 flex items-center justify-center rounded text-white/50 hover:text-white/80 transition-colors"
           >
             <X className="w-3.5 h-3.5" />
           </button>
