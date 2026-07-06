@@ -5,7 +5,7 @@ import { usePathname, useRouter } from "@/lib/next-compat";
 import { motion, AnimatePresence } from "framer-motion";
 import type { ComponentType } from "react";
 import {
-  BarChart3, LayoutDashboard, Inbox, TrendingUp, FileText,
+  LayoutDashboard, Inbox, TrendingUp, FileText,
   ShieldCheck, CheckCircle2, Clock, Settings, ChevronDown,
   Layers, Droplets, X, Check, LogOut,
 } from "lucide-react";
@@ -16,6 +16,7 @@ import {
   type EntitySlug,
 } from "@/lib/entities";
 import { EntityLogo } from "@/components/ui/EntityLogo";
+import { FinanceOSLogo } from "@/components/ui/FinanceOSLogo";
 import { useDashboardData } from "@/hooks/useApi";
 import { useAuth } from "@/lib/auth";
 
@@ -98,10 +99,7 @@ export function Sidebar({ onClose }: { onClose?: () => void }) {
           title="Back to launcher"
           className="flex items-center gap-2.5 flex-1 min-w-0 rounded-lg transition-opacity hover:opacity-80"
         >
-          <div className="w-7 h-7 rounded-lg bg-emerald-500 flex items-center justify-center flex-shrink-0">
-            <BarChart3 className="w-4 h-4 text-white" />
-          </div>
-          <span className="text-white font-bold text-[13px] tracking-widest flex-1 truncate">FINANCEOS</span>
+          <FinanceOSLogo variant="sidebar" className="flex-1 min-w-0" />
         </Link>
         {onClose && (
           <button

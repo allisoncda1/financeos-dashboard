@@ -3,7 +3,8 @@ import { useRouter } from "@/lib/next-compat";
 import { useAuth } from "@/lib/auth";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
-import { BarChart3, Loader2 } from "lucide-react";
+import { Loader2 } from "lucide-react";
+import { FinanceOSLogo } from "@/components/ui/FinanceOSLogo";
 
 function useQueryParam(name: string): string | null {
   if (typeof window === "undefined") return null;
@@ -44,10 +45,7 @@ export default function LoginPage() {
     <div className="flex h-screen w-full items-center justify-center bg-[#F4F5F7]">
       <div className="w-full max-w-sm px-6">
         <div className="flex flex-col items-center mb-6">
-          <div className="w-10 h-10 rounded-xl bg-emerald-500 flex items-center justify-center mb-3">
-            <BarChart3 className="w-5 h-5 text-white" />
-          </div>
-          <span className="text-gray-900 font-bold text-[15px] tracking-widest">FINANCEOS</span>
+          <FinanceOSLogo variant="full" />
         </div>
 
         <div className="bg-white rounded-2xl border border-gray-200 shadow-sm p-6">
