@@ -42,7 +42,10 @@ export default function LoginPage() {
   };
 
   return (
-    <div className="flex h-screen w-full items-center justify-center bg-[#F4F5F7]">
+    <div
+      className="flex h-screen w-full items-center justify-center bg-center bg-cover bg-no-repeat"
+      style={{ backgroundImage: "url('/branding/login-bg.svg')", backgroundColor: "#ffffff" }}
+    >
       <div className="w-full max-w-sm px-6">
         <div className="flex flex-col items-center mb-6">
           <FinanceOSLogo variant="full" className="h-24 w-auto" />
