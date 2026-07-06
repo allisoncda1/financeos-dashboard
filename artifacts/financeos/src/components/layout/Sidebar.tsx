@@ -99,7 +99,7 @@ export function Sidebar({ onClose }: { onClose?: () => void }) {
           title="Back to launcher"
           className="flex items-center gap-2.5 flex-1 min-w-0 rounded-lg transition-opacity hover:opacity-80"
         >
-          <FinanceOSLogo variant="sidebar" className="flex-1 min-w-0" />
+          <FinanceOSLogo variant="sidebar" className="h-11 w-auto" />
         </Link>
         {onClose && (
           <button

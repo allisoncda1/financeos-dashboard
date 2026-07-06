@@ -101,7 +101,7 @@ export const PORTFOLIO_META: LogoSource & { slug: "portfolio"; type: "portfolio"
   name: "Portfolio",
   shortName: "All",
   color: "#10B981",
-  logoPath: null,
+  logoPath: "/logos/portfolio.png",
   initials: "PF",
   type: "portfolio",
 };

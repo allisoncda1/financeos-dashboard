@@ -11,6 +11,7 @@ import {
   ArrowRight,
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
+import { FinanceOSLogo } from "@/components/ui/FinanceOSLogo";
 
 type ModuleCard = {
   title: string;
@@ -92,10 +93,7 @@ export default function HomePage() {
   return (
     <div className="min-h-screen flex flex-col bg-[#F7F8FA]">
       <header className="flex items-center justify-between px-6 sm:px-10 py-5">
-        <span className="text-[18px] font-extrabold tracking-widest select-none">
-          <span className="text-gray-900">FINANCE</span>
-          <span className="text-emerald-500">OS</span>
-        </span>
+        <FinanceOSLogo variant="full" className="h-11 w-auto" />
         <button
           type="button"
           onClick={handleSignOut}

@@ -1,61 +1,34 @@
 interface Props {
   /**
-   * full     — horizontal: icon + wordmark (login, headers)
+   * full     — icon + wordmark lockup (login, home, headers)
    * icon     — square icon only (favicons, compact spaces)
-   * sidebar  — icon + wordmark stacked for sidebar header
+   * sidebar  — icon + wordmark lockup for the sidebar header
+   *
+   * `full` and `sidebar` render the same single lockup asset; only the
+   * caller-provided sizing (via className) differs. Callers control size —
+   * the image keeps its aspect ratio (use an `h-*` class with `w-auto`).
    */
   variant?: "full" | "icon" | "sidebar";
   className?: string;
 }
 
+const LOCKUP = "/branding/financeos-lockup.png";
+const LOCKUP_LIGHT = "/branding/financeos-lockup-light.png";
+const ICON = "/branding/financeos-icon.png";
+
 export function FinanceOSLogo({ variant = "full", className }: Props) {
-  if (variant === "icon") {
-    return (
-      <img
-        src="/branding/financeos-icon.svg"
-        alt="FinanceOS"
-        className={className}
-        draggable={false}
-      />
-    );
-  }
-
-  if (variant === "sidebar") {
-    return (
-      <div className={`flex items-center gap-2.5 ${className ?? ""}`}>
-        <img
-          src="/branding/financeos-icon.svg"
-          alt=""
-          aria-hidden="true"
-          className="w-7 h-7 flex-shrink-0"
-          draggable={false}
-        />
-        <img
-          src="/branding/financeos-logo.svg"
-          alt="FinanceOS"
-          className="h-5 flex-1 object-contain object-left"
-          draggable={false}
-        />
-      </div>
-    );
-  }
-
-  // variant === "full"
+  const src =
+    variant === "icon"
+      ? ICON
+      : variant === "sidebar"
+        ? LOCKUP_LIGHT
+        : LOCKUP;
   return (
-    <div className={`flex flex-col items-center gap-2 ${className ?? ""}`}>
-      <img
-        src="/branding/financeos-icon.svg"
-        alt=""
-        aria-hidden="true"
-        className="w-10 h-10"
-        draggable={false}
-      />
-      <img
-        src="/branding/financeos-logo.svg"
-        alt="FinanceOS"
-        className="h-5 object-contain"
-        draggable={false}
-      />
-    </div>
+    <img
+      src={src}
+      alt="FinanceOS"
+      className={className}
+      draggable={false}
+    />
   );
 }
