@@ -29,6 +29,8 @@ export interface EntityDefinition {
 
   /** Path under public/logos/ (null = initials fallback) */
   logo: string | null;
+  /** Optional transparent variant for dark surfaces (e.g. sidebar) */
+  logoDark?: string | null;
   /** Two-letter fallback shown when logo is missing */
   fallbackInitials: string;
 
@@ -84,6 +86,8 @@ export type LogoSource = {
   shortName: string;
   color: string;
   logoPath: string | null;
+  /** Optional transparent variant for dark surfaces (e.g. sidebar) */
+  logoPathDark?: string | null;
   initials: string;
 };
 
@@ -188,6 +192,7 @@ const REGISTRY: EntityDefinition[] = [
     displayName: "Smile More",
     shortName: "SM",
     logo: "/logos/smile-more.png",
+    logoDark: "/logos/smile-more-dark.png",
     fallbackInitials: "SM",
     primaryColor: "#3b82f6",
     accentColor: "#3b82f6",
@@ -254,6 +259,7 @@ export function resolveLogoSource(slug: EntitySlug | "portfolio" | "agency"): Lo
     shortName: e.shortName,
     color: e.primaryColor,
     logoPath: e.logo,
+    logoPathDark: e.logoDark ?? null,
     initials: e.fallbackInitials,
   };
 }
@@ -270,6 +276,7 @@ export const ENTITY_META: Record<EntitySlug, EntityMeta> = Object.fromEntries(
       shortName: e.shortName,
       color: e.primaryColor,
       logoPath: e.logo,
+      logoPathDark: e.logoDark ?? null,
       initials: e.fallbackInitials,
       basis: e.accountingBasis,
       type: "entity" as const,
