@@ -4,8 +4,9 @@ import Link from "@/lib/next-compat";
 import { usePathname, useRouter } from "@/lib/next-compat";
 import { motion, AnimatePresence } from "framer-motion";
 import type { ComponentType } from "react";
+import { FinanceOSLogo } from "@/components/ui/FinanceOSLogo";
 import {
-  BarChart3, LayoutDashboard, Inbox, TrendingUp, FileText,
+  LayoutDashboard, Inbox, TrendingUp, FileText,
   ShieldCheck, CheckCircle2, Clock, Settings, ChevronDown,
   Layers, Droplets, X, Check, LogOut,
 } from "lucide-react";
@@ -99,10 +100,7 @@ export function Sidebar({ onClose }: { onClose?: () => void }) {
     >
       {/* Logo row */}
       <div className="px-4 pt-4 pb-3 flex items-center gap-2.5">
-        <div className="w-7 h-7 rounded-lg bg-emerald-500 flex items-center justify-center flex-shrink-0">
-          <BarChart3 className="w-4 h-4 text-white" />
-        </div>
-        <span className="text-white font-bold text-[13px] tracking-widest flex-1">FINANCEOS</span>
+        <FinanceOSLogo variant="sidebar" className="flex-1 min-w-0" />
         {onClose && (
           <button
             onClick={onClose}
