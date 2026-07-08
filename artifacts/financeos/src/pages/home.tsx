@@ -74,6 +74,10 @@ const MODULES: ModuleCard[] = [
     iconBg: "bg-blue-50",
     iconColor: "text-blue-600",
     titleColor: "text-blue-700",
+    active: true,
+    href: "/accounting",
+    cta: "Open Workspace",
+    buttonClasses: "bg-blue-600 hover:bg-blue-700",
   },
   {
     title: "AI Assistant",
