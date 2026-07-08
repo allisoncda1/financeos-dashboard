@@ -31,6 +31,18 @@ import BudgetVersionsPage from "@/pages/budget/versions";
 import BudgetAssumptionsPage from "@/pages/budget/assumptions";
 import BudgetReportsPage from "@/pages/budget/reports";
 import BudgetSettingsPage from "@/pages/budget/settings";
+import AccountingWorkspacePage from "@/pages/accounting/workspace";
+import AccountingInvoicesPage from "@/pages/accounting/invoices";
+import AccountingTransactionsPage from "@/pages/accounting/transactions";
+import AccountingReconciliationPage from "@/pages/accounting/reconciliation";
+import AccountingCustomersPage from "@/pages/accounting/customers";
+import AccountingVendorsPage from "@/pages/accounting/vendors";
+import AccountingChartOfAccountsPage from "@/pages/accounting/chart-of-accounts";
+import AccountingRulesPage from "@/pages/accounting/rules";
+import AccountingJournalEntriesPage from "@/pages/accounting/journal-entries";
+import AccountingFixedAssetsPage from "@/pages/accounting/fixed-assets";
+import AccountingMonthEndClosePage from "@/pages/accounting/month-end-close";
+import AccountingSettingsPage from "@/pages/accounting/settings";
 
 function AppRoutes() {
   return (
@@ -83,6 +95,62 @@ function BudgetRoutes() {
   );
 }
 
+function AccountingRoutes() {
+  return (
+    <Switch>
+      <Route path="/accounting" component={AccountingWorkspacePage} />
+      <Route path="/accounting/invoices">
+        <AccountingInvoicesPage />
+      </Route>
+      <Route path="/accounting/invoices/draft">
+        <AccountingInvoicesPage filter="draft" />
+      </Route>
+      <Route path="/accounting/invoices/sent">
+        <AccountingInvoicesPage filter="sent" />
+      </Route>
+      <Route path="/accounting/invoices/paid">
+        <AccountingInvoicesPage filter="paid" />
+      </Route>
+      <Route path="/accounting/invoices/recurring">
+        <AccountingInvoicesPage filter="recurring" />
+      </Route>
+      <Route path="/accounting/transactions">
+        <AccountingTransactionsPage />
+      </Route>
+      <Route path="/accounting/transactions/uncategorized">
+        <AccountingTransactionsPage view="uncategorized" />
+      </Route>
+      <Route path="/accounting/transactions/categorized">
+        <AccountingTransactionsPage view="categorized" />
+      </Route>
+      <Route path="/accounting/transactions/rules">
+        <AccountingTransactionsPage view="rules" />
+      </Route>
+      <Route path="/accounting/reconciliation">
+        <AccountingReconciliationPage />
+      </Route>
+      <Route path="/accounting/reconciliation/accounts">
+        <AccountingReconciliationPage view="accounts" />
+      </Route>
+      <Route path="/accounting/reconciliation/match-center">
+        <AccountingReconciliationPage view="match-center" />
+      </Route>
+      <Route path="/accounting/reconciliation/history">
+        <AccountingReconciliationPage view="history" />
+      </Route>
+      <Route path="/accounting/customers" component={AccountingCustomersPage} />
+      <Route path="/accounting/vendors" component={AccountingVendorsPage} />
+      <Route path="/accounting/chart-of-accounts" component={AccountingChartOfAccountsPage} />
+      <Route path="/accounting/rules" component={AccountingRulesPage} />
+      <Route path="/accounting/journal-entries" component={AccountingJournalEntriesPage} />
+      <Route path="/accounting/fixed-assets" component={AccountingFixedAssetsPage} />
+      <Route path="/accounting/month-end-close" component={AccountingMonthEndClosePage} />
+      <Route path="/accounting/settings" component={AccountingSettingsPage} />
+      <Route component={NotFound} />
+    </Switch>
+  );
+}
+
 function Router() {
   return (
     <Switch>
@@ -95,6 +163,11 @@ function Router() {
       <Route path="/budget/*?">
         <ProtectedRoute>
           <BudgetRoutes />
+        </ProtectedRoute>
+      </Route>
+      <Route path="/accounting/*?">
+        <ProtectedRoute>
+          <AccountingRoutes />
         </ProtectedRoute>
       </Route>
       <Route>
