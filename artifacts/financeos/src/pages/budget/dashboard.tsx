@@ -19,14 +19,14 @@ export default function BudgetDashboardPage({ tab = "summary" }: { tab?: BudgetT
   return (
     <BudgetLayout title="Budget Overview" subtitle="Plan, track and manage your budgets" showTabs>
       {tab === "summary" ? (
-        <div className="space-y-6">
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4">
+        <div className="space-y-4 sm:space-y-6">
+          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-3 sm:gap-4">
             {BUDGET_KPIS.map((kpi, idx) => (
               <BudgetKpiCard key={idx} {...kpi} type={kpi.type as any} />
             ))}
           </div>
 
-          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 sm:gap-6">
             <div className="lg:col-span-2">
               <BudgetVsPriorYearChart />
             </div>
@@ -35,18 +35,18 @@ export default function BudgetDashboardPage({ tab = "summary" }: { tab?: BudgetT
             </div>
           </div>
 
-          <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
+          <div className="grid grid-cols-1 lg:grid-cols-4 gap-4 sm:gap-6">
             <div className="lg:col-span-3">
               <BudgetTable />
             </div>
-            <div className="lg:col-span-1 space-y-6">
+            <div className="lg:col-span-1 space-y-4 sm:space-y-6">
               <BudgetSummaryCard />
               <RecentActivityCard />
             </div>
           </div>
         </div>
       ) : (
-        <div className="p-12 text-center text-slate-500 bg-white rounded-lg border border-slate-200 border-dashed">
+        <div className="p-12 text-center text-gray-500 bg-white rounded-xl border border-gray-200 border-dashed">
           {TAB_PLACEHOLDERS[tab]}
         </div>
       )}

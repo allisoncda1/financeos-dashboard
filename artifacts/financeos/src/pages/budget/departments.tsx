@@ -1,6 +1,5 @@
 import { BudgetLayout } from "@/components/budget/BudgetLayout";
-import { Card, CardContent } from "@/components/ui/card";
-import { ResponsiveContainer, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend } from "recharts";
+import { ResponsiveContainer, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip } from "recharts";
 import { DEPARTMENTS_DATA } from "@/lib/budgetModuleMockData";
 import { Users, Briefcase, Code, Settings } from "lucide-react";
 
@@ -31,100 +30,102 @@ const iconMap = {
 export default function BudgetDepartmentsPage() {
   return (
     <BudgetLayout title="Department Budgets" subtitle="Manage budgets by department">
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4 mb-4 sm:mb-6">
         {DEPARTMENTS_DATA.map((dept) => {
           const Icon = iconMap[dept.name as keyof typeof iconMap] || Users;
           return (
-            <Card key={dept.name} className="shadow-sm border-slate-200 hover:border-emerald-200 transition-colors cursor-pointer group" data-testid={`card-dept-${dept.name}`}>
-              <CardContent className="p-5">
-                <div className="w-10 h-10 rounded-lg bg-emerald-50 flex items-center justify-center mb-4 group-hover:bg-emerald-100 transition-colors">
+            <div key={dept.name} className="bg-white rounded-xl border border-gray-200 shadow-sm p-4 hover:border-emerald-200 transition-colors cursor-pointer group" data-testid={`card-dept-${dept.name}`}>
+              <div className="flex items-start gap-3 mb-3">
+                <div className="w-10 h-10 rounded-full flex items-center justify-center flex-shrink-0 bg-emerald-50 group-hover:bg-emerald-100 transition-colors">
                   <Icon className="w-5 h-5 text-emerald-600" />
                 </div>
-                <h4 className="text-sm font-semibold text-slate-900">{dept.name}</h4>
-                <p className="text-xs text-slate-500 mb-3">{dept.owner}</p>
-                <div className="flex items-baseline justify-between mb-1">
-                  <span className="text-xl font-bold text-slate-900 tracking-tight">{formatCurrency(dept.budget)}</span>
+                <div className="flex-1 min-w-0 pt-0.5">
+                  <h4 className="text-[13px] font-semibold text-gray-900 truncate">{dept.name}</h4>
+                  <p className="text-[11px] text-gray-500 truncate">{dept.owner}</p>
                 </div>
-                <div className="text-xs font-medium">
-                  <span className={`${dept.status === 'favorable' ? 'text-emerald-600' : 'text-rose-600'}`}>
-                    {dept.status === 'favorable' ? 'Under budget' : 'Over budget'}
-                  </span>
-                </div>
-              </CardContent>
-            </Card>
+              </div>
+              <div className="flex items-baseline justify-between mb-1">
+                <span className="text-[22px] font-bold text-gray-900 leading-tight">{formatCurrency(dept.budget)}</span>
+              </div>
+              <div className="text-[11px] font-semibold">
+                <span className={`${dept.status === 'favorable' ? 'text-emerald-600' : 'text-red-500'}`}>
+                  {dept.status === 'favorable' ? 'Under budget' : 'Over budget'}
+                </span>
+              </div>
+            </div>
           );
         })}
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 sm:gap-6">
         <div className="lg:col-span-1">
-          <Card className="shadow-sm border-slate-200 h-full">
-            <CardContent className="p-6">
-              <div className="mb-6">
-                <h3 className="text-base font-semibold text-slate-900">Budget Allocation</h3>
-                <p className="text-sm text-slate-500">Distribution by department</p>
+          <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden h-full">
+            <div className="p-4 border-b border-gray-100 flex items-center justify-between">
+              <div>
+                <h3 className="text-[13px] font-semibold text-gray-900">Budget Allocation</h3>
+                <p className="text-[11px] text-gray-400 mt-0.5">Distribution by department</p>
               </div>
-              <div className="h-[300px] w-full" data-testid="chart-dept-allocation">
+            </div>
+            <div className="p-4">
+              <div className="h-[280px] w-full" data-testid="chart-dept-allocation">
                 <ResponsiveContainer width="100%" height="100%">
-                  <BarChart data={DEPARTMENTS_DATA} layout="vertical" margin={{ top: 0, right: 30, left: 20, bottom: 0 }}>
-                    <CartesianGrid strokeDasharray="3 3" horizontal={true} vertical={false} stroke="#E2E8F0" />
-                    <XAxis type="number" axisLine={false} tickLine={false} tick={{ fontSize: 12, fill: '#64748B' }} tickFormatter={formatYAxis} />
-                    <YAxis type="category" dataKey="name" axisLine={false} tickLine={false} tick={{ fontSize: 12, fill: '#1E293B', fontWeight: 500 }} width={120} />
+                  <BarChart data={DEPARTMENTS_DATA} layout="vertical" margin={{ top: 0, right: 30, left: 10, bottom: 0 }}>
+                    <CartesianGrid strokeDasharray="3 3" horizontal={true} vertical={false} stroke="#f3f4f6" />
+                    <XAxis type="number" axisLine={false} tickLine={false} tick={{ fontSize: 11, fill: '#9ca3af' }} tickFormatter={formatYAxis} />
+                    <YAxis type="category" dataKey="name" axisLine={false} tickLine={false} tick={{ fontSize: 11, fill: '#4b5563', fontWeight: 500 }} width={110} />
                     <Tooltip
-                      cursor={{ fill: '#F1F5F9' }}
-                      contentStyle={{ borderRadius: '8px', border: '1px solid #E2E8F0', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }}
+                      cursor={{ fill: '#f9fafb' }}
+                      contentStyle={{ borderRadius: '8px', border: '1px solid #e5e7eb', boxShadow: '0 1px 2px 0 rgb(0 0 0 / 0.05)', fontSize: '12px' }}
                       formatter={(value: number) => formatCurrency(value)}
                     />
-                    <Bar dataKey="budget" fill="#10B981" radius={[0, 4, 4, 0]} barSize={24} />
+                    <Bar dataKey="budget" fill="#10B981" radius={[0, 4, 4, 0]} barSize={20} />
                   </BarChart>
                 </ResponsiveContainer>
               </div>
-            </CardContent>
-          </Card>
+            </div>
+          </div>
         </div>
 
         <div className="lg:col-span-2">
-          <Card className="shadow-sm border-slate-200 h-full">
-            <CardContent className="p-0">
-              <div className="p-4 border-b border-slate-200">
-                <h3 className="text-base font-semibold text-slate-900">Department Overview</h3>
-              </div>
-              <div className="overflow-x-auto">
-                <table className="w-full text-sm text-left whitespace-nowrap" data-testid="table-departments">
-                  <thead className="text-xs text-slate-500 bg-slate-50 border-b border-slate-200">
-                    <tr>
-                      <th className="px-6 py-3 font-medium">Department</th>
-                      <th className="px-4 py-3 font-medium">Owner</th>
-                      <th className="px-4 py-3 font-medium text-right">Budget</th>
-                      <th className="px-4 py-3 font-medium text-right">Actual YTD</th>
-                      <th className="px-4 py-3 font-medium text-right">Variance</th>
-                      <th className="px-6 py-3 font-medium text-center">Status</th>
+          <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden h-full">
+            <div className="p-4 border-b border-gray-100">
+              <h3 className="text-[13px] font-semibold text-gray-900">Department Overview</h3>
+            </div>
+            <div className="overflow-x-auto">
+              <table className="w-full text-left whitespace-nowrap" data-testid="table-departments">
+                <thead className="bg-gray-50 border-b border-gray-100">
+                  <tr>
+                    <th className="px-4 py-2.5 text-[10px] font-semibold text-gray-400 uppercase tracking-wide">Department</th>
+                    <th className="px-4 py-2.5 text-[10px] font-semibold text-gray-400 uppercase tracking-wide">Owner</th>
+                    <th className="px-4 py-2.5 text-[10px] font-semibold text-gray-400 uppercase tracking-wide text-right">Budget</th>
+                    <th className="px-4 py-2.5 text-[10px] font-semibold text-gray-400 uppercase tracking-wide text-right">Actual YTD</th>
+                    <th className="px-4 py-2.5 text-[10px] font-semibold text-gray-400 uppercase tracking-wide text-right">Variance</th>
+                    <th className="px-4 py-2.5 text-[10px] font-semibold text-gray-400 uppercase tracking-wide text-center">Status</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-50">
+                  {DEPARTMENTS_DATA.map((row) => (
+                    <tr key={row.name} className="hover:bg-gray-50 transition-colors">
+                      <td className="px-4 py-2.5 font-medium text-[12px] text-gray-900">{row.name}</td>
+                      <td className="px-4 py-2.5 text-[12px] text-gray-700">{row.owner}</td>
+                      <td className="px-4 py-2.5 text-right text-[12px] text-gray-700">{formatCurrency(row.budget)}</td>
+                      <td className="px-4 py-2.5 text-right text-[12px] text-gray-700">{formatCurrency(row.actual)}</td>
+                      <td className={`px-4 py-2.5 text-right font-medium text-[12px] ${row.status === 'favorable' ? 'text-emerald-600' : 'text-red-600'}`}>
+                        {row.variance > 0 ? '+' : ''}{formatCurrency(row.variance)}
+                      </td>
+                      <td className="px-4 py-2.5 text-center">
+                        <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-semibold ${
+                          row.status === 'favorable' ? 'bg-emerald-50 text-emerald-700' : 'bg-red-50 text-red-700'
+                        }`}>
+                          {row.status.charAt(0).toUpperCase() + row.status.slice(1)}
+                        </span>
+                      </td>
                     </tr>
-                  </thead>
-                  <tbody className="divide-y divide-slate-100">
-                    {DEPARTMENTS_DATA.map((row) => (
-                      <tr key={row.name} className="hover:bg-slate-50 transition-colors">
-                        <td className="px-6 py-4 font-medium text-slate-900">{row.name}</td>
-                        <td className="px-4 py-4 text-slate-600">{row.owner}</td>
-                        <td className="px-4 py-4 text-right text-slate-600">{formatCurrency(row.budget)}</td>
-                        <td className="px-4 py-4 text-right text-slate-600">{formatCurrency(row.actual)}</td>
-                        <td className={`px-4 py-4 text-right font-medium ${row.status === 'favorable' ? 'text-emerald-600' : 'text-rose-600'}`}>
-                          {row.variance > 0 ? '+' : ''}{formatCurrency(row.variance)}
-                        </td>
-                        <td className="px-6 py-4 text-center">
-                          <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${
-                            row.status === 'favorable' ? 'bg-emerald-100 text-emerald-800' : 'bg-rose-100 text-rose-800'
-                          }`}>
-                            {row.status.charAt(0).toUpperCase() + row.status.slice(1)}
-                          </span>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            </CardContent>
-          </Card>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
         </div>
       </div>
     </BudgetLayout>

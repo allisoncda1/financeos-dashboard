@@ -11,7 +11,7 @@ export function BudgetTabs() {
   const pathname = usePathname();
 
   return (
-    <nav className="border-b border-slate-200 w-full flex justify-start space-x-6">
+    <div className="flex items-center gap-1 flex-shrink-0 pt-2 pb-0">
       {TAB_ITEMS.map((tab) => {
         const isActive = pathname === tab.href;
         return (
@@ -19,16 +19,16 @@ export function BudgetTabs() {
             key={tab.href}
             href={tab.href}
             data-testid={tab.testId}
-            className={`border-b-2 font-medium pb-2 px-0 text-sm transition-colors ${
+            className={`px-4 py-2 text-[12px] font-medium border-b-2 transition-colors -mb-px ${
               isActive
-                ? "border-emerald-600 text-emerald-700"
-                : "border-transparent text-slate-500 hover:text-slate-700"
+                ? "border-emerald-500 text-emerald-700"
+                : "border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300"
             }`}
           >
             {tab.label}
           </Link>
         );
       })}
-    </nav>
+    </div>
   );
 }
