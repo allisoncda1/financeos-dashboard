@@ -21,6 +21,9 @@ type ModuleCard = {
   iconColor: string;
   titleColor: string;
   active?: boolean;
+  href?: string;
+  cta?: string;
+  buttonClasses?: string;
 };
 
 const MODULES: ModuleCard[] = [
@@ -32,6 +35,9 @@ const MODULES: ModuleCard[] = [
     iconColor: "text-blue-600",
     titleColor: "text-blue-700",
     active: true,
+    href: "/",
+    cta: "Open Dashboard",
+    buttonClasses: "bg-blue-600 hover:bg-blue-700",
   },
   {
     title: "Budget",
@@ -40,6 +46,10 @@ const MODULES: ModuleCard[] = [
     iconBg: "bg-emerald-50",
     iconColor: "text-emerald-600",
     titleColor: "text-emerald-600",
+    active: true,
+    href: "/budget",
+    cta: "Open Budget",
+    buttonClasses: "bg-emerald-600 hover:bg-emerald-700",
   },
   {
     title: "Forecast",
@@ -86,8 +96,8 @@ export default function HomePage() {
     router.replace("/login");
   };
 
-  const openDashboard = () => {
-    router.push("/");
+  const openModule = (href: string) => {
+    router.push(href);
   };
 
   return (
@@ -125,8 +135,11 @@ export default function HomePage() {
             return (
               <div
                 key={mod.title}
+                onClick={mod.active && mod.href ? () => openModule(mod.href!) : undefined}
                 className={`relative flex flex-col items-center rounded-2xl border border-gray-200/80 bg-white px-8 py-10 text-center shadow-[0_1px_3px_rgba(16,24,40,0.06)] ${
-                  mod.active ? "" : "select-none"
+                  mod.active
+                    ? "cursor-pointer transition-shadow hover:shadow-[0_4px_12px_rgba(16,24,40,0.1)]"
+                    : "select-none"
                 }`}
                 data-testid={`card-module-${mod.title.toLowerCase().replace(/\s+/g, "-")}`}
               >
@@ -147,14 +160,17 @@ export default function HomePage() {
                   {mod.description}
                 </p>
 
-                {mod.active && (
+                {mod.active && mod.href && (
                   <button
                     type="button"
-                    onClick={openDashboard}
-                    className="mt-6 flex items-center gap-2 rounded-lg bg-blue-600 px-5 py-2.5 text-[13px] font-semibold text-white shadow-sm transition-colors hover:bg-blue-700"
-                    data-testid="button-open-dashboard"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      openModule(mod.href!);
+                    }}
+                    className={`mt-6 flex items-center gap-2 rounded-lg px-5 py-2.5 text-[13px] font-semibold text-white shadow-sm transition-colors ${mod.buttonClasses ?? "bg-blue-600 hover:bg-blue-700"}`}
+                    data-testid={`button-open-${mod.title.toLowerCase().replace(/\s+/g, "-")}`}
                   >
-                    Open Dashboard
+                    {mod.cta}
                     <ArrowRight className="h-4 w-4" />
                   </button>
                 )}
