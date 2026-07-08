@@ -24,6 +24,7 @@ import EntityFinancialsPage from "@/pages/entity/financials";
 import EntityReportsPage from "@/pages/entity/reports";
 import EntityVendorsPage from "@/pages/entity/vendors";
 import BudgetDashboardPage from "@/pages/budget/dashboard";
+import BudgetSectionPage from "@/pages/budget/section";
 
 function AppRoutes() {
   return (
@@ -49,6 +50,47 @@ function AppRoutes() {
   );
 }
 
+function BudgetRoutes() {
+  return (
+    <Switch>
+      <Route path="/budget">
+        <BudgetDashboardPage />
+      </Route>
+      <Route path="/budget/pnl">
+        <BudgetDashboardPage tab="pnl" />
+      </Route>
+      <Route path="/budget/cash-flow">
+        <BudgetDashboardPage tab="cash-flow" />
+      </Route>
+      <Route path="/budget/balance-sheet">
+        <BudgetDashboardPage tab="balance-sheet" />
+      </Route>
+      <Route path="/budget/builder">
+        <BudgetSectionPage title="Budget Builder" description="Build and edit budgets line by line" />
+      </Route>
+      <Route path="/budget/budget-vs-actual">
+        <BudgetSectionPage title="Budget vs Actual" description="Compare budgeted figures against actuals" />
+      </Route>
+      <Route path="/budget/departments">
+        <BudgetSectionPage title="Department Budgets" description="Manage budgets by department" />
+      </Route>
+      <Route path="/budget/versions">
+        <BudgetSectionPage title="Budget Versions" description="Track and compare budget versions over time" />
+      </Route>
+      <Route path="/budget/assumptions">
+        <BudgetSectionPage title="Assumptions" description="Document the assumptions behind your budget" />
+      </Route>
+      <Route path="/budget/reports">
+        <BudgetSectionPage title="Reports" description="Budget reports and exports" />
+      </Route>
+      <Route path="/budget/settings">
+        <BudgetSectionPage title="Settings" description="Configure the Budget module" />
+      </Route>
+      <Route component={NotFound} />
+    </Switch>
+  );
+}
+
 function Router() {
   return (
     <Switch>
@@ -58,9 +100,9 @@ function Router() {
           <HomePage />
         </ProtectedRoute>
       </Route>
-      <Route path="/budget">
+      <Route path="/budget/*?">
         <ProtectedRoute>
-          <BudgetDashboardPage />
+          <BudgetRoutes />
         </ProtectedRoute>
       </Route>
       <Route>

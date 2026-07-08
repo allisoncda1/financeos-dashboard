@@ -16,7 +16,7 @@ import { FinanceOSLogo } from "@/components/ui/FinanceOSLogo";
 const NAV_ITEMS = [
   { label: "Dashboard", icon: LayoutDashboard, href: "/budget" },
   { label: "Budget Builder", icon: Calculator, href: "/budget/builder" },
-  { label: "Budget vs Actual", icon: BarChart3, href: "/budget/vs-actual" },
+  { label: "Budget vs Actual", icon: BarChart3, href: "/budget/budget-vs-actual" },
   { label: "Department Budgets", icon: Network, href: "/budget/departments" },
   { label: "Budget Versions", icon: History, href: "/budget/versions" },
   { label: "Assumptions", icon: Lightbulb, href: "/budget/assumptions" },
@@ -41,7 +41,11 @@ export function BudgetSidebar() {
         </h2>
         <nav className="space-y-1">
           {NAV_ITEMS.map((item) => {
-            const isActive = pathname === item.href || pathname.startsWith(item.href + "/");
+            const isActive =
+              item.href === "/budget"
+                ? pathname === "/budget" ||
+                  ["/budget/pnl", "/budget/cash-flow", "/budget/balance-sheet"].includes(pathname)
+                : pathname === item.href || pathname.startsWith(item.href + "/");
             const Icon = item.icon;
             return (
               <Link
