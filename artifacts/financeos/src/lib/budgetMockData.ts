@@ -96,6 +96,66 @@ export const BUDGET_TABLE_DATA = [
   }
 ];
 
+// ─── Detail tab data (quarterly, FY2026) ─────────────────────────────────────
+
+export type BudgetDetailRow = {
+  label: string;
+  values: number[]; // Q1..Q4
+  total: number;
+  bold?: boolean;
+  section?: boolean; // section header row (no values)
+};
+
+export const BUDGET_DETAIL_QUARTERS = ["Q1 FY26", "Q2 FY26", "Q3 FY26", "Q4 FY26"];
+
+export const BUDGET_PNL_DETAIL: BudgetDetailRow[] = [
+  { label: "Revenue", values: [3750000, 4250000, 4400000, 5000000], total: 17400000, bold: true },
+  { label: "Service Revenue", values: [2812500, 3187500, 3300000, 3750000], total: 13050000 },
+  { label: "Recurring / Retainers", values: [937500, 1062500, 1100000, 1250000], total: 4350000 },
+  { label: "COGS", values: [-1421250, -1610750, -1667600, -1895000], total: -6594600 },
+  { label: "Gross Profit", values: [2328750, 2639250, 2732400, 3105000], total: 10805400, bold: true },
+  { label: "Sales & Marketing", values: [-750000, -850000, -880000, -1000000], total: -3480000 },
+  { label: "G&A", values: [-450000, -510000, -528000, -600000], total: -2088000 },
+  { label: "Product / Tech", values: [-375000, -425000, -440000, -500000], total: -1740000 },
+  { label: "Other Expenses", values: [-75000, -85000, -88000, -99400], total: -347400 },
+  { label: "Net Income", values: [678750, 769250, 796400, 905600], total: 3150000, bold: true },
+];
+
+export const BUDGET_CASH_FLOW_DETAIL: BudgetDetailRow[] = [
+  { label: "Operating Activities", values: [], total: 0, section: true },
+  { label: "Net Income", values: [678750, 769250, 796400, 905600], total: 3150000 },
+  { label: "Depreciation & Amortization", values: [45000, 45000, 47500, 47500], total: 185000 },
+  { label: "Change in AR", values: [-120000, -95000, -60000, -145000], total: -420000 },
+  { label: "Change in AP", values: [55000, 32000, 28000, 60000], total: 175000 },
+  { label: "Cash from Operations", values: [658750, 751250, 811900, 868100], total: 3090000, bold: true },
+  { label: "Investing Activities", values: [], total: 0, section: true },
+  { label: "Capital Expenditures", values: [-60000, -40000, -75000, -50000], total: -225000 },
+  { label: "Software / Tooling", values: [-25000, -25000, -25000, -25000], total: -100000 },
+  { label: "Cash from Investing", values: [-85000, -65000, -100000, -75000], total: -325000, bold: true },
+  { label: "Financing Activities", values: [], total: 0, section: true },
+  { label: "Owner Distributions", values: [-250000, -250000, -250000, -350000], total: -1100000 },
+  { label: "Debt Repayment", values: [-30000, -30000, -30000, -30000], total: -120000 },
+  { label: "Cash from Financing", values: [-280000, -280000, -280000, -380000], total: -1220000, bold: true },
+  { label: "Net Change in Cash", values: [293750, 406250, 431900, 413100], total: 1545000, bold: true },
+];
+
+export const BUDGET_BALANCE_SHEET_DETAIL: BudgetDetailRow[] = [
+  { label: "Assets", values: [], total: 0, section: true },
+  { label: "Cash & Equivalents", values: [2143750, 2550000, 2981900, 3395000], total: 3395000 },
+  { label: "Accounts Receivable", values: [1320000, 1415000, 1475000, 1620000], total: 1620000 },
+  { label: "Fixed Assets (net)", values: [515000, 510000, 537500, 540000], total: 540000 },
+  { label: "Total Assets", values: [3978750, 4475000, 4994400, 5555000], total: 5555000, bold: true },
+  { label: "Liabilities", values: [], total: 0, section: true },
+  { label: "Accounts Payable", values: [485000, 517000, 545000, 605000], total: 605000 },
+  { label: "Credit Cards", values: [92000, 88000, 95000, 90000], total: 90000 },
+  { label: "Notes Payable", values: [360000, 330000, 300000, 270000], total: 270000 },
+  { label: "Total Liabilities", values: [937000, 935000, 940000, 965000], total: 965000, bold: true },
+  { label: "Equity", values: [], total: 0, section: true },
+  { label: "Retained Earnings", values: [2363000, 2770750, 3257600, 3684400], total: 3684400 },
+  { label: "Current Year Earnings", values: [678750, 769250, 796800, 905600], total: 905600 },
+  { label: "Total Equity", values: [3041750, 3540000, 4054400, 4590000], total: 4590000, bold: true },
+];
+
 export const RECENT_ACTIVITY = [
   { id: 1, action: "Budget v1 was approved", by: "Allison Fabbri", time: "2 hours ago" },
   { id: 2, action: "Marketing budget updated", by: "John Smith", time: "4 hours ago" },

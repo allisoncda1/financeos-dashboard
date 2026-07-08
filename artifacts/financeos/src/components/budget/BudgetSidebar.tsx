@@ -114,7 +114,7 @@ export function BudgetSidebar({ onClose }: { onClose?: () => void }) {
       {/* Help Link */}
       <div className="px-5 mb-4">
         <a
-          href="#"
+          href="mailto:support@financeos.app"
           className="flex items-center gap-2 text-[11px] font-medium transition-colors"
           style={{ color: MUTED }}
         >

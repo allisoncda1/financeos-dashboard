@@ -5,14 +5,60 @@ import { BudgetCategoryChart } from "@/components/budget/BudgetCategoryChart";
 import { BudgetTable } from "@/components/budget/BudgetTable";
 import { BudgetSummaryCard } from "@/components/budget/BudgetSummaryCard";
 import { RecentActivityCard } from "@/components/budget/RecentActivityCard";
-import { BUDGET_KPIS } from "@/lib/budgetMockData";
+import { BudgetDetailTable } from "@/components/budget/BudgetDetailTable";
+import { MiniKpi } from "@/components/accounting/AccountingUI";
+import {
+  BUDGET_KPIS,
+  BUDGET_PNL_DETAIL,
+  BUDGET_CASH_FLOW_DETAIL,
+  BUDGET_BALANCE_SHEET_DETAIL,
+} from "@/lib/budgetMockData";
 
 export type BudgetTab = "summary" | "pnl" | "cash-flow" | "balance-sheet";
 
-const TAB_PLACEHOLDERS: Record<Exclude<BudgetTab, "summary">, string> = {
-  "pnl": "P&L Detail View Placeholder",
-  "cash-flow": "Cash Flow Detail View Placeholder",
-  "balance-sheet": "Balance Sheet Detail View Placeholder",
+function PnlDetailView() {
+  return (
+    <div className="space-y-4 sm:space-y-6">
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+        <MiniKpi label="Budgeted Net Income" value="$3.15M" sub="18.1% of revenue" tone="emerald" />
+        <MiniKpi label="Budgeted Gross Margin" value="62.1%" sub="+1.2 pts vs FY2025" tone="emerald" />
+        <MiniKpi label="Total Opex Budget" value="$7.66M" sub="44.0% of revenue" tone="gray" />
+      </div>
+      <BudgetDetailTable title="P&L Budget (FY2026)" rows={BUDGET_PNL_DETAIL} />
+    </div>
+  );
+}
+
+function CashFlowDetailView() {
+  return (
+    <div className="space-y-4 sm:space-y-6">
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+        <MiniKpi label="Cash from Operations" value="$3.09M" sub="FY2026 budget" tone="emerald" />
+        <MiniKpi label="Net Change in Cash" value="$1.55M" sub="After investing & financing" tone="emerald" />
+        <MiniKpi label="Owner Distributions" value="($1.10M)" sub="Planned FY2026" tone="gray" />
+      </div>
+      <BudgetDetailTable title="Cash Flow Budget (FY2026)" rows={BUDGET_CASH_FLOW_DETAIL} />
+    </div>
+  );
+}
+
+function BalanceSheetDetailView() {
+  return (
+    <div className="space-y-4 sm:space-y-6">
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+        <MiniKpi label="Projected Total Assets" value="$5.56M" sub="End of FY2026" tone="gray" />
+        <MiniKpi label="Projected Total Equity" value="$4.59M" sub="End of FY2026" tone="emerald" />
+        <MiniKpi label="Projected Cash" value="$3.40M" sub="End of FY2026" tone="emerald" />
+      </div>
+      <BudgetDetailTable title="Balance Sheet Budget (FY2026)" rows={BUDGET_BALANCE_SHEET_DETAIL} totalLabel="EOY FY2026" />
+    </div>
+  );
+}
+
+const TAB_VIEWS: Record<Exclude<BudgetTab, "summary">, () => React.JSX.Element> = {
+  "pnl": PnlDetailView,
+  "cash-flow": CashFlowDetailView,
+  "balance-sheet": BalanceSheetDetailView,
 };
 
 export default function BudgetDashboardPage({ tab = "summary" }: { tab?: BudgetTab }) {
@@ -46,9 +92,10 @@ export default function BudgetDashboardPage({ tab = "summary" }: { tab?: BudgetT
           </div>
         </div>
       ) : (
-        <div className="p-12 text-center text-gray-500 bg-white rounded-xl border border-gray-200 border-dashed">
-          {TAB_PLACEHOLDERS[tab]}
-        </div>
+        (() => {
+          const View = TAB_VIEWS[tab];
+          return <View />;
+        })()
       )}
     </BudgetLayout>
   );
