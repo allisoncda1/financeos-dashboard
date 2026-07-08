@@ -2,6 +2,8 @@ import { ForecastLayout } from "@/components/forecast/ForecastLayout";
 import { ForecastVsBudgetChart } from "@/components/forecast/ForecastVsBudgetChart";
 import { Card, MiniKpi } from "@/components/accounting/AccountingUI";
 import { REVENUE_FORECAST_BY_COMPANY } from "@/lib/forecastMockData";
+import { ENTITY_META } from "@/lib/entities";
+import { EntityLogo } from "@/components/ui/EntityLogo";
 
 const fmtM = (v: number) => `${v < 0 ? "-" : ""}$${(Math.abs(v) / 1000000).toFixed(1)}M`;
 
@@ -31,7 +33,12 @@ export default function RevenueForecastPage() {
             <tbody className="divide-y divide-gray-50">
               {REVENUE_FORECAST_BY_COMPANY.map(r => (
                 <tr key={r.id} data-testid={`row-revenue-${r.id}`}>
-                  <td className="py-2.5 text-[12px] font-medium text-gray-800">{r.company}</td>
+                  <td className="py-2.5 text-[12px] font-medium text-gray-800">
+                    <span className="flex items-center gap-2">
+                      <EntityLogo entity={ENTITY_META[r.slug]} size={18} rounded="sm" />
+                      {r.company}
+                    </span>
+                  </td>
                   <td className="py-2.5 text-right text-[12px] text-gray-500">{fmtM(r.budget)}</td>
                   <td className="py-2.5 text-right text-[12px] font-semibold text-gray-900">{fmtM(r.forecast)}</td>
                   <td className={`py-2.5 text-right text-[12px] font-semibold ${r.variance < 0 ? "text-red-600" : "text-gray-500"}`}>

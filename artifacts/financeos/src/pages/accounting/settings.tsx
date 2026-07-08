@@ -2,6 +2,7 @@ import { AccountingLayout } from "@/components/accounting/AccountingLayout";
 import { Card, Pill } from "@/components/accounting/AccountingUI";
 import { BANK_ACCOUNTS } from "@/lib/accountingMockData";
 import { Landmark, CreditCard, PiggyBank } from "lucide-react";
+import { getEntity } from "@/lib/entities";
 
 const fmt = (n: number) =>
   n.toLocaleString("en-US", { style: "currency", currency: "USD" });
@@ -22,7 +23,7 @@ export default function AccountingSettingsPage() {
     <AccountingLayout title="Accounting Settings" subtitle="Company, preferences, and automation">
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         <Card title="Company Information">
-          <Row label="Legal name" value="T3 Marketing LLC" />
+          <Row label="Legal name" value={getEntity("T3_Marketing").displayName} />
           <Row label="EIN" value="82-4471936" />
           <Row label="Entity type" value="LLC" />
           <Row label="Address" value="418 Commerce St, Austin, TX" />

@@ -2,6 +2,7 @@ import type { ReactNode } from "react";
 import { AccountingSidebar } from "@/components/accounting/AccountingSidebar";
 import { GlobalHeader } from "@/components/layout/GlobalHeader";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { CompanySelectItems } from "@/components/shared/CompanySelectItems";
 import { useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { CheckCircle2 } from "lucide-react";
@@ -57,13 +58,12 @@ export function AccountingLayout({ title, subtitle, children }: AccountingLayout
                 <CheckCircle2 className="w-3.5 h-3.5 text-emerald-500" />
                 Last sync 9:02 AM
               </div>
-              <Select defaultValue="t3">
-                <SelectTrigger className="w-[160px] h-8 text-xs font-medium bg-white border-gray-200 shadow-sm focus:ring-emerald-500 focus:border-emerald-500">
-                  <SelectValue placeholder="T3 Marketing LLC" />
+              <Select defaultValue="T3_Marketing">
+                <SelectTrigger className="w-[180px] h-8 text-xs font-medium bg-white border-gray-200 shadow-sm focus:ring-emerald-500 focus:border-emerald-500">
+                  <SelectValue placeholder="Select company" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="t3">T3 Marketing LLC</SelectItem>
-                  <SelectItem value="cardealer">CarDealer.ai</SelectItem>
+                  <CompanySelectItems includeAll={false} />
                 </SelectContent>
               </Select>
 

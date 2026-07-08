@@ -1,3 +1,4 @@
+import { SidebarCompanyCard } from "@/components/shared/SidebarCompanyCard";
 import { useState, useRef, useEffect } from "react";
 import Link from "@/lib/next-compat";
 import { usePathname } from "@/lib/next-compat";
@@ -107,17 +108,7 @@ export function CommissionSidebar({ onClose }: { onClose?: () => void }) {
       </nav>
 
       {/* Company card */}
-      <div className="px-3 mb-2">
-        <div className="bg-white/5 rounded-lg p-2.5 flex items-center gap-2.5">
-          <div className="w-8 h-8 rounded bg-emerald-900/50 flex flex-col items-center justify-center border border-white/10 shrink-0">
-             <span className="text-[10px] font-bold text-white leading-none">T3</span>
-          </div>
-          <div className="flex-1 min-w-0">
-             <p className="text-[11px] font-semibold text-white truncate">T3 Marketing LLC</p>
-             <p className="text-[9px] text-white/40 truncate">Primary Company</p>
-          </div>
-        </div>
-      </div>
+      <SidebarCompanyCard />
 
       {/* Profile card */}
       <div className="mx-3 mb-3 relative" ref={profileRef}>

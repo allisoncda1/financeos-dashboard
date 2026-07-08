@@ -288,8 +288,8 @@ export const ENTITY_META: Record<EntitySlug, EntityMeta> = Object.fromEntries(
 export const ENTITY_META_LIST: EntityMeta[] = ENTITY_SLUGS.map(s => ENTITY_META[s]);
 
 // ─── Legacy compatibility shim ────────────────────────────────────────────────
-// Components that still import ENTITY_CONFIG from lib/types work fine,
-// but new code should call getEntity(slug) instead.
+// ENTITY_CONFIG is derived from the registry above — the only place entity
+// metadata is defined. New code should call getEntity(slug) instead.
 
 /** @deprecated Use getEntity(slug) instead */
 export const ENTITY_CONFIG: Record<EntitySlug, { name: string; basis: "Cash" | "Accrual"; color: string }> =

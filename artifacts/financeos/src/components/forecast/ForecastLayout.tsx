@@ -2,6 +2,7 @@ import type { ReactNode } from "react";
 import { ForecastSidebar } from "@/components/forecast/ForecastSidebar";
 import { GlobalHeader } from "@/components/layout/GlobalHeader";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { CompanySelectItems } from "@/components/shared/CompanySelectItems";
 import { useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { RefreshCw, Clock } from "lucide-react";
@@ -58,10 +59,7 @@ export function ForecastLayout({ title, subtitle, children }: ForecastLayoutProp
                   <SelectValue placeholder="All Companies" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="all">All Companies</SelectItem>
-                  <SelectItem value="t3">T3 Marketing LLC</SelectItem>
-                  <SelectItem value="cardealer">CarDealer.ai</SelectItem>
-                  <SelectItem value="topmrktr">TopMrktr</SelectItem>
+                  <CompanySelectItems />
                 </SelectContent>
               </Select>
 

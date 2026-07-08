@@ -1,5 +1,6 @@
 import { DollarSign, TrendingUp, Wallet, Landmark, Percent } from "lucide-react";
 import type { ComponentType } from "react";
+import { getEntity } from "@/lib/entities";
 
 type LucideIcon = ComponentType<{ className?: string }>;
 
@@ -117,10 +118,10 @@ export const FORECAST_AI_INSIGHT =
 // Placeholder page data --------------------------------------------------------------
 
 export const REVENUE_FORECAST_BY_COMPANY = [
-  { id: "rf-1", company: "T3 Marketing LLC", budget: 8200000, forecast: 8050000, variance: -150000, variancePct: "-1.8%" },
-  { id: "rf-2", company: "CarDealer.ai", budget: 6400000, forecast: 5450000, variance: -950000, variancePct: "-14.8%" },
-  { id: "rf-3", company: "TopMrktr", budget: 3600000, forecast: 3100000, variance: -500000, variancePct: "-13.9%" },
-  { id: "rf-4", company: "Smile More Co", budget: 1800000, forecast: 1800000, variance: 0, variancePct: "0.0%" },
+  { id: "rf-1", slug: "CarDealer_ai" as const, company: getEntity("CarDealer_ai").displayName, budget: 6400000, forecast: 5450000, variance: -950000, variancePct: "-14.8%" },
+  { id: "rf-2", slug: "T3_Marketing" as const, company: getEntity("T3_Marketing").displayName, budget: 8200000, forecast: 8050000, variance: -150000, variancePct: "-1.8%" },
+  { id: "rf-3", slug: "TopMrktr" as const, company: getEntity("TopMrktr").displayName, budget: 3600000, forecast: 3100000, variance: -500000, variancePct: "-13.9%" },
+  { id: "rf-4", slug: "Smile_More" as const, company: getEntity("Smile_More").displayName, budget: 1800000, forecast: 1800000, variance: 0, variancePct: "0.0%" },
 ];
 
 export const PNL_FORECAST_LINES = [

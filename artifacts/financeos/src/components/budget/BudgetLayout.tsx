@@ -4,6 +4,7 @@ import { BudgetTabs } from "@/components/budget/BudgetTabs";
 import { GlobalHeader } from "@/components/layout/GlobalHeader";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { CompanySelectItems } from "@/components/shared/CompanySelectItems";
 import { MoreHorizontal, Plus } from "lucide-react";
 import { useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
@@ -63,9 +64,7 @@ export function BudgetLayout({ title, subtitle, showTabs = false, children }: Bu
                   <SelectValue placeholder="All Companies" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="all">All Companies</SelectItem>
-                  <SelectItem value="cardealer">CarDealer.ai</SelectItem>
-                  <SelectItem value="t3">T3 Marketing</SelectItem>
+                  <CompanySelectItems />
                 </SelectContent>
               </Select>
 
