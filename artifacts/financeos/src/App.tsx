@@ -43,6 +43,15 @@ import AccountingJournalEntriesPage from "@/pages/accounting/journal-entries";
 import AccountingFixedAssetsPage from "@/pages/accounting/fixed-assets";
 import AccountingMonthEndClosePage from "@/pages/accounting/month-end-close";
 import AccountingSettingsPage from "@/pages/accounting/settings";
+import CommissionOverviewPage from "@/pages/commissions/overview";
+import CommissionInvoicesPage from "@/pages/commissions/invoices";
+import CommissionSalesRepsPage from "@/pages/commissions/sales-reps";
+import CommissionClientsPage from "@/pages/commissions/clients";
+import CommissionPlansPage from "@/pages/commissions/plans";
+import CommissionCalculationsPage from "@/pages/commissions/calculations";
+import CommissionPayoutsPage from "@/pages/commissions/payouts";
+import CommissionReportsPage from "@/pages/commissions/reports";
+import CommissionSettingsPage from "@/pages/commissions/settings";
 
 function AppRoutes() {
   return (
@@ -151,6 +160,23 @@ function AccountingRoutes() {
   );
 }
 
+function CommissionRoutes() {
+  return (
+    <Switch>
+      <Route path="/commissions" component={CommissionOverviewPage} />
+      <Route path="/commissions/invoices" component={CommissionInvoicesPage} />
+      <Route path="/commissions/sales-reps" component={CommissionSalesRepsPage} />
+      <Route path="/commissions/clients" component={CommissionClientsPage} />
+      <Route path="/commissions/plans" component={CommissionPlansPage} />
+      <Route path="/commissions/calculations" component={CommissionCalculationsPage} />
+      <Route path="/commissions/payouts" component={CommissionPayoutsPage} />
+      <Route path="/commissions/reports" component={CommissionReportsPage} />
+      <Route path="/commissions/settings" component={CommissionSettingsPage} />
+      <Route component={NotFound} />
+    </Switch>
+  );
+}
+
 function Router() {
   return (
     <Switch>
@@ -168,6 +194,11 @@ function Router() {
       <Route path="/accounting/*?">
         <ProtectedRoute>
           <AccountingRoutes />
+        </ProtectedRoute>
+      </Route>
+      <Route path="/commissions/*?">
+        <ProtectedRoute>
+          <CommissionRoutes />
         </ProtectedRoute>
       </Route>
       <Route>

@@ -66,6 +66,10 @@ const MODULES: ModuleCard[] = [
     iconBg: "bg-orange-50",
     iconColor: "text-orange-500",
     titleColor: "text-orange-500",
+    active: true,
+    href: "/commissions",
+    cta: "Open Commissions",
+    buttonClasses: "bg-orange-500 hover:bg-orange-600",
   },
   {
     title: "Accounting",
