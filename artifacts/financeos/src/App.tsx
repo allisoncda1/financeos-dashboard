@@ -23,6 +23,7 @@ import EntityCustomersPage from "@/pages/entity/customers";
 import EntityFinancialsPage from "@/pages/entity/financials";
 import EntityReportsPage from "@/pages/entity/reports";
 import EntityVendorsPage from "@/pages/entity/vendors";
+import BudgetDashboardPage from "@/pages/budget/dashboard";
 
 function AppRoutes() {
   return (
@@ -55,6 +56,11 @@ function Router() {
       <Route path="/home">
         <ProtectedRoute>
           <HomePage />
+        </ProtectedRoute>
+      </Route>
+      <Route path="/budget">
+        <ProtectedRoute>
+          <BudgetDashboardPage />
         </ProtectedRoute>
       </Route>
       <Route>
