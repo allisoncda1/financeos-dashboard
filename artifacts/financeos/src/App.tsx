@@ -24,7 +24,13 @@ import EntityFinancialsPage from "@/pages/entity/financials";
 import EntityReportsPage from "@/pages/entity/reports";
 import EntityVendorsPage from "@/pages/entity/vendors";
 import BudgetDashboardPage from "@/pages/budget/dashboard";
-import BudgetSectionPage from "@/pages/budget/section";
+import BudgetBuilderPage from "@/pages/budget/builder";
+import BudgetVsActualPage from "@/pages/budget/budget-vs-actual";
+import BudgetDepartmentsPage from "@/pages/budget/departments";
+import BudgetVersionsPage from "@/pages/budget/versions";
+import BudgetAssumptionsPage from "@/pages/budget/assumptions";
+import BudgetReportsPage from "@/pages/budget/reports";
+import BudgetSettingsPage from "@/pages/budget/settings";
 
 function AppRoutes() {
   return (
@@ -65,27 +71,13 @@ function BudgetRoutes() {
       <Route path="/budget/balance-sheet">
         <BudgetDashboardPage tab="balance-sheet" />
       </Route>
-      <Route path="/budget/builder">
-        <BudgetSectionPage title="Budget Builder" description="Build and edit budgets line by line" />
-      </Route>
-      <Route path="/budget/budget-vs-actual">
-        <BudgetSectionPage title="Budget vs Actual" description="Compare budgeted figures against actuals" />
-      </Route>
-      <Route path="/budget/departments">
-        <BudgetSectionPage title="Department Budgets" description="Manage budgets by department" />
-      </Route>
-      <Route path="/budget/versions">
-        <BudgetSectionPage title="Budget Versions" description="Track and compare budget versions over time" />
-      </Route>
-      <Route path="/budget/assumptions">
-        <BudgetSectionPage title="Assumptions" description="Document the assumptions behind your budget" />
-      </Route>
-      <Route path="/budget/reports">
-        <BudgetSectionPage title="Reports" description="Budget reports and exports" />
-      </Route>
-      <Route path="/budget/settings">
-        <BudgetSectionPage title="Settings" description="Configure the Budget module" />
-      </Route>
+      <Route path="/budget/builder" component={BudgetBuilderPage} />
+      <Route path="/budget/budget-vs-actual" component={BudgetVsActualPage} />
+      <Route path="/budget/departments" component={BudgetDepartmentsPage} />
+      <Route path="/budget/versions" component={BudgetVersionsPage} />
+      <Route path="/budget/assumptions" component={BudgetAssumptionsPage} />
+      <Route path="/budget/reports" component={BudgetReportsPage} />
+      <Route path="/budget/settings" component={BudgetSettingsPage} />
       <Route component={NotFound} />
     </Switch>
   );
