@@ -52,6 +52,15 @@ import CommissionCalculationsPage from "@/pages/commissions/calculations";
 import CommissionPayoutsPage from "@/pages/commissions/payouts";
 import CommissionReportsPage from "@/pages/commissions/reports";
 import CommissionSettingsPage from "@/pages/commissions/settings";
+import ForecastOverviewPage from "@/pages/forecast/overview";
+import RevenueForecastPage from "@/pages/forecast/revenue";
+import CashFlowForecastPage from "@/pages/forecast/cash-flow";
+import PnlForecastPage from "@/pages/forecast/pnl";
+import BalanceSheetForecastPage from "@/pages/forecast/balance-sheet";
+import ForecastScenariosPage from "@/pages/forecast/scenarios";
+import ForecastDriversPage from "@/pages/forecast/drivers";
+import ForecastReportsPage from "@/pages/forecast/reports";
+import ForecastSettingsPage from "@/pages/forecast/settings";
 
 function AppRoutes() {
   return (
@@ -177,6 +186,23 @@ function CommissionRoutes() {
   );
 }
 
+function ForecastRoutes() {
+  return (
+    <Switch>
+      <Route path="/forecast" component={ForecastOverviewPage} />
+      <Route path="/forecast/revenue" component={RevenueForecastPage} />
+      <Route path="/forecast/cash-flow" component={CashFlowForecastPage} />
+      <Route path="/forecast/pnl" component={PnlForecastPage} />
+      <Route path="/forecast/balance-sheet" component={BalanceSheetForecastPage} />
+      <Route path="/forecast/scenarios" component={ForecastScenariosPage} />
+      <Route path="/forecast/drivers" component={ForecastDriversPage} />
+      <Route path="/forecast/reports" component={ForecastReportsPage} />
+      <Route path="/forecast/settings" component={ForecastSettingsPage} />
+      <Route component={NotFound} />
+    </Switch>
+  );
+}
+
 function Router() {
   return (
     <Switch>
@@ -199,6 +225,11 @@ function Router() {
       <Route path="/commissions/*?">
         <ProtectedRoute>
           <CommissionRoutes />
+        </ProtectedRoute>
+      </Route>
+      <Route path="/forecast/*?">
+        <ProtectedRoute>
+          <ForecastRoutes />
         </ProtectedRoute>
       </Route>
       <Route>

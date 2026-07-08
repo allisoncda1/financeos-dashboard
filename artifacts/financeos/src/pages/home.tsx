@@ -58,6 +58,10 @@ const MODULES: ModuleCard[] = [
     iconBg: "bg-purple-50",
     iconColor: "text-purple-600",
     titleColor: "text-purple-600",
+    active: true,
+    href: "/forecast",
+    cta: "Open Forecast",
+    buttonClasses: "bg-purple-600 hover:bg-purple-700",
   },
   {
     title: "Commission",
