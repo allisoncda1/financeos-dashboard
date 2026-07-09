@@ -16,7 +16,6 @@
  *   npx tsx scripts/seed-budget.ts --confirm        # write to DB
  */
 
-import "dotenv/config";
 import { drizzle } from "drizzle-orm/neon-http";
 import { neon } from "@neondatabase/serverless";
 import { eq, and, gte, lte, inArray } from "drizzle-orm";
