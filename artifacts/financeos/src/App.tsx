@@ -8,6 +8,13 @@ import { AuthProvider } from "@/lib/auth";
 import { ProtectedRoute } from "@/components/auth/ProtectedRoute";
 
 import PortfolioPage from "@/pages/portfolio";
+import AccountingOverviewPage from "@/pages/accounting/index";
+import TransactionsPage from "@/pages/accounting/transactions/index";
+import UncategorizedTransactionsPage from "@/pages/accounting/transactions/uncategorized";
+import CategorizedTransactionsPage from "@/pages/accounting/transactions/categorized";
+import ReconciliationPage from "@/pages/accounting/reconciliation/index";
+import ReconciliationAccountsPage from "@/pages/accounting/reconciliation/accounts";
+import MatchCenterPage from "@/pages/accounting/reconciliation/match-center";
 import CashFlowPage from "@/pages/analyze/cashflow";
 import ConsolidatedPage from "@/pages/analyze/consolidated";
 import HistoryPage from "@/pages/analyze/history";
@@ -28,6 +35,13 @@ function AppRoutes() {
   return (
     <Switch>
       <Route path="/" component={PortfolioPage} />
+      <Route path="/accounting" component={AccountingOverviewPage} />
+      <Route path="/accounting/transactions" component={TransactionsPage} />
+      <Route path="/accounting/transactions/uncategorized" component={UncategorizedTransactionsPage} />
+      <Route path="/accounting/transactions/categorized" component={CategorizedTransactionsPage} />
+      <Route path="/accounting/reconciliation" component={ReconciliationPage} />
+      <Route path="/accounting/reconciliation/accounts" component={ReconciliationAccountsPage} />
+      <Route path="/accounting/reconciliation/match-center" component={MatchCenterPage} />
       <Route path="/analyze/cashflow" component={CashFlowPage} />
       <Route path="/analyze/consolidated" component={ConsolidatedPage} />
       <Route path="/analyze/history" component={HistoryPage} />

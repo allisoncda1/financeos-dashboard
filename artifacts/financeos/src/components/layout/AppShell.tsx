@@ -4,6 +4,7 @@ import { usePathname } from "@/lib/next-compat";
 import { Sidebar } from "./Sidebar";
 import { GlobalHeader } from "./GlobalHeader";
 import { EntitySelectionProvider } from "@/lib/entity-context";
+import { AccountingEntityProvider } from "@/lib/accounting-context";
 import { motion, AnimatePresence } from "framer-motion";
 import { DataSourceBanner } from "@/components/shared/DataSourceBanner";
 
@@ -16,6 +17,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
 
   return (
     <EntitySelectionProvider>
+    <AccountingEntityProvider>
       <div className="flex h-screen overflow-hidden">
         {/* Mobile overlay */}
         <AnimatePresence>
@@ -47,6 +49,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           <main className="flex-1 overflow-hidden">{children}</main>
         </div>
       </div>
+    </AccountingEntityProvider>
     </EntitySelectionProvider>
   );
 }
