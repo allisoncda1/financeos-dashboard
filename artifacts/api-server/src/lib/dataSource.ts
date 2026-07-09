@@ -4,6 +4,7 @@ import { transformFinancials } from "../transformers/financials";
 import { transformCustomers } from "../transformers/customers";
 import { transformVendors } from "../transformers/vendors";
 import { transformBanking } from "../transformers/banking";
+import { transformBankingNeon } from "../transformers/bankingNeon";
 import { trackSource, reportSource, type DataSourceKind } from "./sourceTracker";
 import type {
   PortfolioSummary,
@@ -340,11 +341,20 @@ export async function getEntityBanking(
   asOf: string,
 ): Promise<{ data: BankingData; source: DataSourceKind }> {
   return trackSource(async () => {
+    // Neon is the preferred source — typed tables (accounts, transactions)
+    try {
+      const data = await transformBankingNeon(slug, asOf);
+      reportSource("live");
+      return data;
+    } catch (err) {
+      console.warn(`[dataSource] Neon banking failed for ${slug}, trying Drive:`, err);
+    }
+    // Drive fallback
     if (USE_DRIVE) {
       try {
         return await transformBanking(slug, asOf);
       } catch (err) {
-        console.warn(`[dataSource] failed to transform banking for ${slug}, falling back to mock:`, err);
+        console.warn(`[dataSource] Drive banking failed for ${slug}, falling back to mock:`, err);
       }
     }
     reportSource("mock");
