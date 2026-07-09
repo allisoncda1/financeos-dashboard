@@ -1,4 +1,5 @@
-import { pgTable, uuid, date, timestamp, boolean, jsonb, index, sql } from "drizzle-orm/pg-core";
+import { sql } from "drizzle-orm";
+import { pgTable, uuid, date, timestamp, boolean, jsonb, index } from "drizzle-orm/pg-core";
 import { entities } from "./entities";
 
 export const entitySnapshots = pgTable("entity_snapshots", {
