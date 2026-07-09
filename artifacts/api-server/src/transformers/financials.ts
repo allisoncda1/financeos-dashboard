@@ -1,16 +1,6 @@
 import { driveLoadCsv } from "../lib/driveLoader";
 import type { EntitySlug, FinancialsData, MonthlyPL, BalanceSheet } from "../lib/types";
-
-function toNumber(value: unknown): number {
-  if (typeof value === "number" && Number.isFinite(value)) return value;
-  if (typeof value === "string") {
-    const trimmed = value.trim();
-    if (trimmed === "") return 0;
-    const parsed = Number(trimmed);
-    return Number.isFinite(parsed) ? parsed : 0;
-  }
-  return 0;
-}
+import { parseNumeric } from "../services/numerics";
 
 function emptyBalanceSheet(asOf: string): BalanceSheet {
   return {
@@ -42,11 +32,11 @@ async function loadMonthlyPl(slug: EntitySlug): Promise<MonthlyPL[]> {
     const rows = await driveLoadCsv(`entities/${slug}/pnl_current.csv`);
     return rows.map((row) => ({
       month: row["month"] ?? "",
-      revenue: toNumber(row["revenue"]),
-      cogs: toNumber(row["cogs"]),
-      gross_profit: toNumber(row["gross_profit"]),
-      opex: toNumber(row["operating_expenses"]),
-      net_income: toNumber(row["net_income"]),
+      revenue: parseNumeric(row["revenue"]),
+      cogs: parseNumeric(row["cogs"]),
+      gross_profit: parseNumeric(row["gross_profit"]),
+      opex: parseNumeric(row["operating_expenses"]),
+      net_income: parseNumeric(row["net_income"]),
     }));
   } catch (err) {
     console.warn(`[transformFinancials] failed to load pnl_current.csv for ${slug}:`, err);
@@ -99,7 +89,7 @@ async function loadBalanceSheet(slug: EntitySlug, asOf: string): Promise<Balance
       const accountName = row["account_name"] ?? "";
       const accountType = row["account_type"] ?? "";
       const subtype = row["account_subtype"] ?? "";
-      const amount = toNumber(row["amount"]);
+      const amount = parseNumeric(row["amount"]);
       const category = classifyRow(accountType, subtype);
 
       if (category === "asset") {

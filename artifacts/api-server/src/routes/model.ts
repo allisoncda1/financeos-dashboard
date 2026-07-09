@@ -28,9 +28,14 @@ router.get("/model", async (req, res) => {
     const metrics = {} as Record<EntitySlug, unknown>;
     const anomalies = {} as Record<EntitySlug, unknown>;
     const sources: DataSourceKind[] = [portfolio.source, validation.source, freshness.source];
-    for (const slug of ENTITY_SLUGS) {
-      const m = await getEntityMetrics(slug);
-      const a = await getEntityAnomalies(slug);
+
+    const entityResults = await Promise.all(
+      ENTITY_SLUGS.map(async (slug) => {
+        const [m, a] = await Promise.all([getEntityMetrics(slug), getEntityAnomalies(slug)]);
+        return { slug, m, a };
+      }),
+    );
+    for (const { slug, m, a } of entityResults) {
       metrics[slug] = m.data;
       anomalies[slug] = a.data;
       sources.push(m.source, a.source);

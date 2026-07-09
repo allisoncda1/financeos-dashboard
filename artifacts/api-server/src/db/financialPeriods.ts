@@ -1,13 +1,10 @@
 import { eq, and, gte, lte, desc, sql } from "drizzle-orm";
 import { db } from "./connection";
 import { financialPeriods } from "@workspace/db";
+import { parseNumeric } from "../services/numerics";
+import { computeGrossMarginPct, computeNetMarginPct } from "../services/kpi";
 
 export type { FinancialPeriod } from "@workspace/db";
-
-function n(v: string | null | undefined): number {
-  const parsed = parseFloat(v ?? "0");
-  return Number.isFinite(parsed) ? parsed : 0;
-}
 
 /**
  * All monthly P&L rows for one entity in a given year, ordered by period_start.
@@ -92,8 +89,8 @@ export async function getYtdPeriod(entityId: string, year: number) {
   );
 
   const last = months[months.length - 1]!;
-  const grossMarginPct = agg.revenue > 0 ? (agg.grossProfit / agg.revenue) * 100 : 0;
-  const netMarginPct   = agg.revenue > 0 ? (agg.netIncome   / agg.revenue) * 100 : 0;
+  const grossMarginPct = agg.revenue > 0 ? computeGrossMarginPct(agg.grossProfit, agg.revenue) : 0;
+  const netMarginPct   = agg.revenue > 0 ? computeNetMarginPct(agg.netIncome,    agg.revenue) : 0;
 
   return {
     ...last,
@@ -162,25 +159,25 @@ type RawPeriod = typeof financialPeriods.$inferSelect;
 function toNumeric(row: RawPeriod) {
   return {
     ...row,
-    revenue:            n(row.revenue),
-    cogs:               n(row.cogs),
-    grossProfit:        n(row.grossProfit),
-    opex:               n(row.opex),
-    netIncome:          n(row.netIncome),
-    grossMarginPct:     n(row.grossMarginPct),
-    netMarginPct:       n(row.netMarginPct),
-    totalAssets:        n(row.totalAssets),
-    totalLiabilities:   n(row.totalLiabilities),
-    totalEquity:        n(row.totalEquity),
-    cashOnHand:         n(row.cashOnHand),
-    accountsReceivable: n(row.accountsReceivable),
-    accountsPayable:    n(row.accountsPayable),
-    openAr:             n(row.openAr),
-    openAp:             n(row.openAp),
-    dsoDays:            n(row.dsoDays),
-    dpoDays:            n(row.dpoDays),
-    arOverduePct:       n(row.arOverduePct),
-    apOverduePct:       n(row.apOverduePct),
+    revenue:            parseNumeric(row.revenue),
+    cogs:               parseNumeric(row.cogs),
+    grossProfit:        parseNumeric(row.grossProfit),
+    opex:               parseNumeric(row.opex),
+    netIncome:          parseNumeric(row.netIncome),
+    grossMarginPct:     parseNumeric(row.grossMarginPct),
+    netMarginPct:       parseNumeric(row.netMarginPct),
+    totalAssets:        parseNumeric(row.totalAssets),
+    totalLiabilities:   parseNumeric(row.totalLiabilities),
+    totalEquity:        parseNumeric(row.totalEquity),
+    cashOnHand:         parseNumeric(row.cashOnHand),
+    accountsReceivable: parseNumeric(row.accountsReceivable),
+    accountsPayable:    parseNumeric(row.accountsPayable),
+    openAr:             parseNumeric(row.openAr),
+    openAp:             parseNumeric(row.openAp),
+    dsoDays:            parseNumeric(row.dsoDays),
+    dpoDays:            parseNumeric(row.dpoDays),
+    arOverduePct:       parseNumeric(row.arOverduePct),
+    apOverduePct:       parseNumeric(row.apOverduePct),
   };
 }
 

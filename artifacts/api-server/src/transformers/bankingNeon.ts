@@ -1,4 +1,5 @@
-import { EntitiesService, AccountsService, TransactionsService } from "../db";
+import { AccountsService, TransactionsService } from "../db";
+import { getCachedEntityId } from "../services/entityCache";
 import type { EntitySlug, BankingData, BankAccount, BankTransaction } from "../lib/types";
 
 function parseLastFour(accountName: string): string {
@@ -20,7 +21,7 @@ function reconciliationStatus(unreconciledCount: number): BankingData["reconcili
 }
 
 export async function transformBankingNeon(slug: EntitySlug, asOf: string): Promise<BankingData> {
-  const entityId = await EntitiesService.getEntityIdBySlug(slug);
+  const entityId = await getCachedEntityId(slug);
   if (!entityId) throw new Error(`Entity not found in Neon: ${slug}`);
 
   const [neonAccounts, neonTransactions, unreconciledCount] = await Promise.all([

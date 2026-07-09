@@ -1,15 +1,13 @@
 import { eq, and, gt, desc } from "drizzle-orm";
 import { db } from "./connection";
 import { bills } from "@workspace/db";
+import { parseNumeric } from "../services/numerics";
+import { buildAgingBuckets } from "../services/aging";
+import type { AgingBucket } from "../lib/types";
 
 export type { Bill } from "@workspace/db";
 
-export type ApAgingBucket = {
-  label: string;
-  days: string;
-  amount: number;
-  count: number;
-};
+export type ApAgingBucket = AgingBucket;
 
 export type VendorAp = {
   name: string;
@@ -17,20 +15,6 @@ export type VendorAp = {
   dueDate: string;
   status: "current" | "overdue" | "scheduled";
 };
-
-function n(v: string | null | undefined): number {
-  const parsed = parseFloat(v ?? "0");
-  return Number.isFinite(parsed) ? parsed : 0;
-}
-
-function toBucket(daysOverdue: number | null): string {
-  const d = daysOverdue ?? 0;
-  if (d <= 0)  return "Current";
-  if (d <= 30) return "1-30";
-  if (d <= 60) return "31-60";
-  if (d <= 90) return "61-90";
-  return "90+";
-}
 
 function toStatus(daysOverdue: number, dueDate: string | null): VendorAp["status"] {
   if (daysOverdue > 0) return "overdue";
@@ -54,33 +38,14 @@ export async function getOpenBills(entityId: string) {
     )
     .orderBy(desc(bills.billDate));
 
-  return rows.map((r) => ({ ...r, amount: n(r.amount), balance: n(r.balance) }));
+  return rows.map((r) => ({ ...r, amount: parseNumeric(r.amount), balance: parseNumeric(r.balance) }));
 }
 
 /**
  * AP aging buckets derived from open bills.
  */
 export async function getApAgingBuckets(entityId: string): Promise<ApAgingBucket[]> {
-  const open = await getOpenBills(entityId);
-
-  const map = new Map<string, { amount: number; count: number }>();
-  for (const bill of open) {
-    const label = toBucket(bill.daysOverdue);
-    const existing = map.get(label) ?? { amount: 0, count: 0 };
-    existing.amount += bill.balance;
-    existing.count  += 1;
-    map.set(label, existing);
-  }
-
-  const ORDER = ["Current", "1-30", "31-60", "61-90", "90+"];
-  return ORDER
-    .filter((label) => map.has(label))
-    .map((label) => ({
-      label,
-      days:   label,
-      amount: map.get(label)!.amount,
-      count:  map.get(label)!.count,
-    }));
+  return buildAgingBuckets(await getOpenBills(entityId));
 }
 
 /**

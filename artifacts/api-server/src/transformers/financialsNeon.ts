@@ -1,8 +1,9 @@
-import { EntitiesService, FinancialPeriodsService } from "../db";
+import { FinancialPeriodsService } from "../db";
+import { getCachedEntityId } from "../services/entityCache";
 import type { EntitySlug, FinancialsData, MonthlyPL, BalanceSheet } from "../lib/types";
 
 export async function transformFinancialsNeon(slug: EntitySlug, asOf: string): Promise<FinancialsData> {
-  const entityId = await EntitiesService.getEntityIdBySlug(slug);
+  const entityId = await getCachedEntityId(slug);
   if (!entityId) throw new Error(`Entity not found in Neon: ${slug}`);
 
   const year = new Date(asOf).getFullYear();

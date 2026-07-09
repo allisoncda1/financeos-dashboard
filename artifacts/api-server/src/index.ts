@@ -1,5 +1,6 @@
 import app from "./app";
 import { logger } from "./lib/logger";
+import { warmEntityCache } from "./services/entityCache";
 
 const rawPort = process.env["PORT"];
 
@@ -22,4 +23,5 @@ app.listen(port, (err) => {
   }
 
   logger.info({ port }, "Server listening");
+  warmEntityCache().catch((e) => logger.warn({ err: e }, "Entity cache warm failed — will retry on first request"));
 });

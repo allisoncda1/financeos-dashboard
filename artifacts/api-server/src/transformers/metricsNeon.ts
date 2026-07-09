@@ -1,4 +1,5 @@
-import { EntitiesService, FinancialPeriodsService, SyncRunsService } from "../db";
+import { FinancialPeriodsService, SyncRunsService } from "../db";
+import { getCachedEntityId } from "../services/entityCache";
 import { ENTITY_DEFINITIONS } from "../lib/entities";
 import type { EntitySlug, EntityMetrics } from "../lib/types";
 
@@ -9,7 +10,7 @@ import type { EntitySlug, EntityMetrics } from "../lib/types";
  * fall through to the Drive/mock chain.
  */
 export async function transformMetricsNeon(slug: EntitySlug): Promise<EntityMetrics> {
-  const entityId = await EntitiesService.getEntityIdBySlug(slug);
+  const entityId = await getCachedEntityId(slug);
   if (!entityId) throw new Error(`Entity not found in Neon: ${slug}`);
 
   const year = new Date().getFullYear();

@@ -1,8 +1,9 @@
-import { EntitiesService, InvoicesService, FinancialPeriodsService } from "../db";
+import { InvoicesService, FinancialPeriodsService } from "../db";
+import { getCachedEntityId } from "../services/entityCache";
 import type { EntitySlug, CustomersData, Customer, AgingBucket } from "../lib/types";
 
 export async function transformCustomersNeon(slug: EntitySlug, asOf: string): Promise<CustomersData> {
-  const entityId = await EntitiesService.getEntityIdBySlug(slug);
+  const entityId = await getCachedEntityId(slug);
   if (!entityId) throw new Error(`Entity not found in Neon: ${slug}`);
 
   const year = new Date(asOf).getFullYear();
@@ -30,7 +31,7 @@ export async function transformCustomersNeon(slug: EntitySlug, asOf: string): Pr
     entity_slug:   slug,
     as_of:         asOf,
     open_ar,
-    aging:         aging as AgingBucket[],
+    aging,
     top_customers,
     dso_history,
   };

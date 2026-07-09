@@ -1,4 +1,6 @@
-import { EntitiesService, FinancialPeriodsService } from "../db";
+import { FinancialPeriodsService } from "../db";
+import { getCachedEntityId } from "../services/entityCache";
+import { computeNetMarginPct, computeCashRunwayMonths } from "../services/kpi";
 import { ENTITY_DEFINITIONS } from "../lib/entities";
 import { ENTITY_SLUGS } from "../lib/types";
 import type { PortfolioSummary } from "../lib/types";
@@ -12,10 +14,10 @@ import type { PortfolioSummary } from "../lib/types";
 export async function transformPortfolioNeon(): Promise<PortfolioSummary> {
   const year = new Date().getFullYear();
 
-  // Resolve all entity IDs in parallel
+  // Resolve all entity IDs (cache hits after first warm)
   const pairs = await Promise.all(
     ENTITY_SLUGS.map(async (slug) => {
-      const id = await EntitiesService.getEntityIdBySlug(slug);
+      const id = await getCachedEntityId(slug);
       return { slug, id };
     }),
   );
@@ -35,19 +37,8 @@ export async function transformPortfolioNeon(): Promise<PortfolioSummary> {
 
   const asOf = latestPeriod?.periodEnd ?? new Date().toISOString().slice(0, 10);
 
-  const netMarginPct =
-    Number.isFinite(agg.netIncome) && Number.isFinite(agg.revenue) && agg.revenue > 0
-      ? (agg.netIncome / agg.revenue) * 100
-      : NaN;
-
-  const cashRunwayMonths = (() => {
-    if (!Number.isFinite(agg.cashOnHand) || agg.cashOnHand <= 0) return null;
-    if (!Number.isFinite(agg.opex) || agg.opex <= 0) return null;
-    const monthsElapsed = new Date().getMonth() + 1;
-    const monthlyOpex = agg.opex / monthsElapsed;
-    if (!Number.isFinite(monthlyOpex) || monthlyOpex <= 0) return null;
-    return agg.cashOnHand / monthlyOpex;
-  })();
+  const netMarginPct     = computeNetMarginPct(agg.netIncome, agg.revenue);
+  const cashRunwayMonths = computeCashRunwayMonths(agg.cashOnHand, agg.opex);
 
   const portfolioDefs = ENTITY_DEFINITIONS.filter((e) => e.includedInPortfolio);
 
