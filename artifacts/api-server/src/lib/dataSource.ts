@@ -8,6 +8,8 @@ import { transformVendors } from "../transformers/vendors";
 import { transformVendorsNeon } from "../transformers/vendorsNeon";
 import { transformBanking } from "../transformers/banking";
 import { transformBankingNeon } from "../transformers/bankingNeon";
+import { transformMetricsNeon } from "../transformers/metricsNeon";
+import { transformPortfolioNeon } from "../transformers/portfolioNeon";
 import { trackSource, reportSource, type DataSourceKind } from "./sourceTracker";
 import type {
   PortfolioSummary,
@@ -35,6 +37,14 @@ export const USE_DRIVE = Boolean(
 
 export async function getPortfolioSummary(): Promise<{ data: PortfolioSummary; source: DataSourceKind }> {
   return trackSource(async () => {
+    // Neon-first tier
+    try {
+      const data = await transformPortfolioNeon();
+      reportSource("live");
+      return data;
+    } catch (err) {
+      console.warn("[dataSource] Neon portfolio aggregation failed, trying Drive:", err);
+    }
     if (USE_DRIVE) {
       try {
         // The live portfolio/summary.json only carries a subset of totals
@@ -253,6 +263,14 @@ async function enrichMetricsFromFinancials(slug: EntitySlug, raw: RawDriveMetric
 
 export async function getEntityMetrics(slug: EntitySlug): Promise<{ data: EntityMetrics; source: DataSourceKind }> {
   return trackSource(async () => {
+    // Neon-first tier
+    try {
+      const data = await transformMetricsNeon(slug);
+      reportSource("live");
+      return data;
+    } catch (err) {
+      console.warn(`[dataSource] Neon metrics failed for ${slug}, trying Drive:`, err);
+    }
     if (USE_DRIVE) {
       try {
         const raw = await driveLoadJson<RawDriveMetrics>(`entities/${slug}/metrics.json`);
