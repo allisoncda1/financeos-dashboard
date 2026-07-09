@@ -38,9 +38,11 @@ export default function CustomersPage() {
 
   const overdueBuckets = cust.aging.slice(2);
   const overdueAmt = overdueBuckets.reduce((s, b) => s + b.amount, 0);
-  const currentDso = cust.dso_history[cust.dso_history.length - 1];
-  const prevDso    = cust.dso_history[0];
-  const dsoDelta   = currentDso - prevDso;
+  const overduePct = cust.open_ar > 0 ? ((overdueAmt / cust.open_ar) * 100).toFixed(1) : "0.0";
+  const hasDsoHistory = cust.dso_history.length >= 2;
+  const currentDso = hasDsoHistory ? cust.dso_history[cust.dso_history.length - 1]! : null;
+  const prevDso    = hasDsoHistory ? cust.dso_history[0]! : null;
+  const dsoDelta   = currentDso !== null && prevDso !== null ? currentDso - prevDso : null;
 
   return (
     <div className="h-full flex flex-col overflow-hidden bg-[#F4F5F7]">
@@ -51,22 +53,22 @@ export default function CustomersPage() {
         {/* Summary banner */}
         <div className="grid grid-cols-4 gap-3">
           <SummaryCard label="Open AR" value={fmt(cust.open_ar)} sub="total outstanding" color="text-gray-900" />
-          <SummaryCard label="Overdue AR" value={fmt(overdueAmt)} sub={`${((overdueAmt / cust.open_ar) * 100).toFixed(1)}% of total`} color={overdueAmt > 0 ? "text-red-600" : "text-emerald-600"} />
+          <SummaryCard label="Overdue AR" value={fmt(overdueAmt)} sub={`${overduePct}% of total`} color={overdueAmt > 0 ? "text-red-600" : "text-emerald-600"} />
           <div className="bg-white rounded-xl border border-gray-200 p-4">
             <p className="text-[10px] text-gray-400 font-medium uppercase tracking-wide mb-1">DSO Trend (12M)</p>
             <div className="flex items-end justify-between gap-2">
               <div>
-                <p className={`text-[20px] font-bold ${currentDso > 60 ? "text-red-600" : currentDso > 45 ? "text-amber-600" : "text-gray-900"}`}>
-                  {currentDso}d
+                <p className={`text-[20px] font-bold ${currentDso !== null && currentDso > 60 ? "text-red-600" : currentDso !== null && currentDso > 45 ? "text-amber-600" : "text-gray-900"}`}>
+                  {currentDso !== null ? `${currentDso}d` : "—"}
                 </p>
-                <p className={`text-[10px] font-medium ${dsoDelta > 0 ? "text-red-500" : "text-emerald-600"}`}>
-                  {dsoDelta > 0 ? "+" : ""}{dsoDelta}d vs 12M ago
+                <p className={`text-[10px] font-medium ${dsoDelta !== null && dsoDelta > 0 ? "text-red-500" : "text-emerald-600"}`}>
+                  {dsoDelta !== null ? `${dsoDelta > 0 ? "+" : ""}${dsoDelta}d vs 12M ago` : "No trend data"}
                 </p>
               </div>
               <div className="w-24 flex-shrink-0">
                 <SparklineChart
                   data={cust.dso_history}
-                  color={currentDso > 60 ? "#EF4444" : "#10B981"}
+                  color={currentDso !== null && currentDso > 60 ? "#EF4444" : "#10B981"}
                   height={36}
                 />
               </div>

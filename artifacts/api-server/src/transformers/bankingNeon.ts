@@ -36,10 +36,10 @@ export async function transformBankingNeon(slug: EntitySlug, asOf: string): Prom
     account_type: a.accountSubtype ?? a.accountType,
     last_four: parseLastFour(a.name),
     balance: a.currentBalance,
-    // No color field in Neon — placeholder until UI color assignment is built
+    // No color field in Neon — UI falls back to entity brand color
     color: "",
-    // No per-account reconciliation date in Neon — placeholder
-    reconciled: true,
+    // Reconciliation state unknown until a reconciliation table exists
+    reconciled: false,
     last_reconciled: "",
   }));
 

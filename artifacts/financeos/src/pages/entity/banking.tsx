@@ -1,9 +1,9 @@
 import { useParams } from "wouter";
 import NotFound from "@/pages/not-found";
-import { ENTITY_SLUGS, type EntitySlug } from "@/lib/entities";
+import { ENTITY_SLUGS, ENTITY_CONFIG, type EntitySlug } from "@/lib/entities";
 import { useEntityBanking } from "@/hooks/useApi";
 import { PageHeader } from "@/components/shared/PageHeader";
-import { CheckCircle2, AlertTriangle, XCircle } from "lucide-react";
+import { CheckCircle2, AlertTriangle, XCircle, Minus } from "lucide-react";
 
 
 export function generateStaticParams() {
@@ -21,6 +21,7 @@ export default function BankingPage() {
   if (!slug || !ENTITY_SLUGS.includes(slug as EntitySlug)) return <NotFound />;
   const eSlug = slug as EntitySlug;
   const { data: bank, source } = useEntityBanking(eSlug);
+  const entityColor = ENTITY_CONFIG[eSlug].color;
   if (!bank) {
     return (
       <div className="h-full flex items-center justify-center text-[13px] text-gray-400">
@@ -62,7 +63,7 @@ export default function BankingPage() {
               <div className="px-4 pt-4 pb-3 flex items-center gap-3">
                 <div
                   className="w-9 h-9 rounded-lg flex items-center justify-center flex-shrink-0 text-white text-[13px] font-bold"
-                  style={{ background: acct.color }}
+                  style={{ background: acct.color || entityColor }}
                 >
                   {acct.institution.charAt(0)}
                 </div>
@@ -70,7 +71,9 @@ export default function BankingPage() {
                   <p className="text-[12px] font-semibold text-gray-900 truncate">{acct.name}</p>
                   <p className="text-[10px] text-gray-400">{acct.account_type} ···{acct.last_four}</p>
                 </div>
-                {acct.reconciled ? (
+                {!acct.last_reconciled ? (
+                  <Minus className="w-4 h-4 text-gray-300 flex-shrink-0 ml-auto" />
+                ) : acct.reconciled ? (
                   <CheckCircle2 className="w-4 h-4 text-emerald-500 flex-shrink-0 ml-auto" />
                 ) : (
                   <AlertTriangle className="w-4 h-4 text-amber-500 flex-shrink-0 ml-auto" />
@@ -79,7 +82,9 @@ export default function BankingPage() {
               <div className="px-4 pb-4">
                 <p className="text-[22px] font-bold text-gray-900">{fmt(acct.balance)}</p>
                 <p className="text-[10px] text-gray-400 mt-0.5">
-                  {acct.reconciled
+                  {!acct.last_reconciled
+                    ? "Reconciliation status unknown"
+                    : acct.reconciled
                     ? `Reconciled ${acct.last_reconciled}`
                     : `Last reconciled ${acct.last_reconciled} — needs review`}
                 </p>

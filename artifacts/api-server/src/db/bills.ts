@@ -32,8 +32,9 @@ function toBucket(daysOverdue: number | null): string {
   return "90+";
 }
 
-function toStatus(daysOverdue: number): VendorAp["status"] {
+function toStatus(daysOverdue: number, dueDate: string | null): VendorAp["status"] {
   if (daysOverdue > 0) return "overdue";
+  if (dueDate && new Date(dueDate) > new Date()) return "scheduled";
   return "current";
 }
 
@@ -106,7 +107,7 @@ export async function getTopVendorsByAp(
       name,
       balance,
       dueDate,
-      status: toStatus(maxDaysOverdue),
+      status: toStatus(maxDaysOverdue, dueDate || null),
     }))
     .sort((a, b) => b.balance - a.balance)
     .slice(0, limit);

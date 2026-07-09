@@ -1,4 +1,4 @@
-import { Scale, CheckCircle2, XCircle } from "lucide-react";
+import { Scale, CheckCircle2, XCircle, Minus } from "lucide-react";
 import Link from "@/lib/next-compat";
 import { usePathname } from "@/lib/next-compat";
 import { ENTITY_CONFIG } from "@/lib/entities";
@@ -108,7 +108,9 @@ export default function ReconciliationAccountsPage() {
                       {acct.last_four ? ` ···${acct.last_four}` : ""}
                     </p>
                   </div>
-                  {acct.reconciled
+                  {!acct.last_reconciled
+                    ? <Minus className="w-5 h-5 text-gray-300 flex-shrink-0" />
+                    : acct.reconciled
                     ? <CheckCircle2 className="w-5 h-5 text-emerald-500 flex-shrink-0" />
                     : <XCircle className="w-5 h-5 text-amber-500 flex-shrink-0" />
                   }
@@ -118,8 +120,14 @@ export default function ReconciliationAccountsPage() {
                 </div>
                 <div className="px-4 py-2.5 border-t border-gray-100 bg-gray-50 flex items-center justify-between">
                   <p className="text-[10px] text-gray-500">{acct.institution}</p>
-                  <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full ${acct.reconciled ? "bg-emerald-100 text-emerald-700" : "bg-amber-100 text-amber-700"}`}>
-                    {acct.reconciled ? "Reconciled" : "Needs Review"}
+                  <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full ${
+                    !acct.last_reconciled
+                      ? "bg-gray-100 text-gray-500"
+                      : acct.reconciled
+                      ? "bg-emerald-100 text-emerald-700"
+                      : "bg-amber-100 text-amber-700"
+                  }`}>
+                    {!acct.last_reconciled ? "Unknown" : acct.reconciled ? "Reconciled" : "Needs Review"}
                   </span>
                 </div>
                 {/* last_reconciled placeholder */}
