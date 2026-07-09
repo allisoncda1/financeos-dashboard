@@ -1,8 +1,11 @@
 import { driveLoadJson } from "./driveLoader";
 import { loadMockData, loadEntityFile, loadValidationSummary, type EntityDataFile } from "./mockData";
 import { transformFinancials } from "../transformers/financials";
+import { transformFinancialsNeon } from "../transformers/financialsNeon";
 import { transformCustomers } from "../transformers/customers";
+import { transformCustomersNeon } from "../transformers/customersNeon";
 import { transformVendors } from "../transformers/vendors";
+import { transformVendorsNeon } from "../transformers/vendorsNeon";
 import { transformBanking } from "../transformers/banking";
 import { transformBankingNeon } from "../transformers/bankingNeon";
 import { trackSource, reportSource, type DataSourceKind } from "./sourceTracker";
@@ -290,11 +293,18 @@ export async function getEntityFinancials(
   asOf: string,
 ): Promise<{ data: FinancialsData; source: DataSourceKind }> {
   return trackSource(async () => {
+    try {
+      const data = await transformFinancialsNeon(slug, asOf);
+      reportSource("live");
+      return data;
+    } catch (err) {
+      console.warn(`[dataSource] Neon financials failed for ${slug}, trying Drive:`, err);
+    }
     if (USE_DRIVE) {
       try {
         return await transformFinancials(slug, asOf);
       } catch (err) {
-        console.warn(`[dataSource] failed to transform financials for ${slug}, falling back to mock:`, err);
+        console.warn(`[dataSource] Drive financials failed for ${slug}, falling back to mock:`, err);
       }
     }
     reportSource("mock");
@@ -307,11 +317,18 @@ export async function getEntityCustomers(
   asOf: string,
 ): Promise<{ data: CustomersData; source: DataSourceKind }> {
   return trackSource(async () => {
+    try {
+      const data = await transformCustomersNeon(slug, asOf);
+      reportSource("live");
+      return data;
+    } catch (err) {
+      console.warn(`[dataSource] Neon customers failed for ${slug}, trying Drive:`, err);
+    }
     if (USE_DRIVE) {
       try {
         return await transformCustomers(slug, asOf);
       } catch (err) {
-        console.warn(`[dataSource] failed to transform customers for ${slug}, falling back to mock:`, err);
+        console.warn(`[dataSource] Drive customers failed for ${slug}, falling back to mock:`, err);
       }
     }
     reportSource("mock");
@@ -324,11 +341,18 @@ export async function getEntityVendors(
   asOf: string,
 ): Promise<{ data: VendorsData; source: DataSourceKind }> {
   return trackSource(async () => {
+    try {
+      const data = await transformVendorsNeon(slug, asOf);
+      reportSource("live");
+      return data;
+    } catch (err) {
+      console.warn(`[dataSource] Neon vendors failed for ${slug}, trying Drive:`, err);
+    }
     if (USE_DRIVE) {
       try {
         return await transformVendors(slug, asOf);
       } catch (err) {
-        console.warn(`[dataSource] failed to transform vendors for ${slug}, falling back to mock:`, err);
+        console.warn(`[dataSource] Drive vendors failed for ${slug}, falling back to mock:`, err);
       }
     }
     reportSource("mock");
