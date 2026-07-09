@@ -1,4 +1,4 @@
-import type { DashboardData, FinancialsData, CustomersData, VendorsData, BankingData, EntitySlug, BriefingResponse, Alert } from "./types";
+import type { DashboardData, FinancialsData, CustomersData, VendorsData, BankingData, EntitySlug, BriefingResponse, Alert, EntityBudget, BvsAData, PortfolioBudget, BudgetPeriodInput } from "./types";
 import type { ReportTemplateSummary, ReportGenerateRequest, BuiltReport } from "./reportTypes";
 import type { AIStatus } from "./aiTypes";
 import type { PipelineStatus } from "./pipelineTypes";
@@ -50,6 +50,22 @@ async function getSourced<T>(path: string): Promise<Sourced<T>> {
   const json = await res.json();
   if (!json.ok) throw new Error(json.error ?? "API error");
   return { data: json.data as T, source: normalizeSource(json.source) };
+}
+
+async function put<T>(path: string, body: unknown): Promise<T> {
+  const res = await fetch(`${BASE}${path}`, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    credentials: "include",
+    body: JSON.stringify(body),
+  });
+  if (res.status === 401) {
+    handleUnauthorized();
+    throw new Error("Session expired");
+  }
+  const json = await res.json().catch(() => ({ ok: false, error: `API ${path} → ${res.status}` }));
+  if (!res.ok || !json.ok) throw new Error(json.error ?? `API ${path} → ${res.status}`);
+  return json.data as T;
 }
 
 async function post<T>(path: string, body: unknown): Promise<T> {
@@ -111,4 +127,15 @@ export const api = {
   downloadReport:   (req: ReportGenerateRequest) => postForBlob("/reports/generate", req),
   aiStatus:         ()           => getSourced<AIStatus>("/ai/status"),
   pipelineStatus:   ()           => getSourced<PipelineStatus>("/pipeline/status"),
+
+  entityBudget:         (slug: string, year?: number) =>
+    getSourced<EntityBudget>(`/budget/${slug}${year ? `?year=${year}` : ""}`),
+  budgetVsActual:       (slug: string, year?: number) =>
+    getSourced<BvsAData>(`/budget/${slug}/vs-actual${year ? `?year=${year}` : ""}`),
+  portfolioBudget:      (year?: number) =>
+    getSourced<PortfolioBudget>(`/budget/portfolio${year ? `?year=${year}` : ""}`),
+  upsertBudgetPeriod:   (slug: string, data: BudgetPeriodInput & { period_type?: "month" | "annual" }) =>
+    put<BudgetPeriodInput>(`/budget/${slug}/period`, data),
+  upsertAnnualBudget:   (slug: string, data: { year: number } & Partial<BudgetPeriodInput>) =>
+    put<BudgetPeriodInput>(`/budget/${slug}/annual`, data),
 };

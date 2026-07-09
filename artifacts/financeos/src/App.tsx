@@ -30,6 +30,17 @@ import EntityCustomersPage from "@/pages/entity/customers";
 import EntityFinancialsPage from "@/pages/entity/financials";
 import EntityReportsPage from "@/pages/entity/reports";
 import EntityVendorsPage from "@/pages/entity/vendors";
+import BudgetOverviewPage from "@/pages/budget/index";
+import BudgetBuilderPage from "@/pages/budget/builder";
+import BudgetVsActualPage from "@/pages/budget/budget-vs-actual";
+import BudgetPnLPage from "@/pages/budget/pnl";
+import BudgetCashFlowPage from "@/pages/budget/cash-flow";
+import BudgetBalanceSheetPage from "@/pages/budget/balance-sheet";
+import BudgetVersionsPage from "@/pages/budget/versions";
+import BudgetAssumptionsPage from "@/pages/budget/assumptions";
+import BudgetReportsPage from "@/pages/budget/reports";
+import BudgetSettingsPage from "@/pages/budget/settings";
+import { BudgetEntityProvider } from "@/lib/budget-context";
 
 function AppRoutes() {
   return (
@@ -57,6 +68,22 @@ function AppRoutes() {
       <Route path="/entity/:slug/financials" component={EntityFinancialsPage} />
       <Route path="/entity/:slug/reports" component={EntityReportsPage} />
       <Route path="/entity/:slug/vendors" component={EntityVendorsPage} />
+      <Route path="/budget">
+        <BudgetEntityProvider>
+          <Switch>
+            <Route path="/budget" component={BudgetOverviewPage} />
+            <Route path="/budget/builder" component={BudgetBuilderPage} />
+            <Route path="/budget/budget-vs-actual" component={BudgetVsActualPage} />
+            <Route path="/budget/pnl" component={BudgetPnLPage} />
+            <Route path="/budget/cash-flow" component={BudgetCashFlowPage} />
+            <Route path="/budget/balance-sheet" component={BudgetBalanceSheetPage} />
+            <Route path="/budget/versions" component={BudgetVersionsPage} />
+            <Route path="/budget/assumptions" component={BudgetAssumptionsPage} />
+            <Route path="/budget/reports" component={BudgetReportsPage} />
+            <Route path="/budget/settings" component={BudgetSettingsPage} />
+          </Switch>
+        </BudgetEntityProvider>
+      </Route>
       <Route component={NotFound} />
     </Switch>
   );

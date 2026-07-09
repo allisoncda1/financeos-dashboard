@@ -9,3 +9,4 @@ export * as VendorsService         from "./vendors";
 export * as AlertsService          from "./alerts";
 export * as SnapshotsService       from "./snapshots";
 export * as SyncRunsService        from "./syncRuns";
+export * as BudgetService          from "./budget";

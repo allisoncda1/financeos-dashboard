@@ -25,6 +25,27 @@ export function computeGrossMarginPct(grossProfit: number, revenue: number): num
  * opex is annualised by dividing by months elapsed so the estimate is
  * correct mid-year (otherwise January would always show 12× runway).
  */
+export function computeVariance(actual: number, target: number): number {
+  return actual - target;
+}
+
+export function computeVariancePct(actual: number, target: number): number {
+  if (!Number.isFinite(target) || target === 0) return NaN;
+  return ((actual - target) / Math.abs(target)) * 100;
+}
+
+export function computeAttainmentPct(actual: number, target: number): number {
+  if (!Number.isFinite(target) || target === 0) return NaN;
+  return (actual / target) * 100;
+}
+
+export function budgetHealthStatus(attainmentPct: number): "on-track" | "at-risk" | "behind" {
+  if (!Number.isFinite(attainmentPct)) return "behind";
+  if (attainmentPct >= 95) return "on-track";
+  if (attainmentPct >= 80) return "at-risk";
+  return "behind";
+}
+
 export function computeCashRunwayMonths(cashOnHand: number, opex: number): number | null {
   if (!Number.isFinite(cashOnHand) || cashOnHand <= 0) return null;
   if (!Number.isFinite(opex) || opex <= 0) return null;
