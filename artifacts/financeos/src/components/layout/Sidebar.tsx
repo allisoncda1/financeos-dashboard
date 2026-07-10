@@ -18,7 +18,6 @@ import {
   type EntitySlug,
 } from "@/lib/entities";
 import { EntityLogo } from "@/components/ui/EntityLogo";
-import { FinanceOSLogo } from "@/components/ui/FinanceOSLogo";
 import { useDashboardData } from "@/hooks/useApi";
 import { useAuth } from "@/lib/auth";
 
