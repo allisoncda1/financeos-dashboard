@@ -1,5 +1,6 @@
 import app, { initSession } from "./app";
 import { logger } from "./lib/logger";
+import { warmEntityCache } from "./services/entityCache";
 
 const rawPort = process.env["PORT"];
 
@@ -14,6 +15,10 @@ const port = Number(rawPort);
 if (Number.isNaN(port) || port <= 0) {
   throw new Error(`Invalid PORT value: "${rawPort}"`);
 }
+
+warmEntityCache().catch((err) => {
+  logger.warn({ err }, "Entity cache pre-warm failed; will retry lazily on first request");
+});
 
 initSession()
   .then(() => {

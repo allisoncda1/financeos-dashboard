@@ -10,6 +10,7 @@ import rulesRouter from "./rules";
 import reportsRouter from "./reports";
 import aiRouter from "./ai";
 import pipelineRouter from "./pipeline";
+import budgetRouter from "./budget";
 import { requireAuth } from "../auth/middleware";
 
 const router: IRouter = Router();
@@ -34,5 +35,6 @@ router.use(briefingRouter);
 router.use(rulesRouter);
 router.use(reportsRouter);
 router.use("/ai", aiRouter);
+router.use(budgetRouter);
 
 export default router;

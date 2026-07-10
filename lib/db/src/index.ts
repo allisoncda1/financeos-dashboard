@@ -19,4 +19,17 @@ export const pool = new Pool({
 });
 export const db = drizzle(pool, { schema });
 
+// Writable operational database (Replit-provisioned, DATABASE_URL). Holds
+// Dashboard-owned tables: sessions, metric_snapshots, budgets. Budgets must
+// never be written to Core, which is read-only.
+if (!process.env.DATABASE_URL) {
+  throw new Error(
+    "DATABASE_URL must be set. It is the writable operational database for Dashboard-owned tables (sessions, metric_snapshots, budgets).",
+  );
+}
+export const opsPool = new Pool({
+  connectionString: process.env.DATABASE_URL,
+});
+export const opsDb = drizzle(opsPool, { schema });
+
 export * from "./schema";

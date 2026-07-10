@@ -366,3 +366,103 @@ export type BriefingResponse = {
   confidenceScore: number;
   generatedAt: string;
 };
+
+// ─── Budget types ─────────────────────────────────────────────────────────────
+
+export type BudgetTargets = {
+  revenue: number | null;
+  cogs: number | null;
+  opex: number | null;
+  net_income: number | null;
+};
+
+export type BudgetVariance = {
+  revenue: number | null;
+  cogs: number | null;
+  opex: number | null;
+  net_income: number | null;
+};
+
+export type BudgetVariancePct = {
+  revenue: number | null;
+  cogs: number | null;
+  opex: number | null;
+  net_income: number | null;
+};
+
+export type BudgetActuals = {
+  revenue: number;
+  cogs: number;
+  opex: number;
+  net_income: number;
+};
+
+export type BvsAMonth = {
+  month: string;           // 'YYYY-MM'
+  period_start: string;    // 'YYYY-MM-DD'
+  period_end: string;
+  budget: BudgetTargets;
+  actual: BudgetActuals | null;
+  variance: BudgetVariance;
+  variance_pct: BudgetVariancePct;
+  has_budget: boolean;
+  has_actual: boolean;
+};
+
+export type BvsAData = {
+  entity_slug: EntitySlug;
+  year: number;
+  months: BvsAMonth[];
+  ytd: {
+    budget: BudgetTargets;
+    actual: BudgetActuals;
+    variance: BudgetVariance;
+    variance_pct: BudgetVariancePct;
+  };
+};
+
+export type EntityBudgetMonth = {
+  period_start: string;
+  period_end: string;
+  revenue_target: number | null;
+  cogs_target: number | null;
+  opex_target: number | null;
+  net_income_target: number | null;
+};
+
+export type EntityBudget = {
+  entity_slug: EntitySlug;
+  year: number;
+  months: EntityBudgetMonth[];
+  annual: {
+    revenue_target: number | null;
+    cogs_target: number | null;
+    opex_target: number | null;
+    net_income_target: number | null;
+  } | null;
+  months_with_budgets: number;
+};
+
+export type PortfolioEntityBudget = {
+  slug: EntitySlug;
+  budget_revenue: number;
+  actual_revenue: number;
+  budget_net_income: number;
+  actual_net_income: number;
+  attainment_pct: number | null;
+};
+
+export type PortfolioBudget = {
+  year: number;
+  entity_slugs: EntitySlug[];
+  portfolio_budget_revenue: number;
+  portfolio_actual_revenue: number;
+  portfolio_variance_revenue: number;
+  portfolio_attainment_pct: number | null;
+  portfolio_budget_net_income: number;
+  portfolio_actual_net_income: number;
+  entity_budgets: PortfolioEntityBudget[];
+  months_with_budgets: number;
+  months_without_budgets: number;
+};
+

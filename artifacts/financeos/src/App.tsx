@@ -8,6 +8,13 @@ import { AuthProvider } from "@/lib/auth";
 import { ProtectedRoute } from "@/components/auth/ProtectedRoute";
 
 import PortfolioPage from "@/pages/portfolio";
+import AccountingOverviewPage from "@/pages/accounting/index";
+import TransactionsPage from "@/pages/accounting/transactions/index";
+import UncategorizedTransactionsPage from "@/pages/accounting/transactions/uncategorized";
+import CategorizedTransactionsPage from "@/pages/accounting/transactions/categorized";
+import ReconciliationPage from "@/pages/accounting/reconciliation/index";
+import ReconciliationAccountsPage from "@/pages/accounting/reconciliation/accounts";
+import MatchCenterPage from "@/pages/accounting/reconciliation/match-center";
 import CashFlowPage from "@/pages/analyze/cashflow";
 import ConsolidatedPage from "@/pages/analyze/consolidated";
 import HistoryPage from "@/pages/analyze/history";
@@ -23,10 +30,13 @@ import EntityCustomersPage from "@/pages/entity/customers";
 import EntityFinancialsPage from "@/pages/entity/financials";
 import EntityReportsPage from "@/pages/entity/reports";
 import EntityVendorsPage from "@/pages/entity/vendors";
-import BudgetDashboardPage from "@/pages/budget/dashboard";
+import BudgetOverviewPage from "@/pages/budget/index";
 import BudgetBuilderPage from "@/pages/budget/builder";
 import BudgetVsActualPage from "@/pages/budget/budget-vs-actual";
-import BudgetDepartmentsPage from "@/pages/budget/departments";
+import BudgetPnLPage from "@/pages/budget/pnl";
+import BudgetCashFlowPage from "@/pages/budget/cash-flow";
+import BudgetBalanceSheetPage from "@/pages/budget/balance-sheet";
+import { BudgetEntityProvider } from "@/lib/budget-context";
 import BudgetVersionsPage from "@/pages/budget/versions";
 import BudgetAssumptionsPage from "@/pages/budget/assumptions";
 import BudgetReportsPage from "@/pages/budget/reports";
@@ -66,6 +76,13 @@ function AppRoutes() {
   return (
     <Switch>
       <Route path="/" component={PortfolioPage} />
+      <Route path="/accounting" component={AccountingOverviewPage} />
+      <Route path="/accounting/transactions" component={TransactionsPage} />
+      <Route path="/accounting/transactions/uncategorized" component={UncategorizedTransactionsPage} />
+      <Route path="/accounting/transactions/categorized" component={CategorizedTransactionsPage} />
+      <Route path="/accounting/reconciliation" component={ReconciliationPage} />
+      <Route path="/accounting/reconciliation/accounts" component={ReconciliationAccountsPage} />
+      <Route path="/accounting/reconciliation/match-center" component={MatchCenterPage} />
       <Route path="/analyze/cashflow" component={CashFlowPage} />
       <Route path="/analyze/consolidated" component={ConsolidatedPage} />
       <Route path="/analyze/history" component={HistoryPage} />
@@ -81,6 +98,22 @@ function AppRoutes() {
       <Route path="/entity/:slug/financials" component={EntityFinancialsPage} />
       <Route path="/entity/:slug/reports" component={EntityReportsPage} />
       <Route path="/entity/:slug/vendors" component={EntityVendorsPage} />
+      <Route path="/budget">
+        <BudgetEntityProvider>
+          <Switch>
+            <Route path="/budget" component={BudgetOverviewPage} />
+            <Route path="/budget/builder" component={BudgetBuilderPage} />
+            <Route path="/budget/budget-vs-actual" component={BudgetVsActualPage} />
+            <Route path="/budget/pnl" component={BudgetPnLPage} />
+            <Route path="/budget/cash-flow" component={BudgetCashFlowPage} />
+            <Route path="/budget/balance-sheet" component={BudgetBalanceSheetPage} />
+            <Route path="/budget/versions" component={BudgetVersionsPage} />
+            <Route path="/budget/assumptions" component={BudgetAssumptionsPage} />
+            <Route path="/budget/reports" component={BudgetReportsPage} />
+            <Route path="/budget/settings" component={BudgetSettingsPage} />
+          </Switch>
+        </BudgetEntityProvider>
+      </Route>
       <Route component={NotFound} />
     </Switch>
   );
@@ -88,28 +121,21 @@ function AppRoutes() {
 
 function BudgetRoutes() {
   return (
-    <Switch>
-      <Route path="/budget">
-        <BudgetDashboardPage />
-      </Route>
-      <Route path="/budget/pnl">
-        <BudgetDashboardPage tab="pnl" />
-      </Route>
-      <Route path="/budget/cash-flow">
-        <BudgetDashboardPage tab="cash-flow" />
-      </Route>
-      <Route path="/budget/balance-sheet">
-        <BudgetDashboardPage tab="balance-sheet" />
-      </Route>
-      <Route path="/budget/builder" component={BudgetBuilderPage} />
-      <Route path="/budget/budget-vs-actual" component={BudgetVsActualPage} />
-      <Route path="/budget/departments" component={BudgetDepartmentsPage} />
-      <Route path="/budget/versions" component={BudgetVersionsPage} />
-      <Route path="/budget/assumptions" component={BudgetAssumptionsPage} />
-      <Route path="/budget/reports" component={BudgetReportsPage} />
-      <Route path="/budget/settings" component={BudgetSettingsPage} />
-      <Route component={NotFound} />
-    </Switch>
+    <BudgetEntityProvider>
+      <Switch>
+        <Route path="/budget" component={BudgetOverviewPage} />
+        <Route path="/budget/builder" component={BudgetBuilderPage} />
+        <Route path="/budget/budget-vs-actual" component={BudgetVsActualPage} />
+        <Route path="/budget/pnl" component={BudgetPnLPage} />
+        <Route path="/budget/cash-flow" component={BudgetCashFlowPage} />
+        <Route path="/budget/balance-sheet" component={BudgetBalanceSheetPage} />
+        <Route path="/budget/versions" component={BudgetVersionsPage} />
+        <Route path="/budget/assumptions" component={BudgetAssumptionsPage} />
+        <Route path="/budget/reports" component={BudgetReportsPage} />
+        <Route path="/budget/settings" component={BudgetSettingsPage} />
+        <Route component={NotFound} />
+      </Switch>
+    </BudgetEntityProvider>
   );
 }
 

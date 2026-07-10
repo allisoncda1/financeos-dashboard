@@ -31,3 +31,4 @@ export * from "./transactions";
 export * from "./customers";
 export * from "./vendors";
 export * from "./alerts";
+export * from "./budget";

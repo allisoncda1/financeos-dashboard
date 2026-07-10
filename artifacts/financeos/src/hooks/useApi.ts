@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import { api } from '@/lib/api';
 import { getMockData, getFinancials, getCustomers, getVendors, getBanking } from '@/lib/mock';
 import { ENTITY_SLUGS } from '@/lib/entities';
-import type { DashboardData, FinancialsData, CustomersData, VendorsData, BankingData, EntitySlug, BriefingResponse, Alert, ValidationMatrixData, EntityHistoryData, MetricSnapshotsData } from '@/lib/types';
+import type { DashboardData, FinancialsData, CustomersData, VendorsData, BankingData, EntitySlug, BriefingResponse, Alert, ValidationMatrixData, EntityHistoryData, MetricSnapshotsData, EntityBudget, BvsAData, PortfolioBudget, BudgetPeriodInput } from '@/lib/types';
 import type { ReportTemplateSummary, ReportGenerateRequest, BuiltReport } from '@/lib/reportTypes';
 import type { AIStatus } from '@/lib/aiTypes';
 import type { PipelineStatus } from '@/lib/pipelineTypes';
@@ -343,4 +343,59 @@ export function usePipelineStatus(): FetchState<PipelineStatus> {
  */
 export function useAiStatus(): FetchState<AIStatus> {
   return useTrackedFetch('aiStatus', () => api.aiStatus(), null, []);
+}
+
+export function useEntityBudget(slug: EntitySlug, year?: number, refreshKey?: number): FetchState<EntityBudget> {
+  return useTrackedFetch(
+    `entityBudget:${slug}:${year ?? 'cur'}`,
+    () => api.entityBudget(slug, year),
+    null,
+    [slug, year, refreshKey],
+  );
+}
+
+export function useBudgetVsActual(slug: EntitySlug, year?: number): FetchState<BvsAData> {
+  return useTrackedFetch(
+    `budgetVsActual:${slug}:${year ?? 'cur'}`,
+    () => api.budgetVsActual(slug, year),
+    null,
+    [slug, year],
+  );
+}
+
+export function usePortfolioBudget(year?: number): FetchState<PortfolioBudget> {
+  return useTrackedFetch(
+    `portfolioBudget:${year ?? 'cur'}`,
+    () => api.portfolioBudget(year),
+    null,
+    [year],
+  );
+}
+
+export function useBudgetMutation() {
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [refreshKey, setRefreshKey] = useState(0);
+
+  const save = useCallback(
+    async (slug: EntitySlug, data: BudgetPeriodInput & { period_type?: "month" | "annual" }) => {
+      setSaving(true);
+      setError(null);
+      try {
+        await api.upsertBudgetPeriod(slug, data);
+        setRefreshKey((k) => k + 1);
+      } catch (err) {
+        const message = err instanceof Error ? err.message : "Failed to save budget";
+        setError(message);
+        throw err;
+      } finally {
+        setSaving(false);
+      }
+    },
+    [],
+  );
+
+  const reset = useCallback(() => setError(null), []);
+
+  return { save, saving, error, reset, refreshKey };
 }
