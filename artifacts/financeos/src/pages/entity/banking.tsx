@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { useParams } from "wouter";
 import NotFound from "@/pages/not-found";
-import { ENTITY_SLUGS, type EntitySlug } from "@/lib/entities";
+import { ENTITY_SLUGS, ENTITY_CONFIG, type EntitySlug } from "@/lib/entities";
 import { useEntityBanking } from "@/hooks/useApi";
 import { PageHeader } from "@/components/shared/PageHeader";
 import type { BankAccount } from "@/lib/types";
@@ -31,6 +31,7 @@ export default function BankingPage() {
   if (!slug || !ENTITY_SLUGS.includes(slug as EntitySlug)) return <NotFound />;
   const eSlug = slug as EntitySlug;
   const { data: bank, source } = useEntityBanking(eSlug);
+  const entityColor = ENTITY_CONFIG[eSlug].color;
   if (!bank) {
     return (
       <div className="h-full flex items-center justify-center text-[13px] text-gray-400">

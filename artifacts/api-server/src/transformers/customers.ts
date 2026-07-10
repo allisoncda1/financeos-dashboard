@@ -1,10 +1,6 @@
 import { driveLoadCsv } from "../lib/driveLoader";
 import type { EntitySlug, CustomersData, AgingBucket, Customer } from "../lib/types";
-
-function toNumber(value: unknown): number {
-  const parsed = parseFloat(String(value ?? ""));
-  return isNaN(parsed) ? 0 : parsed;
-}
+import { parseNumeric } from "../services/numerics";
 
 function warnMissingColumns(
   rows: Record<string, string>[],
@@ -46,8 +42,8 @@ async function loadArAgingRows(slug: EntitySlug): Promise<ArAgingRow[]> {
     warnMissingColumns(rows, AR_AGING_EXPECTED_COLUMNS, `ar_aging.csv for ${slug}`);
     return rows.map((row) => ({
       customerName: row["customer_name"] ?? "",
-      balance: toNumber(row["balance"]),
-      daysOverdue: toNumber(row["days_overdue"]),
+      balance: parseNumeric(row["balance"]),
+      daysOverdue: parseNumeric(row["days_overdue"]),
       bucket: row["aging_bucket"] ?? "",
     }));
   } catch (err) {
@@ -126,7 +122,7 @@ async function loadTopCustomers(slug: EntitySlug, agingRows: ArAgingRow[]): Prom
     return rows
       .map((row) => {
         const name = row["customer_name"] ?? "";
-        const balance = toNumber(row["balance"]);
+        const balance = parseNumeric(row["balance"]);
         const maxDaysOverdue = maxOverdueByCustomer.get(name) ?? 0;
         return {
           name,

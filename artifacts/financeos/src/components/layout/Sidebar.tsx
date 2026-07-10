@@ -4,10 +4,12 @@ import Link from "@/lib/next-compat";
 import { usePathname, useRouter } from "@/lib/next-compat";
 import { motion, AnimatePresence } from "framer-motion";
 import type { ComponentType } from "react";
+import { FinanceOSLogo } from "@/components/ui/FinanceOSLogo";
 import {
   LayoutDashboard, Inbox, TrendingUp, FileText,
   ShieldCheck, CheckCircle2, Clock, Settings, ChevronDown,
   Layers, Droplets, X, Check, LogOut,
+  BookOpen, CreditCard, Scale, BarChart3,
 } from "lucide-react";
 import { useEntitySelection } from "@/lib/entity-context";
 import {
@@ -229,6 +231,17 @@ export function Sidebar({ onClose }: { onClose?: () => void }) {
           <NavItem icon={Layers}         label="Consolidated"  href="/analyze/consolidated"    active={pathname.startsWith("/analyze/consolidated")} />
           <NavItem icon={Droplets}       label="Cash Flow"     href="/analyze/cashflow"        active={pathname.startsWith("/analyze/cashflow")} />
           <NavItem icon={Clock}          label="History"       href="/analyze/history"         active={pathname.startsWith("/analyze/history")} />
+        </Section>
+        <Section label="Accounting">
+          <NavItem icon={BookOpen}       label="Overview"      href="/accounting"                           active={pathname === "/accounting"} />
+          <NavItem icon={CreditCard}     label="Transactions"  href="/accounting/transactions"              active={pathname.startsWith("/accounting/transactions")} />
+          <NavItem icon={Scale}          label="Reconciliation" href="/accounting/reconciliation"           active={pathname.startsWith("/accounting/reconciliation")} />
+        </Section>
+        <Section label="Budget">
+          <NavItem icon={BarChart3}      label="Overview"      href="/budget"                  active={pathname === "/budget"} />
+          <NavItem icon={BarChart3}      label="Builder"       href="/budget/builder"          active={pathname.startsWith("/budget/builder")} />
+          <NavItem icon={BarChart3}      label="vs Actual"     href="/budget/budget-vs-actual" active={pathname.startsWith("/budget/budget-vs-actual")} />
+          <NavItem icon={BarChart3}      label="P&L"           href="/budget/pnl"              active={pathname.startsWith("/budget/pnl")} />
         </Section>
         <Section label="Reports">
           <NavItem icon={FileText}       label="Report Center" href="/reports"                 active={pathname.startsWith("/reports")} />

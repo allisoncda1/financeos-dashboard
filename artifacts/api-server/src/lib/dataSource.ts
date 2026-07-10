@@ -3,8 +3,14 @@ import { loadMockData, loadEntityFile, loadValidationSummary, type EntityDataFil
 import { transformFinancials } from "../transformers/financials";
 import { transformHistory } from "../transformers/history";
 import { transformCustomers } from "../transformers/customers";
+import { transformCustomersNeon } from "../transformers/customersNeon";
 import { transformVendors } from "../transformers/vendors";
+import { transformVendorsNeon } from "../transformers/vendorsNeon";
 import { transformBanking } from "../transformers/banking";
+import { transformBankingNeon } from "../transformers/bankingNeon";
+import { transformMetricsNeon } from "../transformers/metricsNeon";
+import { transformPortfolioNeon } from "../transformers/portfolioNeon";
+import { computeNetMarginPct, computeGrossMarginPct, computeCashRunwayMonths } from "../services/kpi";
 import { trackSource, reportSource, type DataSourceKind } from "./sourceTracker";
 import { withHealth } from "./health";
 import {
@@ -145,19 +151,8 @@ export async function getPortfolioSummary(): Promise<{ data: PortfolioSummary; s
         const grossProfitYtd = sumFinancials((f) => f.ytd_summary?.gross_profit);
         const cashOnHand = sumFinancials((f) => f.balance_sheet?.assets?.cash);
 
-        const netMarginPct =
-          Number.isFinite(netIncomeYtd) && Number.isFinite(revenueYtd) && revenueYtd !== 0
-            ? (netIncomeYtd / revenueYtd) * 100
-            : NaN;
-
-        const cashRunwayMonths = (() => {
-          if (!Number.isFinite(cashOnHand) || cashOnHand <= 0) return null;
-          if (!Number.isFinite(opexYtd) || opexYtd <= 0) return null;
-          const monthsElapsed = new Date().getMonth() + 1;
-          const monthlyOpex = opexYtd / monthsElapsed;
-          if (!Number.isFinite(monthlyOpex) || monthlyOpex <= 0) return null;
-          return cashOnHand / monthlyOpex;
-        })();
+        const netMarginPct     = computeNetMarginPct(netIncomeYtd, revenueYtd);
+        const cashRunwayMonths = computeCashRunwayMonths(cashOnHand, opexYtd);
 
         return {
           as_of: portfolioJson.generated_at ?? new Date().toISOString().split("T")[0]!,
@@ -266,10 +261,10 @@ async function enrichMetricsFromFinancials(slug: EntitySlug, raw: RawDriveMetric
     revenue_ytd: revenueYtd,
     cogs_ytd: cogsYtd,
     gross_profit_ytd: grossProfitYtd,
-    gross_margin_pct: raw.gross_margin_pct ?? (revenueYtd > 0 ? Number(((grossProfitYtd / revenueYtd) * 100).toFixed(1)) : 0),
+    gross_margin_pct: raw.gross_margin_pct ?? (revenueYtd > 0 ? Number(computeGrossMarginPct(grossProfitYtd, revenueYtd).toFixed(1)) : 0),
     opex_ytd: opexYtd,
     net_income_ytd: netIncomeYtd,
-    net_margin_pct: raw.net_margin_pct ?? (revenueYtd > 0 ? Number(((netIncomeYtd / revenueYtd) * 100).toFixed(1)) : 0),
+    net_margin_pct: raw.net_margin_pct ?? (revenueYtd > 0 ? Number(computeNetMarginPct(netIncomeYtd, revenueYtd).toFixed(1)) : 0),
     total_assets: raw.total_assets ?? bs?.assets.total ?? 0,
     total_liabilities: raw.total_liabilities ?? bs?.liabilities.total ?? 0,
     total_equity: raw.total_equity ?? bs?.equity.total ?? 0,
@@ -355,7 +350,7 @@ export async function getEntityFinancials(
       try {
         return await transformFinancials(slug, asOf);
       } catch (err) {
-        console.warn(`[dataSource] failed to transform financials for ${slug}, falling back to mock:`, err);
+        console.warn(`[dataSource] Drive financials failed for ${slug}, falling back to mock:`, err);
       }
     }
     reportSource("mock");
@@ -418,7 +413,7 @@ export async function getEntityCustomers(
       try {
         return await transformCustomers(slug, asOf);
       } catch (err) {
-        console.warn(`[dataSource] failed to transform customers for ${slug}, falling back to mock:`, err);
+        console.warn(`[dataSource] Drive customers failed for ${slug}, falling back to mock:`, err);
       }
     }
     reportSource("mock");
@@ -443,7 +438,7 @@ export async function getEntityVendors(
       try {
         return await transformVendors(slug, asOf);
       } catch (err) {
-        console.warn(`[dataSource] failed to transform vendors for ${slug}, falling back to mock:`, err);
+        console.warn(`[dataSource] Drive vendors failed for ${slug}, falling back to mock:`, err);
       }
     }
     reportSource("mock");
@@ -468,7 +463,7 @@ export async function getEntityBanking(
       try {
         return await transformBanking(slug, asOf);
       } catch (err) {
-        console.warn(`[dataSource] failed to transform banking for ${slug}, falling back to mock:`, err);
+        console.warn(`[dataSource] Drive banking failed for ${slug}, falling back to mock:`, err);
       }
     }
     reportSource("mock");

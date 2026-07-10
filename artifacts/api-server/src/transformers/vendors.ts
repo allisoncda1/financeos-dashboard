@@ -1,10 +1,6 @@
 import { driveLoadCsv } from "../lib/driveLoader";
 import type { EntitySlug, VendorsData, AgingBucket, Vendor } from "../lib/types";
-
-function toNumber(value: unknown): number {
-  const parsed = parseFloat(String(value ?? ""));
-  return isNaN(parsed) ? 0 : parsed;
-}
+import { parseNumeric } from "../services/numerics";
 
 function warnMissingColumns(
   rows: Record<string, string>[],
@@ -47,8 +43,8 @@ async function loadApAgingRows(slug: EntitySlug): Promise<ApAgingRow[]> {
     warnMissingColumns(rows, AP_AGING_EXPECTED_COLUMNS, `ap_aging.csv for ${slug}`);
     return rows.map((row) => ({
       vendorName: row["vendor_name"] ?? "",
-      balance: toNumber(row["balance"]),
-      daysOverdue: toNumber(row["days_overdue"]),
+      balance: parseNumeric(row["balance"]),
+      daysOverdue: parseNumeric(row["days_overdue"]),
       bucket: row["aging_bucket"] ?? "",
       dueDate: row["due_date"] ?? "",
     }));
@@ -99,7 +95,7 @@ async function loadTopVendors(slug: EntitySlug, agingRows: ApAgingRow[]): Promis
     return rows
       .map((row) => {
         const name = row["vendor_name"] ?? "";
-        const balance = toNumber(row["balance"]);
+        const balance = parseNumeric(row["balance"]);
         const info = infoByVendor.get(name) ?? { maxDaysOverdue: 0, dueDate: "" };
         return {
           name,

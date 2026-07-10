@@ -55,14 +55,14 @@ export default function CustomersPage() {
                 <p className={`text-[20px] font-bold ${currentDso > 60 ? "text-red-600" : currentDso > 45 ? "text-amber-600" : "text-gray-900"}`}>
                   {cust.open_ar > 0 ? formatDays(currentDso) : "N/A"}
                 </p>
-                <p className={`text-[10px] font-medium ${dsoDelta > 0 ? "text-red-500" : "text-emerald-600"}`}>
-                  {dsoDelta > 0 ? "+" : ""}{dsoDelta}d vs 12M ago
+                <p className={`text-[10px] font-medium ${dsoDelta !== null && dsoDelta > 0 ? "text-red-500" : "text-emerald-600"}`}>
+                  {dsoDelta !== null ? `${dsoDelta > 0 ? "+" : ""}${dsoDelta}d vs 12M ago` : "No trend data"}
                 </p>
               </div>
               <div className="w-24 flex-shrink-0">
                 <SparklineChart
                   data={cust.dso_history}
-                  color={currentDso > 60 ? "#EF4444" : "#10B981"}
+                  color={currentDso !== null && currentDso > 60 ? "#EF4444" : "#10B981"}
                   height={36}
                 />
               </div>
