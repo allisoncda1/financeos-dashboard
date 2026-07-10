@@ -37,6 +37,7 @@ import BudgetPnLPage from "@/pages/budget/pnl";
 import BudgetCashFlowPage from "@/pages/budget/cash-flow";
 import BudgetBalanceSheetPage from "@/pages/budget/balance-sheet";
 import { BudgetEntityProvider } from "@/lib/budget-context";
+import BudgetDepartmentsPage from "@/pages/budget/departments";
 import BudgetVersionsPage from "@/pages/budget/versions";
 import BudgetAssumptionsPage from "@/pages/budget/assumptions";
 import BudgetReportsPage from "@/pages/budget/reports";
@@ -104,6 +105,7 @@ function AppRoutes() {
             <Route path="/budget" component={BudgetOverviewPage} />
             <Route path="/budget/builder" component={BudgetBuilderPage} />
             <Route path="/budget/budget-vs-actual" component={BudgetVsActualPage} />
+            <Route path="/budget/departments" component={BudgetDepartmentsPage} />
             <Route path="/budget/pnl" component={BudgetPnLPage} />
             <Route path="/budget/cash-flow" component={BudgetCashFlowPage} />
             <Route path="/budget/balance-sheet" component={BudgetBalanceSheetPage} />
@@ -126,6 +128,7 @@ function BudgetRoutes() {
         <Route path="/budget" component={BudgetOverviewPage} />
         <Route path="/budget/builder" component={BudgetBuilderPage} />
         <Route path="/budget/budget-vs-actual" component={BudgetVsActualPage} />
+        <Route path="/budget/departments" component={BudgetDepartmentsPage} />
         <Route path="/budget/pnl" component={BudgetPnLPage} />
         <Route path="/budget/cash-flow" component={BudgetCashFlowPage} />
         <Route path="/budget/balance-sheet" component={BudgetBalanceSheetPage} />

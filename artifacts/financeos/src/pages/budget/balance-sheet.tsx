@@ -1,21 +1,24 @@
+import { BudgetLayout } from "@/components/budget/BudgetLayout";
 import { Scale } from "lucide-react";
 
 export default function BudgetBalanceSheetPage() {
   return (
-    <div className="p-6 space-y-6">
-      <div className="flex items-center gap-3">
-        <Scale className="w-5 h-5 text-emerald-400" />
-        <h1 className="text-xl font-semibold text-white">Projected Balance Sheet</h1>
-        <span className="text-xs bg-white/10 text-white/50 px-2 py-0.5 rounded">V2</span>
-      </div>
-      <div className="rounded-xl border border-white/10 bg-white/5 p-10 text-center space-y-3">
-        <Scale className="w-10 h-10 text-white/20 mx-auto" />
-        <p className="text-white/60 font-medium">Balance sheet projections coming in V2</p>
-        <p className="text-white/30 text-sm max-w-md mx-auto">
-          Projected balance sheets require equity schedules, debt amortization, and capex targets —
-          beyond the scope of Budget V1. Actuals are available in the Entity pages.
+    <BudgetLayout title="Balance Sheet Budget" subtitle="Projected financial position" showTabs>
+      <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-10 text-center">
+        <div className="mx-auto w-12 h-12 rounded-full bg-emerald-50 flex items-center justify-center mb-4">
+          <Scale className="w-6 h-6 text-emerald-500" />
+        </div>
+        <h3 className="text-base font-semibold text-gray-900 mb-1">Balance sheet budgeting is coming soon</h3>
+        <p className="text-sm text-gray-500 max-w-md mx-auto">
+          Live budget targets currently cover the income statement (revenue, COGS, Opex, net income), visible in
+          the <span className="font-medium text-gray-700">P&amp;L</span> and{" "}
+          <span className="font-medium text-gray-700">Budget vs Actual</span> views. Balance sheet projections
+          will arrive in a future release.
         </p>
+        <span className="inline-block mt-4 text-[10px] font-semibold uppercase tracking-wide text-gray-400 bg-gray-100 rounded-full px-3 py-1">
+          Preview · V2
+        </span>
       </div>
-    </div>
+    </BudgetLayout>
   );
 }

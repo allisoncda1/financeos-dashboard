@@ -1,0 +1,60 @@
+Approved.
+
+Proceed with the surgical Budget UI recovery now.
+
+Use commit 6896676 as the visual source of truth for the Budget module, while preserving the live Budget V1.1 data integration.
+
+Requirements:
+
+- Keep Accounting intact.
+- Keep Forecast intact.
+- Keep Commissions intact.
+- Keep Reporting intact.
+- Keep the existing AppShell and Sidebar unless a very small route-level change is required.
+- Do not touch the database.
+- Do not run SQL.
+- Do not reseed budgets.
+- Do not modify DATABASE_URL or CORE_DATABASE_URL.
+
+For the Budget module:
+
+1. Restore the original polished Budget design and component structure.
+2. Reuse the existing BudgetLayout, BudgetSidebar, cards, tables, charts, spacing, typography, and light-theme styling.
+3. Keep the live Budget V1.1 hooks and API calls.
+4. Remove the simplified dark-theme classes that caused white-on-white rendering.
+5. Restore valid pre-merge Budget pages such as dashboard.tsx and departments.tsx where appropriate.
+6. Preserve all live Budget routes and functionality:
+   - /budget
+   - /budget/builder
+   - /budget/budget-vs-actual
+   - /budget/departments
+   - /budget/pnl
+   - /budget/cash-flow
+   - /budget/balance-sheet
+   - /budget/versions
+   - /budget/assumptions
+   - /budget/reports
+   - /budget/settings
+7. Use live Neon Budget data wherever it already exists.
+8. Keep V2-only pages clearly labeled as placeholders, but styled consistently with the original FinanceOS design.
+9. Do not reintroduce mock figures where live Budget data is available.
+
+After implementation:
+
+- restart the app
+- visually verify /home, /budget, /budget/builder, /budget/budget-vs-actual, /budget/pnl, /accounting, and Reporting
+- confirm no white-on-white text
+- confirm the dark-green Budget sidebar is restored
+- confirm all four companies and logos are present
+- confirm Builder saves and reloads values
+- confirm no other module changed
+- run typecheck
+
+Do not commit, push, or deploy yet.
+
+First show me the recovered UI and provide:
+- files changed
+- files restored from 6896676
+- files manually merged
+- screenshots of the recovered Budget pages
+- confirmation that no database operations occurred

@@ -8,6 +8,8 @@ import { CompanySelectItems } from "@/components/shared/CompanySelectItems";
 import { MoreHorizontal, Plus } from "lucide-react";
 import { useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
+import { useBudgetEntity } from "@/lib/budget-context";
+import type { EntitySlug } from "@/lib/entities";
 
 type BudgetLayoutProps = {
   title: string;
@@ -18,6 +20,7 @@ type BudgetLayoutProps = {
 
 export function BudgetLayout({ title, subtitle, showTabs = false, children }: BudgetLayoutProps) {
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const { activeSlug, setActiveSlug } = useBudgetEntity();
 
   return (
     <div className="flex h-screen w-full bg-slate-50 overflow-hidden font-sans">
@@ -59,12 +62,12 @@ export function BudgetLayout({ title, subtitle, showTabs = false, children }: Bu
             </div>
             
             <div className="flex items-center gap-2">
-              <Select defaultValue="all">
-                <SelectTrigger className="w-[140px] h-8 text-xs font-medium bg-white border-gray-200 shadow-sm focus:ring-emerald-500 focus:border-emerald-500">
-                  <SelectValue placeholder="All Companies" />
+              <Select value={activeSlug} onValueChange={(v) => setActiveSlug(v as EntitySlug)}>
+                <SelectTrigger className="w-[160px] h-8 text-xs font-medium bg-white border-gray-200 shadow-sm focus:ring-emerald-500 focus:border-emerald-500" data-testid="select-budget-entity">
+                  <SelectValue placeholder="Select company" />
                 </SelectTrigger>
                 <SelectContent>
-                  <CompanySelectItems />
+                  <CompanySelectItems includeAll={false} />
                 </SelectContent>
               </Select>
 
