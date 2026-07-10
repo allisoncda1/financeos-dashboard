@@ -20,7 +20,7 @@ export async function getMonthlyPeriods(entityId: string, year: number) {
     .where(
       and(
         eq(financialPeriods.entityId, entityId),
-        eq(financialPeriods.periodType, "month"),
+        eq(financialPeriods.periodType, "monthly"),
         gte(financialPeriods.periodStart, start),
         lte(financialPeriods.periodStart, end),
       ),

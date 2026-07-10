@@ -242,12 +242,12 @@ export function useAiStatus(): FetchState<AIStatus> {
   return useTrackedFetch('aiStatus', () => api.aiStatus(), null, []);
 }
 
-export function useEntityBudget(slug: EntitySlug, year?: number): FetchState<EntityBudget> {
+export function useEntityBudget(slug: EntitySlug, year?: number, refreshKey?: number): FetchState<EntityBudget> {
   return useTrackedFetch(
     `entityBudget:${slug}:${year ?? 'cur'}`,
     () => api.entityBudget(slug, year),
     null,
-    [slug, year],
+    [slug, year, refreshKey],
   );
 }
 
@@ -272,6 +272,7 @@ export function usePortfolioBudget(year?: number): FetchState<PortfolioBudget> {
 export function useBudgetMutation() {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [refreshKey, setRefreshKey] = useState(0);
 
   const save = useCallback(
     async (slug: EntitySlug, data: BudgetPeriodInput & { period_type?: "month" | "annual" }) => {
@@ -279,6 +280,7 @@ export function useBudgetMutation() {
       setError(null);
       try {
         await api.upsertBudgetPeriod(slug, data);
+        setRefreshKey((k) => k + 1);
       } catch (err) {
         const message = err instanceof Error ? err.message : "Failed to save budget";
         setError(message);
@@ -292,5 +294,5 @@ export function useBudgetMutation() {
 
   const reset = useCallback(() => setError(null), []);
 
-  return { save, saving, error, reset };
+  return { save, saving, error, reset, refreshKey };
 }

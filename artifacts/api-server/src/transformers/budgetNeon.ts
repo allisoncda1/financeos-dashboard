@@ -145,17 +145,15 @@ export async function transformBudgetVsActual(slug: EntitySlug, year: number): P
   // YTD: sum months up through current month
   const ytdMonths = months.filter((m) => m.period_start <= ytdCutoff);
 
-  const ytdBudget: BudgetTargets = {
-    revenue:    ytdMonths.reduce((s, m) => s + (m.budget.revenue    ?? 0), 0) || null,
-    cogs:       ytdMonths.reduce((s, m) => s + (m.budget.cogs       ?? 0), 0) || null,
-    opex:       ytdMonths.reduce((s, m) => s + (m.budget.opex       ?? 0), 0) || null,
-    net_income: ytdMonths.reduce((s, m) => s + (m.budget.net_income ?? 0), 0) || null,
-  };
-  // Only set null if NO month had a budget
   const anyBudget = ytdMonths.some((m) => m.has_budget);
-  if (!anyBudget) {
-    ytdBudget.revenue = ytdBudget.cogs = ytdBudget.opex = ytdBudget.net_income = null;
-  }
+  const ytdBudget: BudgetTargets = anyBudget
+    ? {
+        revenue:    ytdMonths.reduce((s, m) => s + (m.budget.revenue    ?? 0), 0),
+        cogs:       ytdMonths.reduce((s, m) => s + (m.budget.cogs       ?? 0), 0),
+        opex:       ytdMonths.reduce((s, m) => s + (m.budget.opex       ?? 0), 0),
+        net_income: ytdMonths.reduce((s, m) => s + (m.budget.net_income ?? 0), 0),
+      }
+    : { revenue: null, cogs: null, opex: null, net_income: null };
 
   const ytdActual: BudgetActuals = {
     revenue:    ytdMonths.reduce((s, m) => s + (m.actual?.revenue    ?? 0), 0),

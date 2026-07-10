@@ -14,10 +14,8 @@ export default function BudgetReportsPage() {
         <p className="text-white/30 text-sm max-w-sm mx-auto">
           Use the Report Center to generate P&amp;L and portfolio reports. Budget-specific report templates are coming in V2.
         </p>
-        <Link href="/reports">
-          <a className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-sm font-medium transition-colors">
-            Go to Report Center
-          </a>
+        <Link href="/reports" className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-sm font-medium transition-colors">
+          Go to Report Center
         </Link>
       </div>
     </div>

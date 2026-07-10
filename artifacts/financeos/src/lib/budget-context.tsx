@@ -1,4 +1,4 @@
-import { createContext, useContext, useState, useEffect, type ReactNode } from "react";
+import { createContext, useContext, useState, type ReactNode } from "react";
 import { ENTITY_SLUGS, type EntitySlug } from "@/lib/entities";
 
 const LS_KEY = "financeos_budget_entity";
@@ -14,16 +14,13 @@ const BudgetEntityContext = createContext<Ctx>({
 });
 
 export function BudgetEntityProvider({ children }: { children: ReactNode }) {
-  const [activeSlug, setActiveSlugState] = useState<EntitySlug>(ENTITY_SLUGS[0]);
-
-  useEffect(() => {
+  const [activeSlug, setActiveSlugState] = useState<EntitySlug>(() => {
     try {
       const stored = localStorage.getItem(LS_KEY) as EntitySlug | null;
-      if (stored && (ENTITY_SLUGS as readonly string[]).includes(stored)) {
-        setActiveSlugState(stored);
-      }
+      if (stored && (ENTITY_SLUGS as readonly string[]).includes(stored)) return stored;
     } catch {}
-  }, []);
+    return ENTITY_SLUGS[0];
+  });
 
   const setActiveSlug = (slug: EntitySlug) => {
     setActiveSlugState(slug);

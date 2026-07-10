@@ -24,8 +24,8 @@ const LINE_ITEMS = [
 
 export default function BudgetBuilderPage() {
   const { activeSlug, setActiveSlug } = useBudgetEntity();
-  const { data, source } = useEntityBudget(activeSlug);
-  const { save, saving, error } = useBudgetMutation();
+  const { save, saving, error, refreshKey } = useBudgetMutation();
+  const { data, source } = useEntityBudget(activeSlug, undefined, refreshKey);
 
   const [edits, setEdits] = useState<EditMap>(new Map());
   const [savedMonths, setSavedMonths] = useState<Set<number>>(new Set());
@@ -184,7 +184,7 @@ export default function BudgetBuilderPage() {
       </div>
 
       <p className="text-xs text-white/30">
-        Each Save button writes that month independently · ON CONFLICT DO NOTHING — existing budgets are updated on save
+        Each Save button writes that month independently · existing budgets are updated (upsert)
       </p>
     </div>
   );

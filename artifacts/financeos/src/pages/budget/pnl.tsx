@@ -126,7 +126,7 @@ export default function BudgetPnLPage() {
                     <td className="px-3 py-2 text-right text-white/80">{fmt(r.grossProfit)}</td>
                     <td className="px-3 py-2 text-right text-white/60">{fmtPct(r.grossMargin)}</td>
                     <td className="px-3 py-2 text-right text-white/60">{fmt(r.opex_target)}</td>
-                    <td className={`px-3 py-2 text-right font-medium ${r.net_income_target !== null && r.net_income_target >= 0 ? "text-emerald-400" : "text-red-400"}`}>
+                    <td className={`px-3 py-2 text-right font-medium ${r.net_income_target === null ? "text-white/40" : r.net_income_target >= 0 ? "text-emerald-400" : "text-red-400"}`}>
                       {fmt(r.net_income_target)}
                     </td>
                     <td className="px-3 py-2 text-right text-white/60">{fmtPct(r.netMargin)}</td>

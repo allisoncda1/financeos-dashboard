@@ -13,7 +13,6 @@ export default function BudgetAssumptionsPage() {
         <p className="text-white/60 font-medium">No assumptions recorded</p>
         <p className="text-white/30 text-sm max-w-md mx-auto">
           A structured assumptions log (growth rates, headcount, unit economics) is coming in V2.
-          Document your budget assumptions in the Builder's notes field for now.
         </p>
       </div>
     </div>
