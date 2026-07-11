@@ -1,0 +1,340 @@
+# FinanceOS Core V2 — Phase 3: Historical Backfill & Incremental Sync
+
+Phase 2 is complete.
+
+FinanceOS Core can now:
+
+- load configuration from environment variables
+- authenticate with QuickBooks
+- connect to PostgreSQL
+- normalize data
+- write into the FinanceOS Core database
+
+We are now starting Phase 3.
+
+IMPORTANT
+
+Do NOT modify the dashboard.
+
+Do NOT modify the frontend.
+
+Do NOT migrate any existing API.
+
+Do NOT remove Google Drive.
+
+Do NOT change authentication.
+
+Everything currently working must continue working exactly as before.
+
+The only objective of this phase is to populate the FinanceOS Core database with complete historical QuickBooks data.
+
+---
+
+# Objective
+
+Build the complete historical financial database.
+
+At the end of this phase, PostgreSQL should contain the complete accounting history for every company.
+
+The dashboard will still read from Google Drive.
+
+The database is being prepared for Phase 4.
+
+---
+
+# Companies
+
+Backfill every entity:
+
+- CarDealer.ai
+- T3 Marketing
+- TopMrktr
+- Smile More
+
+---
+
+# Historical Scope
+
+Import every available record beginning January 1st, 2025.
+
+Include all available history until today.
+
+If older history exists, import it as well.
+
+Never intentionally truncate historical data.
+
+---
+
+# Object Types
+
+Backfill:
+
+- Accounts
+- Customers
+- Vendors
+- Invoices
+- Bills
+- Payments
+- Bill Payments
+- Deposits
+- Purchases
+- Journal Entries
+- Transfers
+- Credit Card Charges
+
+Also fetch:
+
+- Profit & Loss Reports
+- Balance Sheet Reports
+- Accounts Receivable Aging
+- Accounts Payable Aging
+
+Store everything.
+
+---
+
+# Database Rules
+
+Every QBO object must first be written into:
+
+qbo_raw
+
+Then normalized into:
+
+- accounts
+- customers
+- vendors
+- invoices
+- bills
+- transactions
+
+No duplicate records.
+
+UPSERT only.
+
+Soft delete only.
+
+Never delete accounting history.
+
+---
+
+# Historical Financial Periods
+
+Populate financial_periods automatically.
+
+Generate:
+
+Monthly
+
+Quarterly
+
+YTD
+
+Annual
+
+for every entity.
+
+Every period should include:
+
+- revenue
+- COGS
+- gross profit
+- operating expenses
+- net income
+- gross margin
+- net margin
+- cash
+- assets
+- liabilities
+- equity
+- AR
+- AP
+
+These become the historical source of truth.
+
+---
+
+# Validation
+
+After each entity completes:
+
+Run the FinanceOS Validation Engine.
+
+Store results in:
+
+validation_results
+
+Record:
+
+- total rules
+- passed
+- failed
+- execution time
+
+If validation fails:
+
+DO NOT stop the backfill.
+
+Mark the run as partial.
+
+Continue with remaining entities.
+
+---
+
+# Sync Tracking
+
+Populate:
+
+sync_runs
+
+sync_state
+
+for every object type.
+
+Record:
+
+- fetched
+- inserted
+- updated
+- skipped
+- duration
+- rate limit hits
+
+---
+
+# Incremental Sync
+
+Once the historical backfill succeeds:
+
+Implement incremental synchronization.
+
+Use:
+
+LastUpdatedTime
+
+for every supported object.
+
+The sync engine should only request modified records.
+
+Never re-download the full history unnecessarily.
+
+---
+
+# Rate Limits
+
+Respect all QuickBooks API limits.
+
+One company at a time.
+
+Automatic retry on:
+
+429
+
+500
+
+502
+
+503
+
+504
+
+Use exponential backoff.
+
+---
+
+# Logging
+
+Log:
+
+entity
+
+object
+
+records
+
+duration
+
+status
+
+Never log:
+
+tokens
+
+payloads
+
+credentials
+
+customer financial data
+
+---
+
+# Safety
+
+The process must be:
+
+Idempotent
+
+Resumable
+
+Auditable
+
+Running the backfill twice must never duplicate records.
+
+Interrupted runs must resume safely.
+
+---
+
+# Deliverables
+
+At completion:
+
+✅ Every QuickBooks company imported
+
+✅ Historical database populated
+
+✅ financial_periods populated
+
+✅ qbo_raw populated
+
+✅ sync_runs populated
+
+✅ sync_state populated
+
+✅ validation_results populated
+
+✅ Incremental sync operational
+
+✅ Dashboard unchanged
+
+✅ Existing pipeline unchanged
+
+✅ Existing Google Drive exports unchanged
+
+---
+
+# DO NOT START PHASE 4
+
+Do NOT:
+
+- build entity_snapshots
+- build portfolio_snapshots
+- migrate dashboard
+- replace Google Drive
+- modify frontend
+- modify API routes
+
+Those belong to Phase 4.
+
+---
+
+Before writing code:
+
+Review the existing FinanceOS Core implementation.
+
+Reuse existing extraction, validation and normalization logic whenever possible.
+
+Avoid duplicate business logic.
+
+Python remains the single financial engine for FinanceOS.
+
+The goal is to build the permanent historical financial database that will power every future FinanceOS module (Reporting, Budget, Forecast, Accounting, Banking, AI, and Analytics).

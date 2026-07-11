@@ -1,91 +1,69 @@
-/**
- * Seeds the entities table with the 4 FinanceOS companies.
- * QBO realm IDs are read from environment variables to keep credentials
- * out of source control. Set these before running:
- *
- *   QBO_REALM_CARDEALER_AI
- *   QBO_REALM_T3_MARKETING
- *   QBO_REALM_TOPMRKTR
- *   QBO_REALM_SMILE_MORE
- *
- * Run: pnpm --filter @workspace/db run seed
- */
-
-import { drizzle } from "drizzle-orm/node-postgres";
-import pg from "pg";
-import { entities } from "./schema/entities";
 import { sql } from "drizzle-orm";
+import { db, pool, entitiesTable } from "./index";
 
-if (!process.env.DATABASE_URL) {
-  throw new Error("DATABASE_URL must be set before running seed.");
+const ENTITIES = [
+  {
+    slug: "cardealer_ai",
+    displayName: "CarDealer.ai",
+    accountingBasis: "Cash",
+    currency: "USD",
+    timeZone: "America/Panama",
+    qboRealmId: process.env["QBO_REALM_CARDEALER_AI"] ?? "PLACEHOLDER_QBO_REALM_CARDEALER_AI",
+  },
+  {
+    slug: "t3_marketing",
+    displayName: "T3 Marketing",
+    accountingBasis: "Cash",
+    currency: "USD",
+    timeZone: "America/Panama",
+    qboRealmId: process.env["QBO_REALM_T3_MARKETING"] ?? "PLACEHOLDER_QBO_REALM_T3_MARKETING",
+  },
+  {
+    slug: "topmrktr",
+    displayName: "TopMrktr",
+    accountingBasis: "Cash",
+    currency: "USD",
+    timeZone: "America/Panama",
+    qboRealmId: process.env["QBO_REALM_TOPMRKTR"] ?? "PLACEHOLDER_QBO_REALM_TOPMRKTR",
+  },
+  {
+    slug: "smile_more",
+    displayName: "Smile More",
+    accountingBasis: "Cash",
+    currency: "USD",
+    timeZone: "America/Panama",
+    qboRealmId: process.env["QBO_REALM_SMILE_MORE"] ?? "PLACEHOLDER_QBO_REALM_SMILE_MORE",
+  },
+];
+
+async function seed() {
+  for (const entity of ENTITIES) {
+    await db
+      .insert(entitiesTable)
+      .values(entity)
+      .onConflictDoUpdate({
+        target: entitiesTable.slug,
+        set: {
+          displayName: entity.displayName,
+          accountingBasis: entity.accountingBasis,
+          currency: entity.currency,
+          timeZone: entity.timeZone,
+          qboRealmId: entity.qboRealmId,
+          updatedAt: sql`now()`,
+        },
+      });
+    console.log(`Seeded entity: ${entity.slug}`);
+  }
 }
 
-const ENTITY_SEEDS = [
-  {
-    slug:             "CarDealer_ai",
-    displayName:      "CarDealer.ai",
-    shortName:        "CD.ai",
-    qboRealmId:       process.env.QBO_REALM_CARDEALER_AI ?? "PLACEHOLDER_CARDEALER_AI",
-    accountingBasis:  "Accrual",
-    currency:         "USD",
-    timeZone:         "America/Panama",
-    status:           "active",
-  },
-  {
-    slug:             "T3_Marketing",
-    displayName:      "T3 Marketing",
-    shortName:        "T3",
-    qboRealmId:       process.env.QBO_REALM_T3_MARKETING ?? "PLACEHOLDER_T3_MARKETING",
-    accountingBasis:  "Cash",
-    currency:         "USD",
-    timeZone:         "America/Panama",
-    status:           "active",
-  },
-  {
-    slug:             "TopMrktr",
-    displayName:      "TopMrktr",
-    shortName:        "TM",
-    qboRealmId:       process.env.QBO_REALM_TOPMRKTR ?? "PLACEHOLDER_TOPMRKTR",
-    accountingBasis:  "Accrual",
-    currency:         "USD",
-    timeZone:         "America/Panama",
-    status:           "active",
-  },
-  {
-    slug:             "Smile_More",
-    displayName:      "Smile More",
-    shortName:        "SM",
-    qboRealmId:       process.env.QBO_REALM_SMILE_MORE ?? "PLACEHOLDER_SMILE_MORE",
-    accountingBasis:  "Cash",
-    currency:         "USD",
-    timeZone:         "America/Panama",
-    status:           "active",
-  },
-] as const;
-
-const pool = new pg.Pool({ connectionString: process.env.DATABASE_URL });
-const db = drizzle(pool);
-
-console.log("Seeding entities…");
-
-for (const entity of ENTITY_SEEDS) {
-  await db
-    .insert(entities)
-    .values(entity)
-    .onConflictDoUpdate({
-      target: entities.slug,
-      set: {
-        displayName:     sql`excluded.display_name`,
-        shortName:       sql`excluded.short_name`,
-        accountingBasis: sql`excluded.accounting_basis`,
-        currency:        sql`excluded.currency`,
-        timeZone:        sql`excluded.time_zone`,
-        status:          sql`excluded.status`,
-        updatedAt:       sql`now()`,
-      },
-    });
-  console.log(`  ✓ ${entity.displayName}`);
-}
-
-console.log("Seed complete. Realm IDs can be updated once available in Replit Secrets.");
-await pool.end();
+seed()
+  .then(() => {
+    console.log(`Done. Seeded ${ENTITIES.length} entities.`);
+  })
+  .catch((err) => {
+    console.error("Seed failed:", err);
+    process.exitCode = 1;
+  })
+  .finally(async () => {
+    await pool.end();
+  });

@@ -1,21 +1,22 @@
-import { pgTable, uuid, text, timestamp, boolean, numeric, index, unique } from "drizzle-orm/pg-core";
-import { entities } from "./entities";
+import { pgTable, uuid, text, numeric, boolean, timestamp } from "drizzle-orm/pg-core";
 
-export const customers = pgTable("customers", {
-  id:           uuid("id").primaryKey().defaultRandom(),
-  entityId:     uuid("entity_id").notNull().references(() => entities.id),
-  qboId:        text("qbo_id").notNull(),
-  displayName:  text("display_name").notNull(),
-  email:        text("email"),
-  phone:        text("phone"),
-  balance:      numeric("balance", { precision: 18, scale: 2 }).default("0"),
-  currency:     text("currency").default("USD"),
-  isActive:     boolean("is_active").default(true),
-  syncedAt:     timestamp("synced_at", { withTimezone: true }).notNull().defaultNow(),
-}, (t) => [
-  unique("uq_customers_entity_qbo").on(t.entityId, t.qboId),
-  index("idx_customers_entity").on(t.entityId),
-]);
+/**
+ * Customers synced from QBO into FinanceOS Core. Read-only from the Dashboard.
+ * `balance` is Core's authoritative outstanding AR per customer and (summed
+ * across nonzero-balance rows) reconciles to the `open_ar` KPI. Numeric columns
+ * surface as strings via Drizzle — parse before use.
+ */
+export const customersTable = pgTable("customers", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  entityId: uuid("entity_id").notNull(),
+  qboId: text("qbo_id"),
+  displayName: text("display_name"),
+  email: text("email"),
+  phone: text("phone"),
+  balance: numeric("balance"),
+  currency: text("currency"),
+  isActive: boolean("is_active"),
+  syncedAt: timestamp("synced_at", { withTimezone: true }),
+});
 
-export type Customer = typeof customers.$inferSelect;
-export type InsertCustomer = typeof customers.$inferInsert;
+export type CustomerRow = typeof customersTable.$inferSelect;

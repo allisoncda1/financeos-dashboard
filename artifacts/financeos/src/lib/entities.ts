@@ -29,6 +29,8 @@ export interface EntityDefinition {
 
   /** Path under public/logos/ (null = initials fallback) */
   logo: string | null;
+  /** Optional transparent variant for dark surfaces (e.g. sidebar) */
+  logoDark?: string | null;
   /** Two-letter fallback shown when logo is missing */
   fallbackInitials: string;
 
@@ -84,6 +86,8 @@ export type LogoSource = {
   shortName: string;
   color: string;
   logoPath: string | null;
+  /** Optional transparent variant for dark surfaces (e.g. sidebar) */
+  logoPathDark?: string | null;
   initials: string;
 };
 
@@ -101,7 +105,7 @@ export const PORTFOLIO_META: LogoSource & { slug: "portfolio"; type: "portfolio"
   name: "Portfolio",
   shortName: "All",
   color: "#10B981",
-  logoPath: null,
+  logoPath: "/logos/portfolio.png",
   initials: "PF",
   type: "portfolio",
 };
@@ -128,7 +132,7 @@ const REGISTRY: EntityDefinition[] = [
     fallbackInitials: "CD",
     primaryColor: "#00d4b8",
     accentColor: "#00d4b8",
-    accountingBasis: "Accrual",
+    accountingBasis: "Cash",
     companyType: "Internal",
     includedInPortfolio: true,
     includedInAgencyView: false,
@@ -170,7 +174,7 @@ const REGISTRY: EntityDefinition[] = [
     fallbackInitials: "TM",
     primaryColor: "#8b5cf6",
     accentColor: "#8b5cf6",
-    accountingBasis: "Accrual",
+    accountingBasis: "Cash",
     companyType: "Agency",
     includedInPortfolio: true,
     includedInAgencyView: true,
@@ -188,10 +192,11 @@ const REGISTRY: EntityDefinition[] = [
     displayName: "Smile More",
     shortName: "SM",
     logo: "/logos/smile-more.png",
+    logoDark: "/logos/smile-more-dark.png",
     fallbackInitials: "SM",
     primaryColor: "#3b82f6",
     accentColor: "#3b82f6",
-    accountingBasis: "Accrual",
+    accountingBasis: "Cash",
     companyType: "Agency",
     includedInPortfolio: true,
     includedInAgencyView: true,
@@ -254,6 +259,7 @@ export function resolveLogoSource(slug: EntitySlug | "portfolio" | "agency"): Lo
     shortName: e.shortName,
     color: e.primaryColor,
     logoPath: e.logo,
+    logoPathDark: e.logoDark ?? null,
     initials: e.fallbackInitials,
   };
 }
@@ -270,6 +276,7 @@ export const ENTITY_META: Record<EntitySlug, EntityMeta> = Object.fromEntries(
       shortName: e.shortName,
       color: e.primaryColor,
       logoPath: e.logo,
+      logoPathDark: e.logoDark ?? null,
       initials: e.fallbackInitials,
       basis: e.accountingBasis,
       type: "entity" as const,
@@ -281,8 +288,8 @@ export const ENTITY_META: Record<EntitySlug, EntityMeta> = Object.fromEntries(
 export const ENTITY_META_LIST: EntityMeta[] = ENTITY_SLUGS.map(s => ENTITY_META[s]);
 
 // ─── Legacy compatibility shim ────────────────────────────────────────────────
-// Components that still import ENTITY_CONFIG from lib/types work fine,
-// but new code should call getEntity(slug) instead.
+// ENTITY_CONFIG is derived from the registry above — the only place entity
+// metadata is defined. New code should call getEntity(slug) instead.
 
 /** @deprecated Use getEntity(slug) instead */
 export const ENTITY_CONFIG: Record<EntitySlug, { name: string; basis: "Cash" | "Accrual"; color: string }> =

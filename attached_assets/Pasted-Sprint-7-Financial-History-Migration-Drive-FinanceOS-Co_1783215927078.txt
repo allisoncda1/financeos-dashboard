@@ -1,0 +1,190 @@
+Sprint 7 — Financial History Migration (Drive → FinanceOS Core)
+
+Sprint 6 is complete.
+
+Current architecture:
+
+QuickBooks
+        ↓
+FinanceOS Core (Python)
+        ↓
+Neon PostgreSQL
+        ↓
+financial_periods
+entity_snapshots
+portfolio_snapshots
+validation_results
+sync_runs
+        ↓
+Dashboard API
+        ↓
+React Frontend
+
+====================================================
+OBJECTIVE
+====================================================
+
+Migrate all financial history endpoints from Google Drive to FinanceOS Core.
+
+The Dashboard must become a pure presentation layer.
+
+FinanceOS Core is now the ONLY source of truth.
+
+====================================================
+SCOPE
+====================================================
+
+Migrate ONLY:
+
+- getEntityFinancials()
+- getEntityHistory()
+
+and every endpoint depending on them.
+
+Use ONLY:
+
+financial_periods
+
+through CORE_DATABASE_URL.
+
+====================================================
+DO NOT TOUCH
+====================================================
+
+- Customers
+- Vendors
+- Banking
+- Anomalies
+- AI
+- Rules
+- Reports generation
+- React
+- Frontend
+- Google Drive fallback
+
+====================================================
+REQUIREMENTS
+====================================================
+
+Read exclusively from financial_periods.
+
+Never rebuild historical calculations inside the Dashboard.
+
+Never recompute:
+
+- Revenue
+- Expenses
+- Net Income
+- Gross Margin
+- Cash
+- Assets
+- Liabilities
+- Equity
+
+Everything must come directly from FinanceOS Core.
+
+====================================================
+PERIODS
+====================================================
+
+Support:
+
+Monthly
+
+Quarterly
+
+Annual
+
+YTD
+
+Current
+
+Historical
+
+====================================================
+VALIDATION
+====================================================
+
+For every entity:
+
+- CarDealer.ai
+- TopMrktr
+- Smile More
+- T3 Marketing
+
+Compare:
+
+Current Drive response
+
+↓
+
+Neon response
+
+Verify:
+
+- identical API shape
+- identical TypeScript interfaces
+- identical null handling
+- same date ordering
+- same period labels
+- same decimal precision
+
+Values may legitimately differ if Core contains corrected accounting data.
+
+====================================================
+PERFORMANCE
+====================================================
+
+Avoid N+1 queries.
+
+Minimize SQL queries.
+
+Prefer one query per endpoint.
+
+Do not parse CSV.
+
+Do not rebuild history.
+
+====================================================
+DELIVERABLES
+====================================================
+
+Provide:
+
+1. Files changed
+
+2. Endpoints migrated
+
+3. Mapping:
+Dashboard field
+↓
+
+financial_periods column
+
+4. Drive vs Neon comparison
+
+5. Performance comparison
+
+6. Remaining Google Drive dependencies
+
+7. Any missing data in financial_periods
+
+8. Any blockers before Sprint 8
+
+====================================================
+STOP
+====================================================
+
+Stop after the Financial History migration.
+
+Do NOT migrate:
+
+- customers
+- vendors
+- banking
+- anomalies
+- reports
+- AI
+- rules
+
+Wait for approval before Sprint 8.

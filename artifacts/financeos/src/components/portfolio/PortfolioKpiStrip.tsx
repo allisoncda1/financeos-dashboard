@@ -6,14 +6,9 @@ import { KpiCard, type KpiCardData } from "@/components/dashboard/KpiCard";
 import { StaggerContainer, StaggerItem, MotionCard } from "@/components/motion";
 import type { DashboardData } from "@/lib/types";
 import { ENTITY_SLUGS } from "@/lib/entities";
-import { computeHealthScore } from "@/lib/briefing";
+import { formatCurrency } from "@/lib/format";
 
-function fmt(n: number | null | undefined): string {
-  if (typeof n !== "number" || !Number.isFinite(n)) return "N/A";
-  if (n >= 1_000_000) return `$${(n / 1_000_000).toFixed(2)}M`;
-  if (n >= 1_000) return `$${(n / 1_000).toFixed(1)}K`;
-  return `$${n}`;
-}
+const fmt = (n: number | null | undefined) => formatCurrency(n);
 
 export function PortfolioKpiStrip({ data }: { data: DashboardData }) {
   const p = data.portfolio;
@@ -23,7 +18,8 @@ export function PortfolioKpiStrip({ data }: { data: DashboardData }) {
   const monthlyBurn = opexYtd / 6;
   const runway = monthlyBurn > 0 ? cashOnHand / monthlyBurn : 0;
 
-  const scores = ENTITY_SLUGS.map((s) => computeHealthScore(data.metrics[s]));
+  // Portfolio average of the single-source, server-computed entity scores.
+  const scores = ENTITY_SLUGS.map((s) => data.metrics[s].health_score);
   const avgHealth = Math.round(scores.reduce((a, b) => a + b, 0) / scores.length);
 
   const cards: KpiCardData[] = [

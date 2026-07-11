@@ -1,4 +1,4 @@
-import app from "./app";
+import app, { initSession } from "./app";
 import { logger } from "./lib/logger";
 import { warmEntityCache } from "./services/entityCache";
 
@@ -16,12 +16,22 @@ if (Number.isNaN(port) || port <= 0) {
   throw new Error(`Invalid PORT value: "${rawPort}"`);
 }
 
-app.listen(port, (err) => {
-  if (err) {
-    logger.error({ err }, "Error listening on port");
-    process.exit(1);
-  }
-
-  logger.info({ port }, "Server listening");
-  warmEntityCache().catch((e) => logger.warn({ err: e }, "Entity cache warm failed — will retry on first request"));
+warmEntityCache().catch((err) => {
+  logger.warn({ err }, "Entity cache pre-warm failed; will retry lazily on first request");
 });
+
+initSession()
+  .then(() => {
+    app.listen(port, (err) => {
+      if (err) {
+        logger.error({ err }, "Error listening on port");
+        process.exit(1);
+      }
+
+      logger.info({ port }, "Server listening");
+    });
+  })
+  .catch((err) => {
+    logger.error({ err }, "Failed to initialize session store");
+    process.exit(1);
+  });

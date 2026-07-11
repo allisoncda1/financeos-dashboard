@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import { api } from '@/lib/api';
 import { getMockData, getFinancials, getCustomers, getVendors, getBanking } from '@/lib/mock';
 import { ENTITY_SLUGS } from '@/lib/entities';
-import type { DashboardData, FinancialsData, CustomersData, VendorsData, BankingData, EntitySlug, BriefingResponse, Alert, EntityBudget, BvsAData, PortfolioBudget, BudgetPeriodInput } from '@/lib/types';
+import type { DashboardData, FinancialsData, CustomersData, VendorsData, BankingData, EntitySlug, BriefingResponse, Alert, ValidationMatrixData, EntityHistoryData, MetricSnapshotsData, EntityBudget, BvsAData, PortfolioBudget, BudgetPeriodInput } from '@/lib/types';
 import type { ReportTemplateSummary, ReportGenerateRequest, BuiltReport } from '@/lib/reportTypes';
 import type { AIStatus } from '@/lib/aiTypes';
 import type { PipelineStatus } from '@/lib/pipelineTypes';
@@ -24,9 +24,10 @@ import {
  */
 function useTrackedFetch<T>(
   key: string,
-  fetcher: () => Promise<{ data: T; source: 'live' | 'cache' | 'mock' }>,
+  fetcher: () => Promise<{ data: T; source: 'db' | 'live' | 'cache' | 'mock' }>,
   mockInit: (() => T) | null,
   deps: unknown[],
+  reportGlobal: boolean = true,
 ): FetchState<T> {
   const [state, setState] = useState<FetchState<T>>(() =>
     USE_MOCK_FALLBACK && mockInit
@@ -34,6 +35,11 @@ function useTrackedFetch<T>(
       : { data: null, source: 'loading', lastSuccessfulFetch: null },
   );
   const lastGoodRef = useRef<T | null>(USE_MOCK_FALLBACK && mockInit ? mockInit() : null);
+  const mountedRef = useRef(true);
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => { mountedRef.current = false; };
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -55,12 +61,33 @@ function useTrackedFetch<T>(
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, deps);
 
+  // Manual refetch — re-runs the same fetcher on demand (e.g. a Refresh
+  // button). Reuses the identical success/failure handling as the mount
+  // effect; hits the same endpoint with no extra side effects.
+  const refetch = useCallback(async () => {
+    try {
+      const { data, source } = await fetcher();
+      if (!mountedRef.current) return;
+      lastGoodRef.current = data;
+      setState({ data, source, lastSuccessfulFetch: new Date().toISOString() });
+    } catch {
+      if (!mountedRef.current) return;
+      setState((prev) => ({
+        data: lastGoodRef.current,
+        source: lastGoodRef.current ? prev.source : 'unavailable',
+        lastSuccessfulFetch: prev.lastSuccessfulFetch,
+      }));
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, deps);
+
   useEffect(() => {
+    if (!reportGlobal) return;
     reportDataSource(key, { source: state.source, lastSuccessfulFetch: state.lastSuccessfulFetch });
     return () => clearDataSource(key);
-  }, [key, state.source, state.lastSuccessfulFetch]);
+  }, [key, state.source, state.lastSuccessfulFetch, reportGlobal]);
 
-  return state;
+  return { ...state, refetch };
 }
 
 export function useDashboardData(): FetchState<DashboardData> {
@@ -95,12 +122,46 @@ export function useAllEntityFinancials(): FetchState<Record<EntitySlug, Financia
       );
       const data = Object.fromEntries(entries.map(([s, r]) => [s, r.data])) as Record<EntitySlug, FinancialsData>;
       const sources = entries.map(([, r]) => r.source);
-      const source = sources.includes('mock') ? 'mock' : sources.includes('cache') ? 'cache' : 'live';
+      const source = sources.includes('mock') ? 'mock' : sources.includes('cache') ? 'cache' : sources.includes('live') ? 'live' : 'db';
       return { data, source };
     },
     mockInit,
     [],
   );
+}
+
+/**
+ * useAllEntityHistory — fetches real prior-fiscal-year history for every
+ * entity in parallel from GET /api/model/:slug/history. There is no mock
+ * fallback: when the pipeline archives are unreachable the hook reports
+ * "unavailable" and the History page simply offers no prior periods,
+ * instead of fabricating them.
+ */
+export function useAllEntityHistory(): FetchState<Record<EntitySlug, EntityHistoryData>> {
+  return useTrackedFetch(
+    'allEntityHistory',
+    async () => {
+      const entries = await Promise.all(
+        ENTITY_SLUGS.map(s => api.entityHistory(s).then(r => [s, r] as const)),
+      );
+      const data = Object.fromEntries(entries.map(([s, r]) => [s, r.data])) as Record<EntitySlug, EntityHistoryData>;
+      const sources = entries.map(([, r]) => r.source);
+      const source = sources.includes('mock') ? 'mock' : sources.includes('cache') ? 'cache' : sources.includes('live') ? 'live' : 'db';
+      return { data, source };
+    },
+    null,
+    [],
+  );
+}
+
+/**
+ * useHealthSnapshots — fetches stored monthly metric snapshots from
+ * GET /api/model/history/snapshots. The server archives one snapshot per
+ * entity per month from live pipeline data; the History page recomputes
+ * health scores from what was actually observed each month.
+ */
+export function useHealthSnapshots(): FetchState<MetricSnapshotsData> {
+  return useTrackedFetch('healthSnapshots', () => api.historySnapshots(), null, []);
 }
 
 export function useEntityCustomers(slug: EntitySlug): FetchState<CustomersData> {
@@ -131,6 +192,43 @@ export function useEntityBanking(slug: EntitySlug): FetchState<BankingData> {
 }
 
 /**
+ * useAllEntityBanking — fetches live banking data for every entity in
+ * parallel, mirroring useAllEntityFinancials. Reports the worst-case
+ * source across all entities once they resolve.
+ */
+export function useAllEntityBanking(): FetchState<Record<EntitySlug, BankingData>> {
+  const mockInit = useCallback(
+    () => Object.fromEntries(ENTITY_SLUGS.map(s => [s, getBanking(s)])) as Record<EntitySlug, BankingData>,
+    [],
+  );
+  return useTrackedFetch(
+    'allEntityBanking',
+    async () => {
+      const entries = await Promise.all(
+        ENTITY_SLUGS.map(s => api.entityBanking(s).then(r => [s, r] as const)),
+      );
+      const data = Object.fromEntries(entries.map(([s, r]) => [s, r.data])) as Record<EntitySlug, BankingData>;
+      const sources = entries.map(([, r]) => r.source);
+      const source = sources.includes('mock') ? 'mock' : sources.includes('cache') ? 'cache' : sources.includes('live') ? 'live' : 'db';
+      return { data, source };
+    },
+    mockInit,
+    [],
+  );
+}
+
+/**
+ * useValidationMatrix — fetches the per-entity × per-rule validation matrix
+ * from GET /api/validation/matrix. Statuses come strictly from the
+ * pipeline's published output ("unknown" = not reported), never from
+ * client-side heuristics. No mock fallback: data stays null until the
+ * endpoint responds.
+ */
+export function useValidationMatrix(): FetchState<ValidationMatrixData> {
+  return useTrackedFetch('validationMatrix', () => api.validationMatrix(), null, []);
+}
+
+/**
  * useAlerts — fetches live operational alerts from the Rules Engine via
  * GET /api/alerts. Exposes {data, source, lastSuccessfulFetch}; data is
  * null until the fetch resolves (source === "loading") or when the
@@ -144,9 +242,14 @@ export function useAlerts(): FetchState<Alert[]> {
  * useBriefing — fetches the deterministic AI CFO briefing from /api/briefing.
  * Exposes {data, source, lastSuccessfulFetch}; data stays null on failure
  * (never throws) so callers can render a graceful fallback.
+ *
+ * Excluded from the global DataSourceBanner aggregation (reportGlobal=false):
+ * the briefing's "cache" source reflects AI-narrative response caching, not
+ * financial-data staleness, so it must not drive the page-level "cached data"
+ * banner. The underlying data source is still surfaced by useDashboardData.
  */
 export function useBriefing(): FetchState<BriefingResponse> {
-  return useTrackedFetch('briefing', () => api.briefing(), null, []);
+  return useTrackedFetch('briefing', () => api.briefing(), null, [], false);
 }
 
 /**

@@ -36,6 +36,13 @@ export type EntityMetrics = {
   cash_on_hand: number;
   ar_overdue_pct: number;
   ap_overdue_pct: number;
+
+  // Company Health Score — injected server-side (lib/health.ts) so every
+  // surface renders one authoritative value. Optional here because raw
+  // producers (Neon/Drive/mock) build metrics before the score is attached;
+  // withHealth() populates these before the data leaves the API.
+  health_score?: number;
+  health_label?: "Excellent" | "Good" | "Needs Attention";
 };
 
 export type Anomaly = {
@@ -74,6 +81,13 @@ export type ValidationSummary = {
   rules_checked: string[];
   rule_count: number;
   entity_count: number;
+  /**
+   * Per-entity × per-rule pass/fail, keyed entity_slug → rule_id → passed.
+   * Present only when the source publishes detailed rule_results (Core);
+   * undefined for summary-only sources (Drive/mock), which fall back to
+   * summary-count inference in the validation matrix.
+   */
+  rule_matrix?: Record<string, Record<string, boolean>>;
 };
 
 export type DataFreshness = {
@@ -206,6 +220,25 @@ export type BalanceSheet = {
   };
 };
 
+export type CashFlowLine = {
+  label: string;
+  amount: number;
+  is_subtotal: boolean;
+};
+
+export type CashFlowSection = {
+  name: string;
+  lines: CashFlowLine[];
+  net_cash: number;
+};
+
+export type CashFlowStatement = {
+  as_of: string;
+  sections: CashFlowSection[];
+  net_cash_change: number | null;
+  cash_at_end: number | null;
+};
+
 export type FinancialsData = {
   entity_slug: string;
   as_of: string;
@@ -218,7 +251,42 @@ export type FinancialsData = {
     net_income: number;
   };
   balance_sheet: BalanceSheet;
+  cash_flow: CashFlowStatement | null;
 };
+
+export type PriorYearBalanceSheetSummary = {
+  as_of: string;
+  cash: number;
+  total_assets: number;
+  total_liabilities: number;
+  total_equity: number;
+};
+
+export type PriorYearHistory = {
+  fiscal_year: number;
+  monthly_pl: MonthlyPL[];
+  summary: {
+    revenue: number;
+    cogs: number;
+    gross_profit: number;
+    opex: number;
+    net_income: number;
+  };
+  balance_sheet: PriorYearBalanceSheetSummary | null;
+};
+
+export type EntityHistoryData = {
+  entity_slug: string;
+  prior_years: PriorYearHistory[];
+};
+
+export type MetricSnapshot = {
+  month: string;
+  as_of: string;
+  metrics: EntityMetrics;
+};
+
+export type MetricSnapshotsData = Record<EntitySlug, MetricSnapshot[]>;
 
 export type BankAccount = {
   id: string;
@@ -230,6 +298,18 @@ export type BankAccount = {
   color: string;
   reconciled: boolean;
   last_reconciled: string;
+  /**
+   * Total non-deleted transactions for this account (0 = seed/placeholder).
+   * Only populated by the authoritative Neon (source=db) path. Left undefined
+   * for the Drive fallback, where no reliable per-bank-account activity source
+   * exists — undefined signals the UI to show the account rather than hide it.
+   */
+  transaction_count?: number;
+  /**
+   * ISO date of the most recent transaction, or "" when none. Only populated
+   * by the authoritative Neon (source=db) path; undefined for Drive fallback.
+   */
+  last_transaction_date?: string;
 };
 
 export type BankTransaction = {

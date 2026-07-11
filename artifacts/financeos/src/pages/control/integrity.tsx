@@ -1,16 +1,6 @@
 import { useDashboardData } from "@/hooks/useApi";
 import { ENTITY_SLUGS, ENTITY_CONFIG } from "@/lib/entities";
-import { computeHealthScore } from "@/lib/briefing";
-import { ShieldCheck, CheckCircle2, XCircle, AlertCircle, Clock, Database, RefreshCw, HardDrive, Archive, History } from "lucide-react";
-
-// Mock pipeline run history (last 5)
-const PIPELINE_RUNS = [
-  { id: "run-005", ts: "2026-07-02T06:00:00-05:00", status: "success", duration_s: 142, entities: 4, checks: 40, passed: 40 },
-  { id: "run-004", ts: "2026-07-01T06:01:00-05:00", status: "success", duration_s: 138, entities: 4, checks: 40, passed: 40 },
-  { id: "run-003", ts: "2026-06-30T06:00:00-05:00", status: "success", duration_s: 151, entities: 4, checks: 40, passed: 38 },
-  { id: "run-002", ts: "2026-06-29T06:02:00-05:00", status: "warning", duration_s: 189, entities: 4, checks: 40, passed: 37 },
-  { id: "run-001", ts: "2026-06-28T06:00:00-05:00", status: "success", duration_s: 135, entities: 4, checks: 40, passed: 40 },
-];
+import { ShieldCheck, CheckCircle2, AlertCircle, Database, RefreshCw, HardDrive, Archive, History } from "lucide-react";
 
 function fmtTs(iso: string) {
   const d = new Date(iso);
@@ -37,21 +27,20 @@ export default function IntegrityPage() {
   const f = data.freshness;
   const v = data.validation;
 
-  // Overall confidence: weighted by pipeline status + validation pass rate
+  // Overall confidence derived from the real validation pass rate only.
   const passPct = v.total_checks > 0 ? v.passed / v.total_checks : 0;
-  const pipelineScore = 97; // mock — based on last 5 runs success rate
-  const confidence = Math.round(passPct * 50 + pipelineScore * 0.5);
+  const confidence = Math.round(passPct * 100);
 
   const entityFreshness = ENTITY_SLUGS.map((slug) => {
     const m = data.metrics[slug];
     const cfg = ENTITY_CONFIG[slug];
-    const health = computeHealthScore(m);
+    const health = m.health_score;
     return { slug, cfg, m, health };
   });
 
   const PIPELINE_STEPS = [
     { label: "QBO Connection",       icon: Database,  value: f.qbo_connection,         key: "qbo" },
-    { label: "Phase 2 Extraction",   icon: RefreshCw, value: f.phase2_extraction,       key: "ext" },
+    { label: "Extraction",   icon: RefreshCw, value: f.phase2_extraction,       key: "ext" },
     { label: "Model Build",          icon: HardDrive, value: f.model_build,             key: "build" },
     { label: "Drive Upload",         icon: Archive,   value: f.drive_upload,            key: "drive" },
     { label: "Snapshot Archived",    icon: Archive,   value: f.snapshot_archived,       key: "snap" },
@@ -61,7 +50,7 @@ export default function IntegrityPage() {
   return (
     <div className="h-full flex flex-col overflow-hidden bg-[#F4F5F7]">
       {/* Header */}
-      <div className="flex-shrink-0 bg-white border-b border-gray-200 px-6 py-4 flex items-center justify-between">
+      <div className="flex-shrink-0 bg-white border-b border-gray-200 px-4 sm:px-6 py-4 flex items-center justify-between">
         <div className="flex items-center gap-3">
           <div className="w-8 h-8 rounded-xl bg-emerald-50 flex items-center justify-center">
             <ShieldCheck className="w-4 h-4 text-emerald-600" />
@@ -81,10 +70,10 @@ export default function IntegrityPage() {
         </div>
       </div>
 
-      <div className="flex-1 overflow-y-auto px-6 py-5 space-y-5">
+      <div className="flex-1 overflow-y-auto px-4 sm:px-6 py-4 sm:py-5 space-y-5">
 
         {/* Pipeline status strip */}
-        <div className="grid grid-cols-6 gap-3">
+        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
           {PIPELINE_STEPS.map(({ label, icon: Icon, value }) => {
             const ss = statusStyle(value as string | boolean);
             return (
@@ -101,7 +90,7 @@ export default function IntegrityPage() {
         </div>
 
         {/* Pipeline health + validation summary */}
-        <div className="grid grid-cols-2 gap-4">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <div className="bg-white rounded-xl border border-gray-200 p-5">
             <h3 className="text-[13px] font-semibold text-gray-900 mb-4">Pipeline Health</h3>
             <div className="space-y-3">
@@ -210,69 +199,6 @@ export default function IntegrityPage() {
           </table>
         </div>
 
-        {/* Last 5 pipeline runs */}
-        <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
-          <div className="px-4 py-3 border-b border-gray-100">
-            <h3 className="text-[13px] font-semibold text-gray-900">Last 5 Pipeline Runs</h3>
-          </div>
-          <table className="w-full">
-            <thead>
-              <tr className="border-b border-gray-100">
-                {["Run ID", "Timestamp", "Status", "Duration", "Entities", "Checks", "Passed", "Failed"].map((h) => (
-                  <th key={h} className="text-[10px] font-semibold text-gray-400 uppercase tracking-wide px-4 py-2.5 text-left">{h}</th>
-                ))}
-              </tr>
-            </thead>
-            <tbody>
-              {PIPELINE_RUNS.map((run) => {
-                const failed = run.checks - run.passed;
-                return (
-                  <tr key={run.id} className="border-t border-gray-50 hover:bg-gray-50 transition-colors">
-                    <td className="px-4 py-2.5">
-                      <span className="text-[11px] font-mono text-gray-500">{run.id}</span>
-                    </td>
-                    <td className="px-4 py-2.5 text-[12px] text-gray-700">{fmtTs(run.ts)}</td>
-                    <td className="px-4 py-2.5">
-                      {run.status === "success"
-                        ? <span className="inline-flex items-center gap-1 text-[10px] font-semibold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-full">
-                            <CheckCircle2 className="w-3 h-3" /> Success
-                          </span>
-                        : run.status === "warning"
-                        ? <span className="inline-flex items-center gap-1 text-[10px] font-semibold text-amber-700 bg-amber-50 px-2 py-0.5 rounded-full">
-                            <AlertCircle className="w-3 h-3" /> Warning
-                          </span>
-                        : <span className="inline-flex items-center gap-1 text-[10px] font-semibold text-red-700 bg-red-50 px-2 py-0.5 rounded-full">
-                            <XCircle className="w-3 h-3" /> Failed
-                          </span>
-                      }
-                    </td>
-                    <td className="px-4 py-2.5 text-[12px] text-gray-600">{run.duration_s}s</td>
-                    <td className="px-4 py-2.5 text-[12px] text-gray-700">{run.entities}</td>
-                    <td className="px-4 py-2.5 text-[12px] text-gray-700">{run.checks}</td>
-                    <td className="px-4 py-2.5 text-[12px] font-semibold text-emerald-700">{run.passed}</td>
-                    <td className="px-4 py-2.5">
-                      {failed > 0
-                        ? <span className="text-[12px] font-semibold text-red-600">{failed}</span>
-                        : <span className="text-[12px] text-gray-300">—</span>
-                      }
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
-        </div>
-
-        {/* Phase 2 note */}
-        <div className="flex items-start gap-2 px-4 py-3 bg-blue-50 border border-blue-200 rounded-xl">
-          <div className="w-4 h-4 rounded-full bg-blue-500 flex items-center justify-center flex-shrink-0 mt-0.5">
-            <span className="text-white text-[9px] font-bold">i</span>
-          </div>
-          <p className="text-[11px] text-blue-700">
-            <span className="font-semibold">Phase 2:</span> Pipeline runs will show real extraction logs from Google Drive. QBO connection
-            health, extraction errors, and model diffs will be pulled live from the audit trail in 08_DATA_MODEL/audit/.
-          </p>
-        </div>
       </div>
     </div>
   );

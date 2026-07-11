@@ -1,0 +1,100 @@
+Approved. Continue with Batch 4 only — UI / UX Polish.
+
+Goal:
+Make FinanceOS feel polished, consistent, and demo-ready for leadership.
+
+Scope:
+UI polish only.
+
+Do NOT change:
+- FinanceOS Core
+- QBO sync
+- financial calculations
+- data mappings
+- backend logic
+- API contracts
+- authentication
+- report generation
+- Drive fallback
+
+Fix / polish:
+
+1. Layout consistency
+- Align EntityHeader and GlobalHeader spacing.
+- Standardize page padding.
+- Standardize card gaps.
+- Make dashboard grids responsive.
+- Avoid cramped layouts with long entity names.
+
+2. KPI card consistency
+- Standardize KPI card height.
+- Standardize title/value/subtext hierarchy.
+- Standardize positive/negative/neutral styling.
+- Ensure all cards feel like the same design system.
+
+3. Table consistency
+- Standardize table row heights.
+- Standardize hover states.
+- Standardize empty states.
+- Standardize badges and status chips.
+
+4. Navigation polish
+- Remove or wire decorative buttons:
+  - Month selector
+  - Share
+  - Export
+- Entity Reports cards should clearly route to the working Report Center.
+- RecentAlerts/System Status items should not look clickable unless they are.
+
+5. Responsive polish
+- Check portfolio dashboard.
+- Check entity dashboard.
+- Check financials.
+- Check customers/vendors/banking.
+- Fix obvious mobile/tablet layout issues.
+
+6. Visual consistency
+- Typography
+- Font weights
+- Icon sizes
+- Badge colors
+- Button sizes
+- Shadows
+- Borders
+- Spacing
+
+7. CEO demo experience
+Walk through:
+- Login
+- Launcher
+- Portfolio
+- Entity pages
+- Financials
+- Banking
+- Alerts
+- Validation
+- Reports
+- Settings
+
+For each screen, ensure:
+- user understands it in under 5 seconds
+- no fake/mock/phase wording appears
+- no broken-looking buttons
+- no awkward spacing
+- no cheap-looking UI
+- no confusing labels
+
+Rules:
+- No new features.
+- No redesign.
+- No business logic changes.
+- No data changes.
+- UI polish only.
+
+Verification:
+- Typecheck both projects.
+- Restart app.
+- Verify main routes render.
+- Check console for errors.
+- Provide before/after summary.
+- Stop after Batch 4 and report files changed + remaining polish recommendations.

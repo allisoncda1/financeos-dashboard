@@ -3,7 +3,8 @@
 // IDs match the `financeos_op_statuses` localStorage key used by TodaysPriorities.
 
 import type { Alert, AlertCategory, DashboardData, CustomersData, VendorsData, BankingData, EntitySlug } from "./types";
-import { ENTITY_SLUGS, ENTITY_CONFIG } from "./types";
+import { ENTITY_SLUGS } from "./types";
+import { ENTITY_CONFIG } from "./entities";
 
 export type OperationSeverity = "high" | "medium" | "low";
 export type OperationType = "ar" | "ap" | "anomaly" | "banking" | "reconciliation" | "validation" | "close";

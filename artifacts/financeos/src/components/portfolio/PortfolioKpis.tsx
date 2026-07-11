@@ -1,6 +1,7 @@
 import Link from "@/lib/next-compat";
 import type { PortfolioSummary, EntityMetrics, Anomaly, EntitySlug } from "@/lib/types";
 import { ENTITY_CONFIG, ENTITY_SLUGS } from "@/lib/entities";
+import { formatCurrency, formatPercent, formatDays, NA } from "@/lib/format";
 
 type Props = {
   portfolio: PortfolioSummary;
@@ -10,15 +11,8 @@ type Props = {
 
 // ─── Formatters ──────────────────────────────────────────────────────────────
 
-function fmt(n: number) {
-  if (n >= 1_000_000) return `$${(n / 1_000_000).toFixed(2)}M`;
-  if (n >= 1_000)     return `$${(n / 1_000).toFixed(0)}K`;
-  return `$${n}`;
-}
-
-function pct(n: number) {
-  return `${n.toFixed(1)}%`;
-}
+const fmt = (n: number) => formatCurrency(n);
+const pct = (n: number) => formatPercent(n);
 
 // ─── Component ───────────────────────────────────────────────────────────────
 
@@ -27,7 +21,7 @@ export function PortfolioKpis({ portfolio, metrics, anomalies }: Props) {
     <div className="space-y-6">
 
       {/* Portfolio-level summary strip */}
-      <div className="grid grid-cols-4 gap-4">
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
         <SummaryCard
           label="Portfolio Revenue YTD"
           value={fmt(portfolio.portfolio_revenue_ytd)}
@@ -47,8 +41,8 @@ export function PortfolioKpis({ portfolio, metrics, anomalies }: Props) {
         />
       </div>
 
-      {/* Per-entity cards — 2 × 2 grid */}
-      <div className="grid grid-cols-2 gap-4">
+      {/* Per-entity cards — responsive grid */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
         {ENTITY_SLUGS.map((slug) => {
           const m      = metrics[slug];
           const config = ENTITY_CONFIG[slug];
@@ -77,13 +71,13 @@ export function PortfolioKpis({ portfolio, metrics, anomalies }: Props) {
                   )}
                 </div>
 
-                {/* KPI grid — 3 columns */}
-                <div className="grid grid-cols-3 gap-x-4 gap-y-3">
+                {/* KPI grid */}
+                <div className="grid grid-cols-2 sm:grid-cols-3 gap-x-4 gap-y-3">
                   <KpiCell label="Revenue YTD"  value={fmt(m.revenue_ytd)} />
                   <KpiCell label="Net Income"   value={fmt(m.net_income_ytd)} sub={pct(m.net_margin_pct)} />
                   <KpiCell label="Gross Margin" value={pct(m.gross_margin_pct)} />
                   <KpiCell label="Open AR"      value={fmt(m.open_ar)} warn={m.ar_overdue_pct > 15} />
-                  <KpiCell label="DSO"          value={`${m.dso_days}d`} warn={m.dso_days > 60} />
+                  <KpiCell label="DSO"          value={m.open_ar > 0 ? formatDays(m.dso_days) : NA} warn={m.open_ar > 0 && m.dso_days > 60} />
                   <KpiCell label="Cash"         value={fmt(m.cash_on_hand)} />
                 </div>
 

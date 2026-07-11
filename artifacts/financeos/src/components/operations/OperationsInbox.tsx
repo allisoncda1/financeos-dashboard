@@ -432,6 +432,7 @@ export function OperationsInbox({ items }: { items: OperationItem[] }) {
                     </button>
                   )}
                 </div>
+                <p className="mt-2 text-[10px] text-gray-400">Saved locally for this browser</p>
               </div>
 
               {/* Action link */}

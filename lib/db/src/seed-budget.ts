@@ -16,15 +16,22 @@
 import { drizzle } from "drizzle-orm/node-postgres";
 import pg from "pg";
 import { eq, and, gte, lte } from "drizzle-orm";
-import { entities, financialPeriods, budgets } from "./schema/index.js";
+import { entitiesTable as entities, financialPeriodsTable as financialPeriods, budgets } from "./schema/index.js";
 
+// Reads actuals from FinanceOS Core (read-only), writes budgets to the
+// Dashboard's writable operational database.
+if (!process.env.CORE_DATABASE_URL) {
+  throw new Error("CORE_DATABASE_URL must be set before running seed (source of actuals).");
+}
 if (!process.env.DATABASE_URL) {
-  throw new Error("DATABASE_URL must be set before running seed.");
+  throw new Error("DATABASE_URL must be set before running seed (destination for budgets).");
 }
 
 const DRY_RUN = !process.argv.includes("--confirm");
 const YEAR = 2026;
 
+const corePool = new pg.Pool({ connectionString: process.env.CORE_DATABASE_URL });
+const coreDb = drizzle(corePool);
 const pool = new pg.Pool({ connectionString: process.env.DATABASE_URL });
 const db = drizzle(pool);
 
@@ -42,23 +49,24 @@ async function main() {
   console.log(`\n=== Budget Seed — ${DRY_RUN ? "DRY RUN (no writes)" : "LIVE WRITE"} ===`);
   console.log(`Year: ${YEAR}\n`);
 
-  const allEntities = await db.select().from(entities);
+  const allEntities = await coreDb.select().from(entities);
   if (allEntities.length === 0) {
     console.error("No entities found. Aborting.");
     await pool.end();
+    await corePool.end();
     process.exit(1);
   }
 
   for (const entity of allEntities) {
     console.log(`\n── ${entity.slug} (${entity.displayName})`);
 
-    const actuals = await db
+    const actuals = await coreDb
       .select()
       .from(financialPeriods)
       .where(
         and(
           eq(financialPeriods.entityId, entity.id),
-          eq(financialPeriods.periodType, "month"),
+          eq(financialPeriods.periodType, "monthly"),
           gte(financialPeriods.periodStart, `${YEAR}-01-01`),
           lte(financialPeriods.periodStart, `${YEAR}-12-31`),
         ),
@@ -144,6 +152,7 @@ async function main() {
   }
 
   await pool.end();
+  await corePool.end();
 }
 
 main().catch(async (err) => {

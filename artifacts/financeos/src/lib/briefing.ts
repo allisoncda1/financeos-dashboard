@@ -3,7 +3,8 @@
 // No hardcoded strings — everything is derived from mock metrics, anomalies, validation.
 
 import type { DashboardData, EntityMetrics, EntitySlug } from "./types";
-import { ENTITY_SLUGS, ENTITY_CONFIG } from "./types";
+import { ENTITY_SLUGS } from "./types";
+import { ENTITY_CONFIG } from "./entities";
 
 // ── Types ──────────────────────────────────────────────────────────────────────
 

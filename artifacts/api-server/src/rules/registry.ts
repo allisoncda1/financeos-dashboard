@@ -19,6 +19,7 @@
 
 import { ENTITY_SLUGS, type DashboardData, type EntityMetrics, type EntitySlug } from "../lib/types";
 import { isKnown, num } from "../ai/format";
+import { computeEntityHealthScore } from "../lib/health";
 import { THRESHOLDS } from "./thresholds";
 
 export type RuleCategory = "receivables" | "payables" | "cash" | "revenue" | "validation" | "portfolio";
@@ -53,31 +54,6 @@ function entityName(data: DashboardData, slug: EntitySlug): string {
 
 function monthsElapsedInYear(): number {
   return new Date().getMonth() + 1;
-}
-
-/** Weighted composite health score — mirrors the AI briefing's entity health formula. */
-function computeEntityHealthScore(m: EntityMetrics): number {
-  let score = 100;
-
-  if (isKnown(m.dso_days)) {
-    if (m.dso_days > 75) score -= 20;
-    else if (m.dso_days > 60) score -= 12;
-    else if (m.dso_days > 45) score -= 4;
-  }
-
-  if (isKnown(m.ar_overdue_pct)) {
-    if (m.ar_overdue_pct > 25) score -= 15;
-    else if (m.ar_overdue_pct > 15) score -= 8;
-    else if (m.ar_overdue_pct > 10) score -= 3;
-    else if (m.ar_overdue_pct > 5) score -= 1;
-  }
-
-  if (isKnown(m.net_margin_pct)) {
-    if (m.net_margin_pct < 0) score -= 15;
-    else if (m.net_margin_pct < 5) score -= 5;
-  }
-
-  return Math.max(0, Math.min(100, score));
 }
 
 export const RULE_REGISTRY: Rule[] = [

@@ -1,0 +1,134 @@
+Build the Budget module to match the attached dashboard design as closely as possible.
+
+Important architecture:
+- This is NOT the global FinanceOS home.
+- This is the standalone Budget module.
+- The left sidebar must only contain Budget-related navigation.
+- Do not show Reporting, Forecast, Accounting, Commission, Treasury, or AI Assistant in this sidebar.
+
+Use this module structure:
+
+Sidebar:
+- FinanceOS logo
+- Budget section header
+- Dashboard
+- Budget Builder
+- Budget vs Actual
+- Department Budgets
+- Budget Versions
+- Assumptions
+- Reports
+- Settings
+- Bottom: Need help? View Budget Guide
+
+Top header:
+- Page title: Budget Overview
+- Subtitle: Plan, track and manage your budgets
+- Company filter: All Companies
+- Fiscal year selector: FY2026 (Jul 2026 - Jun 2027)
+- Three-dot menu
+- New Budget button
+
+Tabs under header:
+- Summary
+- P&L
+- Cash Flow
+- Balance Sheet
+
+Main dashboard layout:
+1. Top KPI cards:
+- Total Budgeted Revenue: $17,400,000
+- Total Budgeted Expenses: $14,250,000
+- Budgeted Net Income: $3,150,000
+- Gross Margin: 62.1%
+- Budget Completion: 68%
+
+Each KPI card should have:
+- small icon circle
+- mini sparkline where relevant
+- comparison text vs FY2025
+- clean rounded card styling
+
+2. Middle section:
+Left card:
+- Budget vs Prior Year (P&L)
+- grouped monthly bar chart
+- FY2026 Budget vs FY2025 Budget
+- purple variance % line
+- controls: Monthly dropdown, P&L button, three-dot menu
+
+Right card:
+- Budget by Category (P&L)
+- donut chart
+- category list with budget and % of total
+Categories:
+Revenue
+COGS
+Gross Profit
+Sales & Marketing
+G&A
+Product / Tech
+Other Income
+Other Expenses
+Net Income
+
+3. Bottom section:
+Large left card:
+- Budget Table (P&L)
+- monthly table from Jul 2026 to Jun 2027
+- columns for months, YTD, FY2026 Total
+- rows:
+Revenue
+COGS
+Gross Profit
+Sales & Marketing
+G&A
+Product / Tech
+Other Expenses
+Net Income
+- Net Income and Gross Profit rows should stand out subtly
+
+Right column:
+Card 1:
+- Budget Summary
+- Budget: FY2026 (Jul 2026 - Jun 2027)
+- Version: Current
+- Last Updated: Jul 7, 2026 by Allison Fabbri
+- Departments: 6
+- Budget Lines: 142
+- Assumptions: 18
+- Button: View Assumptions
+
+Card 2:
+- Recent Activity
+- Budget v1 was approved
+- Marketing budget updated
+- Product / Tech budget updated
+- New budget version created
+- QBO actuals synced
+- Button: View All Activity
+
+Design requirements:
+- Match the attached screenshot closely.
+- Light background, clean SaaS style.
+- White cards with subtle shadows and rounded corners.
+- Green FinanceOS accent color.
+- Soft pastel colors for charts.
+- Thin borders, lots of whitespace.
+- Typography should match the existing FinanceOS style.
+- Layout should be desktop-first and responsive.
+- Use placeholder/mock data for now.
+- Mark data source internally as mock/placeholder so it can later be replaced with Neon data.
+- Do not build backend logic yet.
+- Create reusable components where possible:
+  - BudgetSidebar
+  - BudgetKpiCard
+  - BudgetTabs
+  - BudgetVsPriorYearChart
+  - BudgetCategoryChart
+  - BudgetTable
+  - BudgetSummaryCard
+  - RecentActivityCard
+
+Implementation note:
+The goal is to create the full Budget UI skeleton first. Later we will connect it to existing Neon/reporting data and add real budget tables.

@@ -1,0 +1,14 @@
+uploads = []
+generated = []
+
+[[outputs]]
+id = "9mNWH22buxn2okcQZioFX"
+uri = "file://docs/FINANCEOS_ARCHITECTURE_AUDIT.md"
+type = "text"
+title = "FinanceOS Architecture Audit & Roadmap"
+
+[[outputs]]
+id = "A-ESOt8xTOluBMxBLmqjG"
+uri = "file://docs/FINANCEOS_RC_QA_REPORT.md"
+type = "text"
+title = "FinanceOS V1 — Release Candidate QA Report"

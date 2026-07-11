@@ -5,16 +5,11 @@ import { useEntityVendors } from "@/hooks/useApi";
 import { PageHeader } from "@/components/shared/PageHeader";
 import { AgingTable } from "@/components/shared/AgingTable";
 import { SparklineChart } from "@/components/shared/SparklineChart";
+import { formatCurrency, formatPercent } from "@/lib/format";
 
 
 export function generateStaticParams() {
   return ENTITY_SLUGS.map((slug) => ({ slug }));
-}
-
-function fmt(n: number): string {
-  if (n >= 1_000_000) return `$${(n / 1_000_000).toFixed(2)}M`;
-  if (n >= 1_000) return `$${(n / 1_000).toFixed(1)}K`;
-  return `$${n}`;
 }
 
 const STATUS_STYLE: Record<string, { bg: string; text: string; label: string }> = {
@@ -44,22 +39,22 @@ export default function VendorsPage() {
     <div className="h-full flex flex-col overflow-hidden bg-[#F4F5F7]">
       <PageHeader entitySlug={eSlug} pageTitle="Vendors & AP" asOf={vend.as_of} />
 
-      <div className="flex-1 overflow-y-auto px-6 py-5 space-y-5">
+      <div className="flex-1 overflow-y-auto px-4 sm:px-6 py-4 sm:py-5 space-y-5">
 
         {/* Summary banner */}
-        <div className="grid grid-cols-4 gap-3">
-          <SummaryCard label="Open AP" value={fmt(vend.open_ap)} sub="total outstanding" color="text-gray-900" />
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+          <SummaryCard label="Open AP" value={formatCurrency(vend.open_ap)} sub="total outstanding" color="text-gray-900" />
           <SummaryCard
             label="Overdue AP"
-            value={overdueAmt > 0 ? fmt(overdueAmt) : "$0"}
-            sub={overdueAmt > 0 ? `${overduePct.toFixed(1)}% of total` : "All current"}
+            value={formatCurrency(overdueAmt)}
+            sub={overdueAmt > 0 ? `${formatPercent(overduePct)} of total` : "All current"}
             color={overdueAmt > 0 ? "text-red-600" : "text-emerald-600"}
           />
           <div className="bg-white rounded-xl border border-gray-200 p-4">
             <p className="text-[10px] text-gray-400 font-medium uppercase tracking-wide mb-1">AP Trend (12M)</p>
             <div className="flex items-end justify-between gap-2">
               <div>
-                <p className="text-[20px] font-bold text-gray-900">{fmt(vend.open_ap)}</p>
+                <p className="text-[20px] font-bold text-gray-900">{formatCurrency(vend.open_ap)}</p>
                 <p className="text-[10px] text-gray-400">current period</p>
               </div>
               <div className="w-24 flex-shrink-0">
@@ -93,7 +88,7 @@ export default function VendorsPage() {
                 return (
                   <tr key={i} className="border-t border-gray-50 hover:bg-gray-50 transition-colors">
                     <td className="px-4 py-3 text-[12px] font-medium text-gray-800">{v.name}</td>
-                    <td className="px-4 py-3 text-right text-[12px] font-semibold text-gray-900">{fmt(v.balance)}</td>
+                    <td className="px-4 py-3 text-right text-[12px] font-semibold text-gray-900">{formatCurrency(v.balance)}</td>
                     <td className="px-4 py-3 text-right text-[12px] text-gray-500">{v.due_date}</td>
                     <td className="px-4 py-3 text-right">
                       <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full ${ss.bg} ${ss.text}`}>

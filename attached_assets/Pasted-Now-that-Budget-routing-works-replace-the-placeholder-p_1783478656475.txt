@@ -1,0 +1,77 @@
+Now that Budget routing works, replace the placeholder pages with real Budget module sample pages using mock data.
+
+Keep the same Budget layout, sidebar, header, filters, and design style.
+
+Build the following pages:
+
+1. /budget/builder — Budget Builder
+Purpose: build/edit the budget line by line.
+Include:
+- editable budget table by account/category and month
+- filters: company, department, category
+- columns: account/category, Jul 2026–Jun 2027, FY total
+- buttons: Import from Actuals, Apply Growth %, Save Draft, Submit for Approval
+- right panel: selected line details + assumptions
+
+2. /budget/budget-vs-actual — Budget vs Actual
+Purpose: compare budget to actuals.
+Include:
+- KPI cards: Actual Revenue, Budget Revenue, Revenue Variance, Expense Variance
+- chart: monthly Budget vs Actual
+- table: category, actual, budget, variance $, variance %, status
+- highlight favorable/unfavorable variances
+
+3. /budget/departments — Department Budgets
+Purpose: view budgets by department.
+Include:
+- department cards: Sales & Marketing, G&A, Product/Tech, Operations
+- chart: budget by department
+- table: department, owner, budget, actual/forecast, variance, status
+
+4. /budget/versions — Budget Versions
+Purpose: manage budget versions.
+Include:
+- list of versions: Draft, Current, Approved, Archived
+- fields: version name, fiscal year, created by, last updated, status
+- buttons: Create Version, Duplicate, Compare, Set as Current
+
+5. /budget/assumptions — Assumptions
+Purpose: document budget assumptions.
+Include:
+- cards/table for assumptions:
+  - Revenue growth %
+  - COGS %
+  - Payroll growth
+  - Software optimization
+  - Marketing spend
+- fields: assumption, value, category, owner, confidence, notes
+- button: Add Assumption
+
+6. /budget/reports — Budget Reports
+Purpose: export/view budget reports.
+Include:
+- report cards:
+  - Budget Summary
+  - Budget vs Actual
+  - Department Budget
+  - Budget Assumptions
+  - Board Budget Pack
+- buttons: View, Export PDF, Export Excel
+
+7. /budget/settings — Budget Settings
+Purpose: configure budget module.
+Include:
+- fiscal year settings
+- default budget method
+- approval workflow
+- department list
+- account mapping
+- notification settings
+
+Requirements:
+- Use mock data only for now.
+- Store mock data in a dedicated budget mock data file.
+- Make every page visually complete, not “under construction.”
+- Clearly structure components so later we can replace mock data with Neon data.
+- Do not build backend logic yet.
+- Do not add Reporting/Forecast/Accounting/Commission global navigation inside this module.

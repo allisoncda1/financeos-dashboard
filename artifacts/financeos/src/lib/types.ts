@@ -17,15 +17,9 @@ export const ENTITY_SLUGS = [
 
 export type EntitySlug = (typeof ENTITY_SLUGS)[number];
 
-export const ENTITY_CONFIG: Record<
-  EntitySlug,
-  { name: string; basis: "Cash" | "Accrual"; color: string }
-> = {
-  CarDealer_ai: { name: "CarDealer.ai", basis: "Accrual", color: "#00d4b8" },
-  T3_Marketing: { name: "T3 Marketing", basis: "Cash",    color: "#f59e0b" },
-  TopMrktr:     { name: "TopMrktr",     basis: "Accrual", color: "#8b5cf6" },
-  Smile_More:   { name: "Smile More",   basis: "Accrual", color: "#3b82f6" },
-};
+// NOTE: Entity metadata (names, colors, logos, basis) lives exclusively in
+// lib/entities.ts — the single source of truth. Import ENTITY_CONFIG,
+// ENTITY_META, or getEntity() from "@/lib/entities" instead.
 
 // ─── 08_DATA_MODEL schemas ───────────────────────────────────────────────────
 
@@ -59,6 +53,12 @@ export type EntityMetrics = {
   cash_on_hand: number;
   ar_overdue_pct: number;
   ap_overdue_pct: number;
+
+  // Company Health Score — computed once, server-side (single source of
+  // truth). Every surface renders these values verbatim; the UI never
+  // recomputes a headline health score.
+  health_score: number;
+  health_label: "Excellent" | "Good" | "Needs Attention";
 };
 
 /** 08_DATA_MODEL/entities/{slug}/anomalies.json — one item per anomaly */
@@ -85,6 +85,31 @@ export type PortfolioSummary = {
   portfolio_open_ar: number;
   portfolio_open_ap: number;
   portfolio_cash_on_hand: number;
+};
+
+// ─── Validation matrix (GET /api/validation/matrix) ─────────────────────────
+// Per-entity × per-rule statuses derived strictly from the pipeline's
+// published output. "unknown" = the pipeline never reported a per-cell
+// outcome (it only publishes summary counts).
+export type ValidationCellStatus = "pass" | "fail" | "unknown";
+
+export type ValidationMatrixData = {
+  generated_at: string | null;
+  reported: {
+    total_checks: number | null;
+    passed: number | null;
+    failed: number | null;
+    all_passed: boolean | null;
+    status_label: string;
+    note: string | null;
+  };
+  expected_checks: number;
+  rule_ids: string[];
+  entity_slugs: EntitySlug[];
+  granularity: "summary_only" | "per_rule";
+  cell_basis: string;
+  discrepancies: string[];
+  matrix: Record<EntitySlug, Record<string, ValidationCellStatus>>;
 };
 
 /** 08_DATA_MODEL/validation/validation_summary.json */
@@ -175,13 +200,63 @@ export type BalanceSheet = {
   equity: { paid_in_capital: number; retained_earnings: number; total: number };
 };
 
+export type CashFlowLine = {
+  label: string;
+  amount: number;
+  is_subtotal: boolean;
+};
+
+export type CashFlowSection = {
+  name: string;
+  lines: CashFlowLine[];
+  net_cash: number;
+};
+
+export type CashFlowStatement = {
+  as_of: string;
+  sections: CashFlowSection[];
+  net_cash_change: number | null;
+  cash_at_end: number | null;
+};
+
 export type FinancialsData = {
   entity_slug: string;
   as_of: string;
   monthly_pl: MonthlyPL[];
   ytd_summary: { revenue: number; cogs: number; gross_profit: number; opex: number; net_income: number };
   balance_sheet: BalanceSheet;
+  cash_flow?: CashFlowStatement | null;
 };
+
+/** GET /api/model/:slug/history — real prior-fiscal-year financial history */
+export type PriorYearBalanceSheetSummary = {
+  as_of: string;
+  cash: number;
+  total_assets: number;
+  total_liabilities: number;
+  total_equity: number;
+};
+
+export type PriorYearHistory = {
+  fiscal_year: number;
+  monthly_pl: MonthlyPL[];
+  summary: { revenue: number; cogs: number; gross_profit: number; opex: number; net_income: number };
+  balance_sheet: PriorYearBalanceSheetSummary | null;
+};
+
+export type EntityHistoryData = {
+  entity_slug: string;
+  prior_years: PriorYearHistory[];
+};
+
+/** GET /api/model/history/snapshots — stored monthly metric snapshots */
+export type MetricSnapshot = {
+  month: string;
+  as_of: string;
+  metrics: EntityMetrics;
+};
+
+export type MetricSnapshotsData = Record<EntitySlug, MetricSnapshot[]>;
 
 export type BankAccount = {
   id: string;
@@ -193,6 +268,10 @@ export type BankAccount = {
   color: string;
   reconciled: boolean;
   last_reconciled: string;
+  /** Total non-deleted transactions (0 = seed/placeholder). Absent on legacy/mock payloads. */
+  transaction_count?: number;
+  /** ISO date of the most recent transaction, or "" when none. Absent on legacy/mock payloads. */
+  last_transaction_date?: string;
 };
 
 export type BankTransaction = {
@@ -271,23 +350,135 @@ export type BriefingResponse = {
   generatedAt: string;
 };
 
-// ─── Rules Engine alerts (Sprint 14) ────────────────────────────────────────
-// Mirrors artifacts/api-server/src/rules/evaluator.ts Alert type.
+// ─── Alerts (Sprint 10) ─────────────────────────────────────────────────────
+// Read from FinanceOS Core's `alerts` table via GET /api/alerts. The Dashboard
+// never calculates alerts; `status` mirrors Core's alert lifecycle.
 
 export type AlertSeverity = "critical" | "high" | "medium" | "low" | "info";
 export type AlertCategory = "receivables" | "payables" | "cash" | "revenue" | "validation" | "portfolio";
+export type AlertStatus = "open" | "acknowledged" | "resolved";
 
 export type Alert = {
   id: string;
   ruleId: string;
   entity: string;
+  entitySlug?: string;
+  scope?: "entity" | "portfolio";
   severity: AlertSeverity;
   category: AlertCategory;
   title: string;
   description: string;
   recommendedAction: string;
   createdAt: string;
-  status: "active";
+  status: AlertStatus;
+};
+
+// ─── Budget types ─────────────────────────────────────────────────────────────
+
+export type BudgetTargets = {
+  revenue: number | null;
+  cogs: number | null;
+  opex: number | null;
+  net_income: number | null;
+};
+
+export type BudgetVariance = {
+  revenue: number | null;
+  cogs: number | null;
+  opex: number | null;
+  net_income: number | null;
+};
+
+export type BudgetVariancePct = {
+  revenue: number | null;
+  cogs: number | null;
+  opex: number | null;
+  net_income: number | null;
+};
+
+export type BudgetActuals = {
+  revenue: number;
+  cogs: number;
+  opex: number;
+  net_income: number;
+};
+
+export type BvsAMonth = {
+  month: string;
+  period_start: string;
+  period_end: string;
+  budget: BudgetTargets;
+  actual: BudgetActuals | null;
+  variance: BudgetVariance;
+  variance_pct: BudgetVariancePct;
+  has_budget: boolean;
+  has_actual: boolean;
+};
+
+export type BvsAData = {
+  entity_slug: EntitySlug;
+  year: number;
+  months: BvsAMonth[];
+  ytd: {
+    budget: BudgetTargets;
+    actual: BudgetActuals;
+    variance: BudgetVariance;
+    variance_pct: BudgetVariancePct;
+  };
+};
+
+export type EntityBudgetMonth = {
+  period_start: string;
+  period_end: string;
+  revenue_target: number | null;
+  cogs_target: number | null;
+  opex_target: number | null;
+  net_income_target: number | null;
+};
+
+export type EntityBudget = {
+  entity_slug: EntitySlug;
+  year: number;
+  months: EntityBudgetMonth[];
+  annual: {
+    revenue_target: number | null;
+    cogs_target: number | null;
+    opex_target: number | null;
+    net_income_target: number | null;
+  } | null;
+  months_with_budgets: number;
+};
+
+export type PortfolioEntityBudget = {
+  slug: EntitySlug;
+  budget_revenue: number;
+  actual_revenue: number;
+  budget_net_income: number;
+  actual_net_income: number;
+  attainment_pct: number | null;
+};
+
+export type PortfolioBudget = {
+  year: number;
+  entity_slugs: EntitySlug[];
+  portfolio_budget_revenue: number;
+  portfolio_actual_revenue: number;
+  portfolio_variance_revenue: number;
+  portfolio_attainment_pct: number | null;
+  portfolio_budget_net_income: number;
+  portfolio_actual_net_income: number;
+  entity_budgets: PortfolioEntityBudget[];
+  months_with_budgets: number;
+  months_without_budgets: number;
+};
+
+export type BudgetPeriodInput = {
+  period_start: string;
+  period_end: string;
+  revenue_target?: number | null;
+  cogs_target?: number | null;
+  opex_target?: number | null;
+  net_income_target?: number | null;
 };
 
 // ─── Budget types ─────────────────────────────────────────────────────────────

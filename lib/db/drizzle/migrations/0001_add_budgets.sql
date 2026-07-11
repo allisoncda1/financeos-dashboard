@@ -1,9 +1,11 @@
 -- Budget V1: monthly and annual budget targets per entity
--- Run via Supabase SQL Editor (not CLI)
+-- Runs against the Dashboard operational database (DATABASE_URL).
+-- entity_id is a logical reference to Core entities.id (read-only Neon DB);
+-- no FK is possible because entities lives in a different database.
 
 CREATE TABLE IF NOT EXISTS budgets (
   id               UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  entity_id        UUID NOT NULL REFERENCES entities(id),
+  entity_id        UUID NOT NULL,
   period_type      TEXT NOT NULL,        -- 'month' | 'annual'
   period_start     DATE NOT NULL,
   period_end       DATE NOT NULL,

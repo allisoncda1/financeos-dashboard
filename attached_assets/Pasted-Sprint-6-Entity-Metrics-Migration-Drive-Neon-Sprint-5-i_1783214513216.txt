@@ -1,0 +1,182 @@
+Sprint 6 — Entity Metrics Migration (Drive → Neon)
+
+Sprint 5 is complete.
+
+Current architecture:
+
+FinanceOS Core (Python)
+        ↓
+Neon PostgreSQL
+        ↓
+entity_snapshots
+portfolio_snapshots
+financial_periods
+validation_results
+sync_runs
+        ↓
+Dashboard API
+        ↓
+React Frontend
+
+====================================================
+OBJECTIVE
+====================================================
+
+Migrate the Dashboard entity metrics from Google Drive to FinanceOS Core (Neon).
+
+Do NOT redesign anything.
+
+The UI must remain identical.
+
+====================================================
+SCOPE
+====================================================
+
+Migrate ONLY:
+
+getEntityMetrics()
+
+and every endpoint that depends on it.
+
+New source:
+
+entity_snapshots
+
+====================================================
+DO NOT TOUCH
+====================================================
+
+- Customers
+- Vendors
+- Banking
+- History
+- Reports
+- AI logic
+- Rules engine
+- React
+- Frontend
+- Google Drive fallback
+
+====================================================
+REQUIREMENTS
+====================================================
+
+Read ONLY from:
+
+entity_snapshots
+
+through CORE_DATABASE_URL.
+
+Never recompute metrics.
+
+FinanceOS Core is now the source of truth.
+
+The Dashboard becomes presentation only.
+
+====================================================
+FIELDS
+====================================================
+
+Map every Dashboard KPI to the corresponding field inside entity_snapshots.
+
+Examples:
+
+Revenue
+
+Net Income
+
+Gross Margin
+
+Net Margin
+
+Cash
+
+Accounts Receivable
+
+Accounts Payable
+
+Open AR
+
+Open AP
+
+Validation status
+
+Freshness
+
+Alerts
+
+Metadata
+
+If a field does not exist in entity_snapshots:
+
+DO NOT recreate the calculation.
+
+Report it as a blocker.
+
+====================================================
+VALIDATION
+====================================================
+
+For each entity:
+
+CarDealer.ai
+
+TopMrktr
+
+Smile More
+
+T3 Marketing
+
+Compare:
+
+Current Drive response
+
+↓
+
+Neon response
+
+Verify:
+
+- identical response structure
+- identical TypeScript interfaces
+- same field names
+- same null handling
+- same numeric precision
+
+====================================================
+PERFORMANCE
+====================================================
+
+One SQL query per entity.
+
+No N+1 queries.
+
+No recalculation.
+
+No CSV parsing.
+
+====================================================
+DELIVERABLES
+====================================================
+
+Provide:
+
+1. Files changed
+
+2. Endpoints migrated
+
+3. KPI mapping table
+   Dashboard field → entity_snapshots column
+
+4. Response comparison
+   Drive vs Neon
+
+5. Performance comparison
+
+6. Remaining Drive dependencies
+
+7. Any missing fields that prevent future migrations
+
+Stop after entity metrics are migrated.
+
+Do NOT migrate financial history, customers, vendors, banking, or reports yet.

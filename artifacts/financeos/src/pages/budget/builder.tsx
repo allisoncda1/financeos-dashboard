@@ -1,8 +1,9 @@
-import { useState, useCallback } from "react";
+import { useState } from "react";
 import { useEntityBudget, useBudgetMutation } from "@/hooks/useApi";
 import { useBudgetEntity } from "@/lib/budget-context";
-import { ENTITY_CONFIG, ENTITY_SLUGS, type EntitySlug } from "@/lib/entities";
-import { PencilLine, Save, AlertCircle } from "lucide-react";
+import { ENTITY_CONFIG } from "@/lib/entities";
+import { BudgetLayout } from "@/components/budget/BudgetLayout";
+import { Save, Info } from "lucide-react";
 import type { BudgetPeriodInput } from "@/lib/types";
 
 const MONTHS_LABELS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
@@ -16,14 +17,14 @@ type CellKey = `${number}-${"revenue" | "cogs" | "opex" | "net_income"}`;
 type EditMap = Map<CellKey, string>;
 
 const LINE_ITEMS = [
-  { key: "revenue",    label: "Revenue" },
-  { key: "cogs",       label: "COGS" },
-  { key: "opex",       label: "Opex" },
+  { key: "revenue", label: "Revenue" },
+  { key: "cogs", label: "COGS" },
+  { key: "opex", label: "Opex" },
   { key: "net_income", label: "Net Income" },
 ] as const;
 
 export default function BudgetBuilderPage() {
-  const { activeSlug, setActiveSlug } = useBudgetEntity();
+  const { activeSlug } = useBudgetEntity();
   const { save, saving, error, refreshKey } = useBudgetMutation();
   const { data, source } = useEntityBudget(activeSlug, undefined, refreshKey);
 
@@ -32,6 +33,7 @@ export default function BudgetBuilderPage() {
   const [saveError, setSaveError] = useState<string | null>(null);
 
   const year = data?.year ?? new Date().getFullYear();
+  const entityName = ENTITY_CONFIG[activeSlug]?.name ?? activeSlug;
 
   const getValue = (month: number, key: string): string => {
     const cellKey = `${month}-${key}` as CellKey;
@@ -52,140 +54,134 @@ export default function BudgetBuilderPage() {
     });
   };
 
-  const handleSaveMonth = useCallback(
-    async (month: number) => {
-      setSaveError(null);
-      const periodStart = `${year}-${String(month).padStart(2, "0")}-01`;
-      const periodEnd   = lastDayOfMonth(year, month);
+  const handleSaveMonth = async (month: number) => {
+    setSaveError(null);
+    const periodStart = `${year}-${String(month).padStart(2, "0")}-01`;
+    const periodEnd = lastDayOfMonth(year, month);
 
-      const toNum = (key: string): number | null => {
-        const v = getValue(month, key);
-        if (v === "" || v === null) return null;
-        const n = parseFloat(v);
-        return Number.isFinite(n) ? n : null;
-      };
+    const toNum = (key: string): number | null => {
+      const v = getValue(month, key);
+      if (v === "" || v === null) return null;
+      const n = parseFloat(v);
+      return Number.isFinite(n) ? n : null;
+    };
 
-      const payload: BudgetPeriodInput = {
-        period_start:      periodStart,
-        period_end:        periodEnd,
-        revenue_target:    toNum("revenue"),
-        cogs_target:       toNum("cogs"),
-        opex_target:       toNum("opex"),
-        net_income_target: toNum("net_income"),
-      };
+    const payload: BudgetPeriodInput = {
+      period_start: periodStart,
+      period_end: periodEnd,
+      revenue_target: toNum("revenue"),
+      cogs_target: toNum("cogs"),
+      opex_target: toNum("opex"),
+      net_income_target: toNum("net_income"),
+    };
 
-      try {
-        await save(activeSlug, payload);
-        setSavedMonths((prev) => new Set([...prev, month]));
-        // Clear edits for this month
-        setEdits((prev) => {
-          const next = new Map(prev);
-          for (const key of LINE_ITEMS.map((l) => l.key)) {
-            next.delete(`${month}-${key}` as CellKey);
-          }
-          return next;
-        });
-      } catch (err) {
-        setSaveError(err instanceof Error ? err.message : "Save failed");
-      }
-    },
-    [activeSlug, edits, year, save],
-  );
+    try {
+      await save(activeSlug, payload);
+      setSavedMonths((prev) => new Set([...prev, month]));
+      setEdits((prev) => {
+        const next = new Map(prev);
+        for (const key of LINE_ITEMS.map((l) => l.key)) {
+          next.delete(`${month}-${key}` as CellKey);
+        }
+        return next;
+      });
+    } catch (err) {
+      setSaveError(err instanceof Error ? err.message : "Save failed");
+    }
+  };
 
   return (
-    <div className="p-6 space-y-6">
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-3">
-          <PencilLine className="w-5 h-5 text-emerald-400" />
-          <h1 className="text-xl font-semibold text-white">Budget Builder</h1>
-          {source === "loading" && <span className="text-xs text-white/40">Loading…</span>}
-        </div>
-
-        <select
-          value={activeSlug}
-          onChange={(e) => setActiveSlug(e.target.value as EntitySlug)}
-          className="bg-white/5 border border-white/10 text-white text-sm rounded-lg px-3 py-1.5 focus:outline-none focus:border-emerald-500/50"
-        >
-          {ENTITY_SLUGS.map((s) => (
-            <option key={s} value={s} className="bg-zinc-900">
-              {ENTITY_CONFIG[s]?.name ?? s}
-            </option>
-          ))}
-        </select>
-      </div>
-
+    <BudgetLayout title="Budget Builder" subtitle={`Build and edit budgets line by line · ${entityName}`}>
       {/* Notice */}
-      <div className="rounded-xl border border-amber-500/30 bg-amber-500/10 px-4 py-3 flex gap-2 text-sm text-amber-300">
-        <AlertCircle className="w-4 h-4 flex-shrink-0 mt-0.5" />
+      <div className="flex items-start gap-2 rounded-xl border border-emerald-100 bg-emerald-50 px-4 py-3 text-[12px] text-emerald-800">
+        <Info className="w-4 h-4 flex-shrink-0 mt-0.5 text-emerald-500" />
         <span>
-          Targets are pre-filled from {year} actuals where available. Edit any cell, then click Save to write that month.
-          You are editing: <strong>{ENTITY_CONFIG[activeSlug]?.name ?? activeSlug}</strong>
+          Targets are pre-filled from {year} actuals where available. Edit any cell, then click a month's{" "}
+          <strong>Save</strong> button to write that month for <strong>{entityName}</strong>.
+          {source === "loading" && <span className="ml-1 text-emerald-600">Loading…</span>}
         </span>
       </div>
 
       {(error || saveError) && (
-        <div className="rounded-xl border border-red-500/30 bg-red-500/10 px-4 py-3 text-sm text-red-300">
+        <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-600">
           {error ?? saveError}
         </div>
       )}
 
       {/* Month grid */}
-      <div className="rounded-xl border border-white/10 bg-white/5 overflow-x-auto">
-        <table className="w-full text-xs min-w-[860px]">
-          <thead>
-            <tr className="border-b border-white/10 text-white/50 uppercase tracking-wide">
-              <th className="text-left px-3 py-2.5 w-28">Line Item</th>
-              {MONTHS_LABELS.map((m) => (
-                <th key={m} className="text-right px-2 py-2.5">{m}</th>
-              ))}
-            </tr>
-          </thead>
-          <tbody>
-            {LINE_ITEMS.map(({ key, label }) => (
-              <tr key={key} className="border-b border-white/5">
-                <td className="px-3 py-2 text-white/70 font-medium">{label}</td>
-                {Array.from({ length: 12 }, (_, i) => i + 1).map((month) => (
-                  <td key={month} className="px-1 py-1">
-                    <input
-                      type="number"
-                      value={getValue(month, key)}
-                      onChange={(e) => handleChange(month, key, e.target.value)}
-                      placeholder="—"
-                      className="w-full bg-white/5 border border-transparent hover:border-white/10 focus:border-emerald-500/50 rounded px-1.5 py-1 text-right text-white/80 focus:outline-none focus:bg-white/10 transition-colors"
-                      min={key !== "net_income" ? "0" : undefined}
-                    />
-                  </td>
+      <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
+        <div className="overflow-x-auto">
+          <table className="w-full text-xs whitespace-nowrap" data-testid="table-budget-builder">
+            <thead className="bg-gray-50 border-b border-gray-100">
+              <tr>
+                <th className="px-4 py-2.5 text-left text-[10px] font-semibold text-gray-400 uppercase tracking-wide sticky left-0 bg-gray-50 z-10 border-r border-gray-100 min-w-[130px]">
+                  Line Item
+                </th>
+                {MONTHS_LABELS.map((m) => (
+                  <th
+                    key={m}
+                    className="px-3 py-2.5 text-right text-[10px] font-semibold text-gray-400 uppercase tracking-wide min-w-[90px]"
+                  >
+                    {m}
+                  </th>
                 ))}
               </tr>
-            ))}
-            {/* Save row */}
-            <tr>
-              <td className="px-3 py-2 text-white/40 text-xs">Save</td>
-              {Array.from({ length: 12 }, (_, i) => i + 1).map((month) => (
-                <td key={month} className="px-1 py-1 text-center">
-                  <button
-                    onClick={() => handleSaveMonth(month)}
-                    disabled={saving}
-                    className="w-full flex items-center justify-center gap-1 py-1 rounded text-[10px] font-medium transition-colors"
-                    style={{
-                      background: savedMonths.has(month) ? "rgba(52,211,153,0.15)" : "rgba(255,255,255,0.06)",
-                      color: savedMonths.has(month) ? "#34d399" : "rgba(255,255,255,0.50)",
-                      border: `1px solid ${savedMonths.has(month) ? "rgba(52,211,153,0.3)" : "rgba(255,255,255,0.08)"}`,
-                    }}
-                  >
-                    <Save className="w-2.5 h-2.5" />
-                    {MONTHS_LABELS[month - 1]}
-                  </button>
-                </td>
+            </thead>
+            <tbody>
+              {LINE_ITEMS.map(({ key, label }) => (
+                <tr key={key} className="border-b border-gray-100">
+                  <td className="px-4 py-2 font-medium text-gray-700 sticky left-0 bg-white z-10 border-r border-gray-100">
+                    {label}
+                  </td>
+                  {Array.from({ length: 12 }, (_, i) => i + 1).map((month) => (
+                    <td key={month} className="px-1.5 py-1">
+                      <input
+                        type="number"
+                        value={getValue(month, key)}
+                        onChange={(e) => handleChange(month, key, e.target.value)}
+                        placeholder="—"
+                        data-testid={`input-${key}-${month}`}
+                        className="w-full bg-white border border-gray-200 hover:border-gray-300 focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500 rounded px-2 py-1 text-right text-gray-800 focus:outline-none transition-colors"
+                        min={key !== "net_income" ? "0" : undefined}
+                      />
+                    </td>
+                  ))}
+                </tr>
               ))}
-            </tr>
-          </tbody>
-        </table>
+              {/* Save row */}
+              <tr className="bg-gray-50/60">
+                <td className="px-4 py-2 text-[10px] font-semibold text-gray-400 uppercase tracking-wide sticky left-0 bg-gray-50 z-10 border-r border-gray-100">
+                  Save
+                </td>
+                {Array.from({ length: 12 }, (_, i) => i + 1).map((month) => {
+                  const isSaved = savedMonths.has(month);
+                  return (
+                    <td key={month} className="px-1.5 py-1.5 text-center">
+                      <button
+                        onClick={() => handleSaveMonth(month)}
+                        disabled={saving}
+                        data-testid={`button-save-${month}`}
+                        className={`w-full inline-flex items-center justify-center gap-1 py-1 rounded text-[10px] font-semibold border transition-colors disabled:opacity-50 ${
+                          isSaved
+                            ? "bg-emerald-50 text-emerald-600 border-emerald-200"
+                            : "bg-white text-gray-500 border-gray-200 hover:bg-gray-50 hover:text-gray-700"
+                        }`}
+                      >
+                        <Save className="w-2.5 h-2.5" />
+                        {MONTHS_LABELS[month - 1]}
+                      </button>
+                    </td>
+                  );
+                })}
+              </tr>
+            </tbody>
+          </table>
+        </div>
       </div>
 
-      <p className="text-xs text-white/30">
-        Each Save button writes that month independently · existing budgets are updated (upsert)
+      <p className="text-[11px] text-gray-400">
+        Each Save button writes that month independently · existing budgets are updated (upsert) · {year}
       </p>
-    </div>
+    </BudgetLayout>
   );
 }

@@ -1,8 +1,8 @@
 import { eq } from "drizzle-orm";
 import { db } from "./connection";
-import { entities } from "@workspace/db";
+import { entitiesTable as entities } from "@workspace/db";
 
-export type { Entity } from "@workspace/db";
+export type { EntityRow as Entity } from "@workspace/db";
 
 /**
  * Resolve a slug to its Neon UUID.

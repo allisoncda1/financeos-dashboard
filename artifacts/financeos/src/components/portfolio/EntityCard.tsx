@@ -5,25 +5,16 @@ import { ArrowUpRight, CheckCircle2, AlertCircle } from "lucide-react";
 import type { EntitySlug, EntityMetrics } from "@/lib/types";
 import { ENTITY_META } from "@/lib/entities";
 import { EntityLogo } from "@/components/ui/EntityLogo";
-import { computeHealthScore, healthLabel, generateEntityInsight } from "@/lib/briefing";
-
-function fmt(n: number | null | undefined): string {
-  if (typeof n !== "number" || !Number.isFinite(n)) return "N/A";
-  if (n >= 1_000_000) return `$${(n / 1_000_000).toFixed(2)}M`;
-  if (n >= 1_000) return `$${(n / 1_000).toFixed(1)}K`;
-  return `$${n}`;
-}
-
-function fmtPct1(n: number | null | undefined): string {
-  return typeof n === "number" && Number.isFinite(n) ? `${n.toFixed(1)}%` : "N/A";
-}
+import { generateEntityInsight } from "@/lib/briefing";
+import { formatCurrency, formatPercent, formatDays } from "@/lib/format";
 
 type Props = { slug: EntitySlug; metrics: EntityMetrics; validationPassed: boolean };
 
 export function EntityCard({ slug, metrics: m, validationPassed }: Props) {
   const meta   = ENTITY_META[slug];
-  const score  = computeHealthScore(m);
-  const label  = healthLabel(score);
+  // Single source of truth — the server-computed health score, never recomputed.
+  const score  = m.health_score;
+  const label  = m.health_label;
   const insight = generateEntityInsight(m);
 
   const insightBg   = insight.type === "positive" ? "bg-emerald-50"  : insight.type === "critical" ? "bg-red-50"   : "bg-amber-50";
@@ -63,12 +54,12 @@ export function EntityCard({ slug, metrics: m, validationPassed }: Props) {
 
         {/* KPIs */}
         <div className="px-4 pb-2 grid grid-cols-2 gap-x-4 gap-y-1.5">
-          <KpiRow label="Revenue YTD"  value={fmt(m.revenue_ytd)} />
-          <KpiRow label="Net Income"   value={fmt(m.net_income_ytd)} />
-          <KpiRow label="Cash"         value={fmt(m.cash_on_hand)} />
-          <KpiRow label="Open AR"      value={fmt(m.open_ar)} />
-          <KpiRow label="DSO"          value={Number.isFinite(m.dso_days) ? `${m.dso_days}d` : "N/A"} warn={(m.dso_days ?? 0) > 60} />
-          <KpiRow label="AR Overdue"   value={fmtPct1(m.ar_overdue_pct)} warn={(m.ar_overdue_pct ?? 0) > 10} />
+          <KpiRow label="Revenue YTD"  value={formatCurrency(m.revenue_ytd)} />
+          <KpiRow label="Net Income"   value={formatCurrency(m.net_income_ytd)} />
+          <KpiRow label="Cash"         value={formatCurrency(m.cash_on_hand)} />
+          <KpiRow label="Open AR"      value={formatCurrency(m.open_ar)} />
+          <KpiRow label="DSO"          value={(m.open_ar ?? 0) > 0 ? formatDays(m.dso_days) : "N/A"} warn={(m.dso_days ?? 0) > 60} />
+          <KpiRow label="AR Overdue"   value={formatPercent(m.ar_overdue_pct)} warn={(m.ar_overdue_pct ?? 0) > 10} />
         </div>
 
         {/* Insight */}

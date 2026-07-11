@@ -1,0 +1,292 @@
+Build the Accounting module for FinanceOS using the attached mockup as the primary design reference.
+
+This is NOT QuickBooks.
+This is the FinanceOS Accounting Workspace.
+
+Goal:
+Create a modern accounting workspace focused on daily operational work, while keeping all reporting inside the Reporting module.
+
+Architecture
+------------
+This is a standalone FinanceOS module.
+
+Route:
+/accounting
+
+All pages should use the same Accounting layout.
+
+Do NOT include Reporting, Budget, Forecast or Commission navigation inside this module.
+
+The sidebar is Accounting-only.
+
+Sidebar
+-------
+
+FinanceOS logo
+
+ACCOUNTING MODULE
+
+• Workspace
+• Invoices
+    - Draft
+    - Sent
+    - Paid
+    - Recurring
+• Bank Transactions
+    - Uncategorized
+    - Categorized
+    - Rules
+• Reconciliation
+    - Accounts
+    - Match Center
+    - History
+• Customers
+• Vendors
+• Chart of Accounts
+• Categorization Rules
+• Journal Entries
+• Fixed Assets
+• Month-End Close
+• Settings
+
+Bottom:
+
+Current Company card
+
+User profile
+
+Collapse sidebar
+
+Header
+------
+
+Title:
+Accounting Workspace
+
+Subtitle:
+Your daily accounting tasks at a glance
+
+Right side:
+
+Company selector
+
+Date selector
+
+Last Sync indicator
+
+Workspace Dashboard
+-------------------
+
+Top KPI cards
+
+Transactions to Categorize
+
+37
+
+Invoices to Send
+
+5
+
+Accounts to Reconcile
+
+2
+
+Customers Missing Info
+
+1
+
+Items Requiring Review
+
+4
+
+Each KPI card should include:
+
+icon
+
+description
+
+small CTA
+
+Quick Actions
+-------------
+
+Large horizontal action buttons:
+
+Create Invoice
+
+Import Bank Transactions
+
+Start Reconciliation
+
+New Customer
+
+New Vendor
+
+More Actions
+
+Main Content
+------------
+
+LEFT (large)
+
+Transactions to Categorize
+
+Tabs:
+
+All
+
+Uncategorized
+
+Suggested
+
+Reviewed
+
+Table columns:
+
+Checkbox
+
+Date
+
+Description
+
+Bank Account
+
+Suggested Category
+
+Confidence
+
+Amount
+
+Actions
+
+Suggested categories should use colored pills.
+
+Confidence should use colored indicators.
+
+RIGHT TOP
+
+AI Suggestions
+
+Cards:
+
+34 transactions can be auto-approved
+
+3 new vendors detected
+
+1 duplicate invoice found
+
+2 possible miscategorizations
+
+Each card clickable.
+
+RIGHT BOTTOM
+
+Recent Activity
+
+Timeline including:
+
+Invoice sent
+
+Bank sync
+
+Transactions categorized
+
+Account reconciled
+
+Rule applied
+
+BOTTOM LEFT
+
+Bank Accounts
+
+Cards for:
+
+Checking
+
+Savings
+
+Credit Card
+
+Show:
+
+Balance
+
+Sync status
+
+Account number
+
+BOTTOM CENTER
+
+Reconciliation Status
+
+Current reconciliation sessions
+
+Status badge
+
+Progress %
+
+Start New Reconciliation button
+
+Design Requirements
+-------------------
+
+The Accounting module must visually match the existing FinanceOS Portfolio dashboard.
+
+Same spacing
+
+Same typography
+
+Same border radius
+
+Same shadows
+
+Same colors
+
+Same component library
+
+Same header
+
+Same sidebar behavior
+
+Do NOT use QuickBooks colors or branding.
+
+This should feel like a premium internal finance operating system.
+
+Implementation
+--------------
+
+Create reusable components:
+
+AccountingLayout
+
+AccountingSidebar
+
+WorkspaceHeader
+
+KPICard
+
+QuickActions
+
+TransactionQueue
+
+AISuggestions
+
+RecentActivity
+
+BankAccountsCard
+
+ReconciliationCard
+
+TransactionTable
+
+Use mock data only.
+
+Store all mock data in:
+
+accountingMockData.ts
+
+Do NOT build backend logic yet.
+
+Prepare all components so existing Neon data can be plugged in later without redesigning the UI.
+
+The objective is to create a fully navigable Accounting module that matches the attached design almost pixel-for-pixel while respecting the FinanceOS design system.

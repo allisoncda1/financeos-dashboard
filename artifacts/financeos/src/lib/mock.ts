@@ -7,8 +7,9 @@
 // NEVER import drive.ts (Phase 2) in client components.
 // NEVER import real financial data here.
 
-import type { DashboardData, CustomersData, VendorsData, FinancialsData, BankingData } from "./types";
+import type { DashboardData, CustomersData, VendorsData, FinancialsData, BankingData, EntityMetrics } from "./types";
 import type { EntitySlug } from "./types";
+import { computeHealthScore, healthLabel } from "./briefing";
 
 import portfolioSummary   from "@/data/mock/portfolio/summary.json";
 import validationSummary  from "@/data/mock/validation/validation_summary.json";
@@ -27,16 +28,26 @@ import smileMoreAnomalies from "@/data/mock/entities/Smile_More/anomalies.json";
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 const cast = <T>(v: unknown): T => v as T;
 
+// Populate the single-source health fields on offline mock metrics so that,
+// when the API is unreachable, every surface still reads one consistent
+// value (metrics.health_score / metrics.health_label) rather than each
+// computing its own. Live data gets these fields from the server instead.
+function withHealth(v: unknown): EntityMetrics {
+  const m = cast<EntityMetrics>(v);
+  const score = computeHealthScore(m);
+  return { ...m, health_score: score, health_label: healthLabel(score) };
+}
+
 export function getMockData(): DashboardData {
   return {
     portfolio:  cast(portfolioSummary),
     validation: cast(validationSummary),
     freshness:  cast(dataFreshness),
     metrics: {
-      CarDealer_ai: cast(carDealerMetrics),
-      T3_Marketing: cast(t3Metrics),
-      TopMrktr:     cast(topMrktrMetrics),
-      Smile_More:   cast(smileMoreMetrics),
+      CarDealer_ai: withHealth(carDealerMetrics),
+      T3_Marketing: withHealth(t3Metrics),
+      TopMrktr:     withHealth(topMrktrMetrics),
+      Smile_More:   withHealth(smileMoreMetrics),
     },
     anomalies: {
       CarDealer_ai: cast(carDealerAnomalies),

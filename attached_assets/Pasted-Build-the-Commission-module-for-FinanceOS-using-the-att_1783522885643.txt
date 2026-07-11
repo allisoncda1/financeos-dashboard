@@ -1,0 +1,304 @@
+Build the Commission module for FinanceOS using the attached mockup as the primary design reference.
+
+This is NOT the old Abacus portal.
+This is the new FinanceOS Commission module.
+
+Goal:
+Create a modern commission management system that tracks, calculates, reviews and pays commissions using FinanceOS data.
+
+Architecture
+------------
+
+Standalone module.
+
+Route:
+/commissions
+
+Every page must use the same Commission layout.
+
+Do NOT include Reporting, Budget, Forecast or Accounting navigation.
+
+Sidebar
+-------
+
+FinanceOS logo
+
+COMMISSION MODULE
+
+• Overview
+• Invoices
+• Sales Reps
+• Clients
+• Commission Plans
+• Calculations
+• Payouts
+• Reports
+• Settings
+
+Bottom:
+Current Company
+Current User
+Collapse Sidebar
+
+Header
+------
+
+Title:
+Commission Overview
+
+Subtitle:
+Track, calculate and manage sales commissions
+
+Right side:
+
+Company selector
+
+Period selector
+
+Green button:
+Calculate Commissions
+
+Overview Dashboard
+------------------
+
+Top KPI cards
+
+Total Commission Earned
+
+$142,450
+
+Total Commission Paid
+
+$98,250
+
+Pending Approval
+
+$44,200
+
+Reps Paid This Month
+
+2 of 5
+
+Commission Payout Date
+
+Due in 5 days
+
+Each KPI card should include:
+- icon
+- comparison vs previous month
+- sparkline where appropriate
+- modern FinanceOS styling
+
+Main Row
+--------
+
+LEFT
+
+Commission Trend
+
+Chart with:
+
+Earned
+
+Paid
+
+Forecast
+
+Monthly selector
+
+Period selector
+
+RIGHT
+
+Commission by Sales Rep
+
+Donut chart
+
+Table:
+
+Sales Rep
+
+Commission Earned
+
+%
+
+Total
+
+Bottom Left
+-----------
+
+Commission Status
+
+Tabs:
+
+All
+
+Pending
+
+Approved
+
+Locked
+
+Paid
+
+Large table
+
+Columns:
+
+Invoice #
+
+Customer
+
+Sales Rep
+
+Invoice Date
+
+Invoice Amount
+
+Commission Amount
+
+Status
+
+Search
+
+Filters
+
+Export
+
+Status badges:
+
+Pending
+
+Approved
+
+Locked
+
+Paid
+
+Bottom Right
+------------
+
+Card 1
+
+Commission by Plan
+
+Columns:
+
+Plan Name
+
+Sales Reps
+
+Earned
+
+%
+
+Card 2
+
+Upcoming Payout
+
+Fields:
+
+Period
+
+Total Amount
+
+Payout Date
+
+Status
+
+Button:
+View payout details
+
+Design Requirements
+-------------------
+
+Match the FinanceOS design system.
+
+Same spacing
+
+Same typography
+
+Same shadows
+
+Same border radius
+
+Same sidebar behavior
+
+Same header
+
+Same card components
+
+Same colors
+
+Premium internal finance software.
+
+Implementation
+--------------
+
+Create reusable components:
+
+CommissionLayout
+
+CommissionSidebar
+
+CommissionHeader
+
+CommissionKPICards
+
+CommissionTrendChart
+
+CommissionRepChart
+
+CommissionStatusTable
+
+CommissionPlanCard
+
+UpcomingPayoutCard
+
+Use mock data only.
+
+Store all mock data in:
+
+commissionMockData.ts
+
+Prepare everything so Neon data can later replace mock data without changing the UI.
+
+Routing
+-------
+
+Create the following routes:
+
+/commissions
+
+/commissions/invoices
+
+/commissions/sales-reps
+
+/commissions/clients
+
+/commissions/plans
+
+/commissions/calculations
+
+/commissions/payouts
+
+/commissions/reports
+
+/commissions/settings
+
+Pages other than Overview should initially contain complete placeholder layouts (not empty "Coming Soon" pages) matching the Budget module approach.
+
+Home Integration
+----------------
+
+Update the FinanceOS home portal.
+
+Remove the "Coming Soon" badge from the Commission card.
+
+Add an "Open Commissions" button.
+
+Clicking the card or button should navigate to:
+
+/commissions
+
+Use the exact same navigation behavior already implemented for the Budget module.

@@ -1,4 +1,5 @@
 import type { AgingBucket } from "@/lib/types";
+import { formatCurrency, formatPercent } from "@/lib/format";
 
 type Props = {
   buckets: AgingBucket[];
@@ -11,12 +12,6 @@ type Props = {
   overduePct?: number;
 };
 
-function fmt(n: number): string {
-  if (n >= 1_000_000) return `$${(n / 1_000_000).toFixed(2)}M`;
-  if (n >= 1_000) return `$${(n / 1_000).toFixed(1)}K`;
-  return `$${n}`;
-}
-
 const BAR_COLORS = ["#10B981", "#F59E0B", "#F97316", "#EF4444", "#991B1B"];
 
 export function AgingTable({ buckets, total, label, overdueAmt: overdueAmtProp, overduePct: overduePctProp }: Props) {
@@ -26,6 +21,13 @@ export function AgingTable({ buckets, total, label, overdueAmt: overdueAmtProp, 
   const overdueAmt = overdueAmtProp ?? buckets.slice(1).reduce((s, b) => s + b.amount, 0);
   const overduePct = overduePctProp ?? (total > 0 ? (overdueAmt / total) * 100 : 0);
 
+  // The aging buckets must reconcile to the authoritative total. When they
+  // don't (Core published a headline balance but no per-bucket detail), we
+  // keep the authoritative total and say the breakdown is unavailable rather
+  // than render misleading all-$0 buckets.
+  const bucketSum = buckets.reduce((s, b) => s + b.amount, 0);
+  const reconciles = Math.abs(bucketSum - total) <= 1;
+
   return (
     <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
       {/* Header */}
@@ -33,16 +35,25 @@ export function AgingTable({ buckets, total, label, overdueAmt: overdueAmtProp, 
         <h3 className="text-[13px] font-semibold text-gray-900">{label} Aging</h3>
         <div className="flex items-center gap-3">
           <span className="text-[11px] text-gray-500">
-            Total: <span className="font-semibold text-gray-800">{fmt(total)}</span>
+            Total: <span className="font-semibold text-gray-800">{formatCurrency(total)}</span>
           </span>
-          {overdueAmt > 0 && (
+          {reconciles && overdueAmt > 0 && (
             <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-red-50 text-red-700">
-              {fmt(overdueAmt)} overdue ({overduePct.toFixed(1)}%)
+              {formatCurrency(overdueAmt)} overdue ({formatPercent(overduePct)})
             </span>
           )}
         </div>
       </div>
 
+      {!reconciles ? (
+        <div className="px-4 py-6 text-center">
+          <p className="text-[12px] font-medium text-gray-500">Aging detail unavailable</p>
+          <p className="text-[11px] text-gray-400 mt-1">
+            Open {label} of {formatCurrency(total)} is shown from the authoritative source; a per-bucket aging breakdown was not provided.
+          </p>
+        </div>
+      ) : (
+      <>
       {/* Stacked bar */}
       <div className="px-4 pt-3 pb-2">
         <div className="flex rounded-full overflow-hidden h-2">
@@ -51,7 +62,7 @@ export function AgingTable({ buckets, total, label, overdueAmt: overdueAmtProp, 
               <div
                 key={b.label}
                 style={{ width: `${(b.amount / total) * 100}%`, background: BAR_COLORS[i] }}
-                title={`${b.label}: ${fmt(b.amount)}`}
+                title={`${b.label}: ${formatCurrency(b.amount)}`}
               />
             ) : null
           )}
@@ -100,11 +111,11 @@ export function AgingTable({ buckets, total, label, overdueAmt: overdueAmtProp, 
                   </div>
                 </td>
                 <td className={`px-4 py-2.5 text-right text-[12px] font-semibold ${isOverdue && b.amount > 0 ? "text-red-700" : "text-gray-800"}`}>
-                  {b.amount > 0 ? fmt(b.amount) : "—"}
+                  {formatCurrency(b.amount)}
                 </td>
                 <td className="px-4 py-2.5 text-right text-[12px] text-gray-500">{b.count}</td>
                 <td className="px-4 py-2.5 text-right text-[12px] text-gray-500">
-                  {pct > 0 ? `${pct.toFixed(1)}%` : "—"}
+                  {formatPercent(pct)}
                 </td>
               </tr>
             );
@@ -113,7 +124,7 @@ export function AgingTable({ buckets, total, label, overdueAmt: overdueAmtProp, 
         <tfoot>
           <tr className="border-t-2 border-gray-200 bg-gray-50">
             <td className="px-4 py-2.5 text-[12px] font-bold text-gray-900">Total</td>
-            <td className="px-4 py-2.5 text-right text-[12px] font-bold text-gray-900">{fmt(total)}</td>
+            <td className="px-4 py-2.5 text-right text-[12px] font-bold text-gray-900">{formatCurrency(total)}</td>
             <td className="px-4 py-2.5 text-right text-[12px] font-semibold text-gray-700">
               {buckets.reduce((s, b) => s + b.count, 0)}
             </td>
@@ -121,6 +132,8 @@ export function AgingTable({ buckets, total, label, overdueAmt: overdueAmtProp, 
           </tr>
         </tfoot>
       </table>
+      </>
+      )}
     </div>
   );
 }

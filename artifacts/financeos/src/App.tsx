@@ -36,11 +36,42 @@ import BudgetVsActualPage from "@/pages/budget/budget-vs-actual";
 import BudgetPnLPage from "@/pages/budget/pnl";
 import BudgetCashFlowPage from "@/pages/budget/cash-flow";
 import BudgetBalanceSheetPage from "@/pages/budget/balance-sheet";
+import { BudgetEntityProvider } from "@/lib/budget-context";
+import BudgetDepartmentsPage from "@/pages/budget/departments";
 import BudgetVersionsPage from "@/pages/budget/versions";
 import BudgetAssumptionsPage from "@/pages/budget/assumptions";
 import BudgetReportsPage from "@/pages/budget/reports";
 import BudgetSettingsPage from "@/pages/budget/settings";
-import { BudgetEntityProvider } from "@/lib/budget-context";
+import AccountingWorkspacePage from "@/pages/accounting/workspace";
+import AccountingInvoicesPage from "@/pages/accounting/invoices";
+import AccountingTransactionsPage from "@/pages/accounting/transactions";
+import AccountingReconciliationPage from "@/pages/accounting/reconciliation";
+import AccountingCustomersPage from "@/pages/accounting/customers";
+import AccountingVendorsPage from "@/pages/accounting/vendors";
+import AccountingChartOfAccountsPage from "@/pages/accounting/chart-of-accounts";
+import AccountingRulesPage from "@/pages/accounting/rules";
+import AccountingJournalEntriesPage from "@/pages/accounting/journal-entries";
+import AccountingFixedAssetsPage from "@/pages/accounting/fixed-assets";
+import AccountingMonthEndClosePage from "@/pages/accounting/month-end-close";
+import AccountingSettingsPage from "@/pages/accounting/settings";
+import CommissionOverviewPage from "@/pages/commissions/overview";
+import CommissionInvoicesPage from "@/pages/commissions/invoices";
+import CommissionSalesRepsPage from "@/pages/commissions/sales-reps";
+import CommissionClientsPage from "@/pages/commissions/clients";
+import CommissionPlansPage from "@/pages/commissions/plans";
+import CommissionCalculationsPage from "@/pages/commissions/calculations";
+import CommissionPayoutsPage from "@/pages/commissions/payouts";
+import CommissionReportsPage from "@/pages/commissions/reports";
+import CommissionSettingsPage from "@/pages/commissions/settings";
+import ForecastOverviewPage from "@/pages/forecast/overview";
+import RevenueForecastPage from "@/pages/forecast/revenue";
+import CashFlowForecastPage from "@/pages/forecast/cash-flow";
+import PnlForecastPage from "@/pages/forecast/pnl";
+import BalanceSheetForecastPage from "@/pages/forecast/balance-sheet";
+import ForecastScenariosPage from "@/pages/forecast/scenarios";
+import ForecastDriversPage from "@/pages/forecast/drivers";
+import ForecastReportsPage from "@/pages/forecast/reports";
+import ForecastSettingsPage from "@/pages/forecast/settings";
 
 function AppRoutes() {
   return (
@@ -74,6 +105,7 @@ function AppRoutes() {
             <Route path="/budget" component={BudgetOverviewPage} />
             <Route path="/budget/builder" component={BudgetBuilderPage} />
             <Route path="/budget/budget-vs-actual" component={BudgetVsActualPage} />
+            <Route path="/budget/departments" component={BudgetDepartmentsPage} />
             <Route path="/budget/pnl" component={BudgetPnLPage} />
             <Route path="/budget/cash-flow" component={BudgetCashFlowPage} />
             <Route path="/budget/balance-sheet" component={BudgetBalanceSheetPage} />
@@ -89,6 +121,117 @@ function AppRoutes() {
   );
 }
 
+function BudgetRoutes() {
+  return (
+    <BudgetEntityProvider>
+      <Switch>
+        <Route path="/budget" component={BudgetOverviewPage} />
+        <Route path="/budget/builder" component={BudgetBuilderPage} />
+        <Route path="/budget/budget-vs-actual" component={BudgetVsActualPage} />
+        <Route path="/budget/departments" component={BudgetDepartmentsPage} />
+        <Route path="/budget/pnl" component={BudgetPnLPage} />
+        <Route path="/budget/cash-flow" component={BudgetCashFlowPage} />
+        <Route path="/budget/balance-sheet" component={BudgetBalanceSheetPage} />
+        <Route path="/budget/versions" component={BudgetVersionsPage} />
+        <Route path="/budget/assumptions" component={BudgetAssumptionsPage} />
+        <Route path="/budget/reports" component={BudgetReportsPage} />
+        <Route path="/budget/settings" component={BudgetSettingsPage} />
+        <Route component={NotFound} />
+      </Switch>
+    </BudgetEntityProvider>
+  );
+}
+
+function AccountingRoutes() {
+  return (
+    <Switch>
+      <Route path="/accounting" component={AccountingWorkspacePage} />
+      <Route path="/accounting/invoices">
+        <AccountingInvoicesPage />
+      </Route>
+      <Route path="/accounting/invoices/draft">
+        <AccountingInvoicesPage filter="draft" />
+      </Route>
+      <Route path="/accounting/invoices/sent">
+        <AccountingInvoicesPage filter="sent" />
+      </Route>
+      <Route path="/accounting/invoices/paid">
+        <AccountingInvoicesPage filter="paid" />
+      </Route>
+      <Route path="/accounting/invoices/recurring">
+        <AccountingInvoicesPage filter="recurring" />
+      </Route>
+      <Route path="/accounting/transactions">
+        <AccountingTransactionsPage />
+      </Route>
+      <Route path="/accounting/transactions/uncategorized">
+        <AccountingTransactionsPage view="uncategorized" />
+      </Route>
+      <Route path="/accounting/transactions/categorized">
+        <AccountingTransactionsPage view="categorized" />
+      </Route>
+      <Route path="/accounting/transactions/rules">
+        <AccountingTransactionsPage view="rules" />
+      </Route>
+      <Route path="/accounting/reconciliation">
+        <AccountingReconciliationPage />
+      </Route>
+      <Route path="/accounting/reconciliation/accounts">
+        <AccountingReconciliationPage view="accounts" />
+      </Route>
+      <Route path="/accounting/reconciliation/match-center">
+        <AccountingReconciliationPage view="match-center" />
+      </Route>
+      <Route path="/accounting/reconciliation/history">
+        <AccountingReconciliationPage view="history" />
+      </Route>
+      <Route path="/accounting/customers" component={AccountingCustomersPage} />
+      <Route path="/accounting/vendors" component={AccountingVendorsPage} />
+      <Route path="/accounting/chart-of-accounts" component={AccountingChartOfAccountsPage} />
+      <Route path="/accounting/rules" component={AccountingRulesPage} />
+      <Route path="/accounting/journal-entries" component={AccountingJournalEntriesPage} />
+      <Route path="/accounting/fixed-assets" component={AccountingFixedAssetsPage} />
+      <Route path="/accounting/month-end-close" component={AccountingMonthEndClosePage} />
+      <Route path="/accounting/settings" component={AccountingSettingsPage} />
+      <Route component={NotFound} />
+    </Switch>
+  );
+}
+
+function CommissionRoutes() {
+  return (
+    <Switch>
+      <Route path="/commissions" component={CommissionOverviewPage} />
+      <Route path="/commissions/invoices" component={CommissionInvoicesPage} />
+      <Route path="/commissions/sales-reps" component={CommissionSalesRepsPage} />
+      <Route path="/commissions/clients" component={CommissionClientsPage} />
+      <Route path="/commissions/plans" component={CommissionPlansPage} />
+      <Route path="/commissions/calculations" component={CommissionCalculationsPage} />
+      <Route path="/commissions/payouts" component={CommissionPayoutsPage} />
+      <Route path="/commissions/reports" component={CommissionReportsPage} />
+      <Route path="/commissions/settings" component={CommissionSettingsPage} />
+      <Route component={NotFound} />
+    </Switch>
+  );
+}
+
+function ForecastRoutes() {
+  return (
+    <Switch>
+      <Route path="/forecast" component={ForecastOverviewPage} />
+      <Route path="/forecast/revenue" component={RevenueForecastPage} />
+      <Route path="/forecast/cash-flow" component={CashFlowForecastPage} />
+      <Route path="/forecast/pnl" component={PnlForecastPage} />
+      <Route path="/forecast/balance-sheet" component={BalanceSheetForecastPage} />
+      <Route path="/forecast/scenarios" component={ForecastScenariosPage} />
+      <Route path="/forecast/drivers" component={ForecastDriversPage} />
+      <Route path="/forecast/reports" component={ForecastReportsPage} />
+      <Route path="/forecast/settings" component={ForecastSettingsPage} />
+      <Route component={NotFound} />
+    </Switch>
+  );
+}
+
 function Router() {
   return (
     <Switch>
@@ -96,6 +239,26 @@ function Router() {
       <Route path="/home">
         <ProtectedRoute>
           <HomePage />
+        </ProtectedRoute>
+      </Route>
+      <Route path="/budget/*?">
+        <ProtectedRoute>
+          <BudgetRoutes />
+        </ProtectedRoute>
+      </Route>
+      <Route path="/accounting/*?">
+        <ProtectedRoute>
+          <AccountingRoutes />
+        </ProtectedRoute>
+      </Route>
+      <Route path="/commissions/*?">
+        <ProtectedRoute>
+          <CommissionRoutes />
+        </ProtectedRoute>
+      </Route>
+      <Route path="/forecast/*?">
+        <ProtectedRoute>
+          <ForecastRoutes />
         </ProtectedRoute>
       </Route>
       <Route>

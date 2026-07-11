@@ -1,0 +1,104 @@
+Approved for recovery, with an important correction.
+
+Do NOT restore the entire artifacts/financeos tree blindly.
+Do NOT delete the Accounting module.
+Do NOT remove valid features that existed before the failed Budget integration.
+
+Our goal is:
+
+1. Restore the exact pre-merge FinanceOS visual design from commit 6896676.
+2. Preserve all working backend code.
+3. Preserve the budgets table and seeded data.
+4. Preserve the Accounting, Forecast, Commissions, Reporting, and Control modules.
+5. Keep the Budget API integration, but restyle the Budget pages to match the original FinanceOS design.
+
+Accounting must remain. It was valid work completed before this recovery and is not disposable.
+
+Recovery approach:
+
+PHASE 1 — Create a safe UI recovery branch/checkpoint
+
+- Preserve the current post-merge state at 0ce8893.
+- Create a dedicated recovery branch before editing.
+- Do not push or deploy yet.
+
+PHASE 2 — Restore the original design system surgically
+
+Use commit 6896676 as the visual source of truth.
+
+Compare and restore only the files responsible for the original FinanceOS shell and styling, such as:
+
+- global CSS/theme files
+- layout components
+- AppShell
+- Sidebar
+- GlobalHeader / TopBar
+- shared card/table/button components
+- home launcher styling
+- BudgetLayout and BudgetSidebar styling where they existed
+- any design tokens or shared UI primitives overwritten during the transplant
+
+Do not overwrite entire feature directories.
+
+Do not remove:
+- Accounting pages or routes
+- Budget API methods/hooks/types
+- BudgetEntityProvider
+- Budget backend routes/services/schema
+- Forecast or Commission pages
+- existing Reporting files
+
+PHASE 3 — Recover original Budget UI structure
+
+The pre-merge Budget module included pages such as:
+- dashboard.tsx
+- departments.tsx
+and the original FinanceOS styling.
+
+Restore those valid original pages where appropriate.
+
+Then integrate the live Budget data into the original pre-merge Budget design instead of keeping the simplified GitHub styling.
+
+For each Budget page:
+- preserve the original design language
+- connect it to the existing Budget V1.1 hooks and APIs
+- do not replace polished UI with plain tables
+- do not use white-on-white or low-contrast styling
+- keep all four entities and logos
+- preserve the dark-green FinanceOS sidebar and consistent cards
+
+PHASE 4 — Database safety
+
+Do not run SQL.
+Do not modify either DATABASE_URL or CORE_DATABASE_URL.
+Do not reseed budgets.
+Do not create or delete tables.
+
+The existing 48 seeded Budget rows must remain untouched.
+
+PHASE 5 — Verification before commit
+
+Verify visually:
+
+- /home matches the exact pre-merge design
+- Reporting remains unchanged
+- Accounting pages still exist and work
+- Forecast and Commissions still exist
+- Budget pages use the original FinanceOS design
+- /budget displays live Budget data with readable contrast
+- /budget/budget-vs-actual works
+- /budget/pnl works
+- /budget/builder saves and reloads values
+- no missing routes
+- no white-on-white text
+- no console errors
+- all typechecks pass
+
+Then provide:
+- every file restored from 6896676
+- every file manually merged
+- every file deliberately kept from the current version
+- screenshots of /home, /budget, /accounting, and Reporting
+- confirmation that no database operations occurred
+
+Do not commit, push, or deploy until I approve the recovered visual result.

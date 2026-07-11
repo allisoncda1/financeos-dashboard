@@ -1,0 +1,161 @@
+Build the Forecast module for FinanceOS using the attached mockup as the primary design reference.
+
+This is the standalone Forecast module.
+
+Route:
+/forecast
+
+Do NOT include Reporting, Budget, Accounting, Commission, Treasury, or AI Assistant navigation inside this module.
+
+Sidebar:
+
+FinanceOS logo
+
+FORECAST MODULE
+
+• Overview
+• Revenue Forecast
+• Cash Flow Forecast
+• P&L Forecast
+• Balance Sheet Forecast
+• Scenarios
+• Drivers & Assumptions
+• Reports
+• Settings
+
+Bottom:
+Current company card
+User profile
+Collapse sidebar
+
+Header:
+
+Title:
+Forecast Overview
+
+Subtitle:
+Project future performance and monitor key financial metrics
+
+Right side:
+Company selector
+Fiscal year selector
+Update Forecast button
+Last updated indicator
+
+Top KPI cards:
+
+Forecasted Revenue
+$18.4M
+-8.2% vs Budget
+
+Forecasted Net Income
+$2.2M
+-26.7% vs Budget
+
+Free Cash Flow
+$1.6M
++5.4% vs Budget
+
+Cash Balance (EoY)
+$4.8M
+Runway: 5.2 months
+
+Gross Margin
+61.2%
+-2.1 pts vs Budget
+
+Main dashboard:
+
+1. Forecast vs Budget (Revenue)
+- monthly chart
+- show actual months on the left
+- show forecast months on the right
+- vertical divider between Actual and Forecast
+- Budget bars
+- Actual line
+- Forecast dotted line
+
+2. Forecast Summary (FY2026)
+Table columns:
+- Metric
+- Budget
+- Forecast
+- Variance
+- Variance %
+
+Rows:
+- Revenue
+- Gross Profit
+- Gross Margin
+- Operating Expenses
+- Operating Income
+- Net Income
+- Free Cash Flow
+
+3. Key Forecast Drivers
+Table columns:
+- Driver
+- Impact on Net Income
+- vs Budget
+- Trend
+- Comment
+
+Drivers:
+- Revenue
+- COGS
+- Marketing Expenses
+- Payroll
+- Other Income
+
+4. Cash Flow Forecast
+- monthly cash flow chart
+- operating cash flow
+- investing cash flow
+- financing cash flow
+- ending cash balance
+
+5. AI Insight card
+Text:
+“At current trends, we project a $1.6M revenue shortfall vs budget by year-end, primarily driven by CarDealer.ai and TopMrktr performance.”
+
+Button:
+View Full Analysis
+
+Design requirements:
+- Match the existing FinanceOS design system.
+- Use the same dark green sidebar style as Portfolio/Reporting.
+- Use white cards, subtle shadows, rounded corners, clean SaaS spacing.
+- Use green as the main FinanceOS accent.
+- Use red for negative variances.
+- Use mock data only for now.
+- Store mock data in forecastMockData.ts.
+- Build reusable components:
+  - ForecastLayout
+  - ForecastSidebar
+  - ForecastHeader
+  - ForecastKpiCard
+  - ForecastVsBudgetChart
+  - ForecastSummaryTable
+  - ForecastDriversTable
+  - CashFlowForecastChart
+  - ForecastAiInsightCard
+
+Routing:
+Create routes:
+- /forecast
+- /forecast/revenue
+- /forecast/cash-flow
+- /forecast/pnl
+- /forecast/balance-sheet
+- /forecast/scenarios
+- /forecast/drivers
+- /forecast/reports
+- /forecast/settings
+
+For non-overview pages, create clean placeholder/sample pages matching the same layout.
+
+Home integration:
+- Remove Coming Soon badge from Forecast card.
+- Add Open Forecast button.
+- Clicking the Forecast card or button should navigate to /forecast.
+- Keep Reporting, Budget, Commission, and Accounting unchanged.

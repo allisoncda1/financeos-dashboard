@@ -1,6 +1,12 @@
 import { useParams } from "wouter";
 import NotFound from "@/pages/not-found";
-import { useDashboardData } from "@/hooks/useApi";
+import {
+  useDashboardData,
+  useEntityFinancials,
+  useEntityBanking,
+  useAlerts,
+  usePipelineStatus,
+} from "@/hooks/useApi";
 import { ENTITY_CONFIG, ENTITY_SLUGS, type EntitySlug } from "@/lib/entities";
 import {
   TrendingUp, DollarSign, Briefcase, Building2, Timer,
@@ -9,17 +15,30 @@ import {
 import { EntityHeader }   from "@/components/dashboard/EntityHeader";
 import { KpiCard }        from "@/components/dashboard/KpiCard";
 import { ProfitChart }    from "@/components/dashboard/ProfitChart";
-import { HealthScore }    from "@/components/dashboard/HealthScore";
+import { CompanyHealth }  from "@/components/dashboard/CompanyHealth";
 import { TopMetrics }     from "@/components/dashboard/TopMetrics";
 import { BankAccounts }   from "@/components/dashboard/BankAccounts";
 import { RecentAlerts }   from "@/components/dashboard/RecentAlerts";
 import { CashFlowChart }  from "@/components/dashboard/CashFlowChart";
+import { SystemStatus }   from "@/components/dashboard/SystemStatus";
+import { computeCompanyHealth } from "@/lib/healthScore";
+import type { DataSourceState } from "@/lib/dataState";
+import { formatCurrency, DASH } from "@/lib/format";
 
 
 export default function EntityPage() {
   const { slug } = useParams<{ slug: string }>();
+  const eSlug = slug as EntitySlug;
+
+  // All hooks run unconditionally (before any early return) to keep hook order
+  // stable. Each surfaces its own {data, source}; none fabricate values.
   const { data, source } = useDashboardData();
-  if (!slug || !ENTITY_SLUGS.includes(slug as EntitySlug)) return <NotFound />;
+  const financials = useEntityFinancials(eSlug);
+  const banking    = useEntityBanking(eSlug);
+  const alertsState = useAlerts();
+  const pipeline   = usePipelineStatus();
+
+  if (!slug || !ENTITY_SLUGS.includes(eSlug)) return <NotFound />;
   if (!data) {
     return (
       <div className="h-full flex items-center justify-center text-[13px] text-gray-400">
@@ -28,26 +47,49 @@ export default function EntityPage() {
     );
   }
 
-  const eSlug    = slug as EntitySlug;
   const config   = ENTITY_CONFIG[eSlug];
   const m        = data.metrics[eSlug];
-  const anomalies = data.anomalies[eSlug] ?? [];
 
-  // ── Derived values ────────────────────────────────────────────────────────
+  // ── Real, entity-scoped alerts (Core `alerts` table via /api/alerts) ───────
+  const entityAlerts = alertsState.data
+    ? alertsState.data.filter(
+        (a) => a.entitySlug === eSlug.toLowerCase() || a.entity === config.name,
+      )
+    : null;
+
+  // ── Derived values (only from real data; otherwise null → "—") ─────────────
+  const monthlyPL       = financials.data?.monthly_pl ?? null;
+  const monthsElapsed   = monthlyPL && monthlyPL.length > 0 ? monthlyPL.length : null;
+  const monthlyBurn     = monthsElapsed ? m.opex_ytd / monthsElapsed : null;
+  const runway          = monthlyBurn && monthlyBurn > 0 && m.cash_on_hand > 0
+    ? m.cash_on_hand / monthlyBurn
+    : null;
   const totalExpenses   = m.cogs_ytd + m.opex_ytd;
-  const monthsElapsed   = 6; // Jan–Jun YTD
-  const monthlyBurn     = m.opex_ytd / monthsElapsed;
-  const runway          = monthlyBurn > 0 && m.cash_on_hand > 0 ? m.cash_on_hand / monthlyBurn : null;
-  const healthScore     = data.validation.all_passed ? 92 : 74;
-  const netCashApprox   = m.cash_on_hand;
-  const cashInApprox    = Math.round(m.revenue_ytd / monthsElapsed);
-  const cashOutApprox   = Math.round(totalExpenses / monthsElapsed);
 
-  function fmt(n: number): string {
-    if (n >= 1_000_000) return `$${(n / 1_000_000).toFixed(2)}M`;
-    if (n >= 1_000)     return `$${(n / 1_000).toFixed(1)}K`;
-    return `$${n.toLocaleString()}`;
-  }
+  // ── Company Health Score — deterministic, real-data-only (lib/healthScore) ──
+  const health = computeCompanyHealth({
+    metrics: m,
+    monthlyPL,
+    validation: {
+      passed: data.validation.passed ?? null,
+      totalChecks: data.validation.total_checks ?? null,
+    },
+  });
+
+  // Effective source across every feed whose data is displayed on this page.
+  // Includes `source` (from /api/model) because KPI values, Top Metrics and the
+  // Data Integrity score are all derived from it — excluding it would let the
+  // pill claim "Live DB" while those prominent numbers are actually cached.
+  const realSources: DataSourceState[] = [source, financials.source, banking.source, alertsState.source, pipeline.source];
+  const pageSource: DataSourceState =
+    realSources.includes("mock") ? "mock"
+    : realSources.includes("unavailable") ? "unavailable"
+    : realSources.includes("cache") ? "cache"
+    : realSources.every((s) => s === "db") ? "db"
+    : realSources.includes("loading") ? "loading"
+    : "live";
+
+  const fmt = (n: number) => formatCurrency(n);
 
   return (
     <div className="h-full overflow-y-auto flex flex-col" style={{ background: "#F4F5F7" }}>
@@ -63,77 +105,56 @@ export default function EntityPage() {
       </div>
 
       {/* ── Dashboard content ───────────────────────────── */}
-      <div className="flex-1 px-6 py-5 space-y-4 max-w-[1400px] w-full mx-auto">
+      <div className="flex-1 px-4 sm:px-6 py-4 sm:py-5 space-y-4 max-w-[1400px] w-full mx-auto">
 
-        {/* Row 1 — 5 KPI cards */}
-        <div className="grid grid-cols-5 gap-4">
+        {/* Row 1 — 5 KPI cards. Deltas omitted: no comparable prior period
+            is published yet, so a neutral "—" is shown instead of a fake trend. */}
+        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-4">
           <KpiCard
             label="NET PROFIT"
             value={fmt(m.net_income_ytd)}
-            delta="+12.4%"
-            positive={true}
             icon={TrendingUp}
             iconBg="#10B981"
-            compare="vs prev period"
           />
           <KpiCard
             label="REVENUE"
             value={fmt(m.revenue_ytd)}
-            delta="+8.7%"
-            positive={true}
             icon={DollarSign}
             iconBg="#3B82F6"
-            compare="vs prev period"
           />
           <KpiCard
             label="EXPENSES"
             value={fmt(totalExpenses)}
-            delta="−3.2%"
-            positive={false}
             icon={Briefcase}
             iconBg="#8B5CF6"
-            compare="vs prev period"
           />
           <KpiCard
             label="CASH BALANCE"
             value={fmt(m.cash_on_hand)}
-            delta="+5.6%"
-            positive={true}
             icon={Building2}
             iconBg="#0EA5E9"
-            compare="vs prev period"
           />
           <KpiCard
             label="RUNWAY"
-            value={runway === null ? "—" : `${runway.toFixed(1)} Months`}
-            delta="+0.7"
-            positive={true}
+            value={runway === null ? DASH : `${runway.toFixed(1)} Months`}
             icon={Timer}
             iconBg="#F97316"
-            compare="vs prev period"
           />
         </div>
 
-        {/* Row 2 — 3-column grid */}
-        <div className="grid gap-4" style={{ gridTemplateColumns: "1fr 220px 260px" }}>
+        {/* Row 2 — 3-column grid (stacks on smaller screens) */}
+        <div className="grid gap-4 grid-cols-1 lg:grid-cols-[1fr_220px_260px]">
 
           {/* Column 1: Chart + Alerts */}
           <div className="flex flex-col gap-4">
-            <ProfitChart />
-            <RecentAlerts anomalies={anomalies} />
+            <ProfitChart data={monthlyPL} />
+            <RecentAlerts alerts={entityAlerts} />
           </div>
 
-          {/* Column 2: Health + Cash Flow */}
+          {/* Column 2: Company Health + Cash Flow */}
           <div className="flex flex-col gap-4">
-            <HealthScore
-              score={healthScore}
-              validation40={data.validation.all_passed}
-            />
-            <CashFlowChart
-              cashIn={cashInApprox}
-              cashOut={cashOutApprox}
-              netCash={netCashApprox}
-            />
+            <CompanyHealth health={health} score={m.health_score} label={m.health_label} />
+            <CashFlowChart />
           </div>
 
           {/* Column 3: Metrics + Accounts */}
@@ -145,33 +166,24 @@ export default function EntityPage() {
               openAP={m.open_ap}
               monthlyBurn={monthlyBurn}
             />
-            <BankAccounts cashOnHand={m.cash_on_hand} />
+            <BankAccounts banking={banking.data} />
           </div>
         </div>
 
-        {/* Pipeline status footer */}
-        <div className="flex items-center gap-6 px-1 py-2">
-          <StatusDot label="40/40 Validation" ok={data.validation.all_passed} />
-          <StatusDot label="08_DATA_MODEL" ok={true} />
-          <StatusDot label="Pipeline Status" ok={true} />
-          <StatusDot label={`Data Freshness: ${m.as_of}`} ok={true} />
-          <span className="ml-auto text-[10px] text-gray-400">
-            Run: {new Date(m.pipeline_run).toLocaleString("en-US", { dateStyle: "short", timeStyle: "short" })}
-          </span>
-        </div>
+        {/* System Status — audit/technical info moved out of prime space */}
+        <SystemStatus
+          validation={{
+            passed: data.validation.passed ?? null,
+            totalChecks: data.validation.total_checks ?? null,
+            allPassed: data.validation.all_passed ?? null,
+          }}
+          pipeline={pipeline.data}
+          basis={m.basis}
+          asOf={m.as_of}
+          pipelineRun={m.pipeline_run}
+          source={pageSource}
+        />
       </div>
-    </div>
-  );
-}
-
-function StatusDot({ label, ok }: { label: string; ok: boolean }) {
-  return (
-    <div className="flex items-center gap-1.5">
-      <span
-        className="w-1.5 h-1.5 rounded-full flex-shrink-0"
-        style={{ background: ok ? "#10B981" : "#EF4444" }}
-      />
-      <span className="text-[10px] text-gray-500">{label}</span>
     </div>
   );
 }

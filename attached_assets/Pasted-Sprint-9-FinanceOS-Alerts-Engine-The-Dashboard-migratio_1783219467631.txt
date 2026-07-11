@@ -1,0 +1,255 @@
+Sprint 9 — FinanceOS Alerts Engine
+
+The Dashboard migration is complete.
+
+FinanceOS Core is now the single source of truth.
+
+The Dashboard must never calculate business alerts.
+
+====================================================
+OBJECTIVE
+====================================================
+
+Build the FinanceOS Alerts Engine inside FinanceOS Core.
+
+Alerts are generated during every synchronization and stored in PostgreSQL.
+
+The Dashboard becomes presentation only.
+
+====================================================
+ARCHITECTURE
+====================================================
+
+QuickBooks
+        ↓
+FinanceOS Core
+        ↓
+Validation
+        ↓
+Semantic Layer
+        ↓
+Alerts Engine
+        ↓
+alerts table
+        ↓
+Dashboard
+
+====================================================
+NEW TABLE
+====================================================
+
+Create a dedicated alerts table.
+
+Suggested fields:
+
+id (uuid)
+
+entity_id
+
+scope
+(entity / portfolio)
+
+severity
+(info | warning | critical)
+
+category
+(cash | revenue | ar | ap | margin | validation | sync | banking | accounting)
+
+title
+
+description
+
+recommendation
+
+status
+(open | acknowledged | resolved)
+
+created_at
+
+resolved_at
+
+rule_id
+
+snapshot_id (optional)
+
+metadata (jsonb)
+
+====================================================
+ALERT RULES
+====================================================
+
+Implement rule-based alert generation.
+
+Initial rule set:
+
+Cash
+
+- Cash below configurable threshold
+
+- Cash runway below X months
+
+Revenue
+
+- Revenue down more than configurable %
+
+Margin
+
+- Gross margin below threshold
+
+- Net margin below threshold
+
+Accounts Receivable
+
+- AR overdue %
+
+- DSO above threshold
+
+- Large unpaid customer balance
+
+Accounts Payable
+
+- AP overdue %
+
+- DPO above threshold
+
+Validation
+
+- Validation failures
+
+- Missing required reports
+
+Sync
+
+- Sync failed
+
+- Sync stale
+
+Accounting
+
+- Balance sheet does not balance
+
+- Negative equity
+
+Business
+
+- Negative net income
+
+- Large month-over-month variance
+
+====================================================
+RULE ENGINE
+====================================================
+
+Each rule must:
+
+Evaluate
+
+↓
+
+Generate alert
+
+↓
+
+Avoid duplicates
+
+↓
+
+Update existing alerts
+
+↓
+
+Resolve automatically when condition disappears
+
+====================================================
+IDEMPOTENCY
+====================================================
+
+Running the engine twice must never duplicate alerts.
+
+Use deterministic rule identifiers.
+
+====================================================
+PORTFOLIO ALERTS
+====================================================
+
+Generate portfolio-level alerts as well.
+
+Examples:
+
+Multiple entities failing validation
+
+Portfolio revenue decline
+
+Portfolio cash warning
+
+Multiple entities with overdue AR
+
+====================================================
+NO HARDCODED UI
+====================================================
+
+The Dashboard should only display alerts.
+
+No business logic in React.
+
+No business logic in Express.
+
+====================================================
+API
+====================================================
+
+Create read-only endpoints:
+
+GET /api/alerts
+
+GET /api/alerts/:entity
+
+GET /api/alerts/portfolio
+
+GET /api/alerts/open
+
+GET /api/alerts/history
+
+====================================================
+VALIDATION
+====================================================
+
+Verify:
+
+No duplicate alerts
+
+Alerts resolve automatically
+
+Alerts survive sync reruns
+
+Severity calculated correctly
+
+Categories correct
+
+Entity mapping correct
+
+Portfolio alerts correct
+
+====================================================
+DELIVERABLES
+====================================================
+
+Provide:
+
+1. Alerts schema
+
+2. Rules implemented
+
+3. Rule evaluation flow
+
+4. Sample alerts generated
+
+5. API endpoints
+
+6. Performance impact
+
+7. Future rule recommendations
+
+Stop after the Alerts Engine is complete.
+
+Do not start AI, Forecast, Budget, or Commissions yet.

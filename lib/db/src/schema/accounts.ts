@@ -1,26 +1,26 @@
-import { pgTable, uuid, text, timestamp, boolean, numeric, index, unique } from "drizzle-orm/pg-core";
-import { entities } from "./entities";
+import { pgTable, uuid, text, numeric, boolean, timestamp } from "drizzle-orm/pg-core";
 
-export const accounts = pgTable("accounts", {
-  id:                  uuid("id").primaryKey().defaultRandom(),
-  entityId:            uuid("entity_id").notNull().references(() => entities.id),
-  qboId:               text("qbo_id").notNull(),
-  name:                text("name").notNull(),
-  fullyQualifiedName:  text("fully_qualified_name"),
-  accountType:         text("account_type").notNull(),
-  accountSubtype:      text("account_subtype"),
-  classification:      text("classification"),
-  currentBalance:      numeric("current_balance", { precision: 18, scale: 2 }).default("0"),
-  currency:            text("currency").default("USD"),
-  isActive:            boolean("is_active").default(true),
-  isSubAccount:        boolean("is_sub_account").default(false),
-  parentQboId:         text("parent_qbo_id"),
-  syncedAt:            timestamp("synced_at", { withTimezone: true }).notNull().defaultNow(),
-}, (t) => [
-  unique("uq_accounts_entity_qbo").on(t.entityId, t.qboId),
-  index("idx_accounts_entity").on(t.entityId),
-  index("idx_accounts_type").on(t.entityId, t.accountType),
-]);
+/**
+ * Chart of accounts synced from QBO into FinanceOS Core. Read-only from the
+ * Dashboard. Only rows with `account_type = 'Bank'` represent real bank
+ * accounts; the rest are P&L / balance-sheet ledger accounts. Numeric columns
+ * surface as strings via Drizzle — parse before use.
+ */
+export const accountsTable = pgTable("accounts", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  entityId: uuid("entity_id").notNull(),
+  qboId: text("qbo_id"),
+  name: text("name"),
+  fullyQualifiedName: text("fully_qualified_name"),
+  accountType: text("account_type"),
+  accountSubtype: text("account_subtype"),
+  classification: text("classification"),
+  currentBalance: numeric("current_balance"),
+  currency: text("currency"),
+  isActive: boolean("is_active"),
+  isSubAccount: boolean("is_sub_account"),
+  parentQboId: text("parent_qbo_id"),
+  syncedAt: timestamp("synced_at", { withTimezone: true }),
+});
 
-export type Account = typeof accounts.$inferSelect;
-export type InsertAccount = typeof accounts.$inferInsert;
+export type AccountRow = typeof accountsTable.$inferSelect;

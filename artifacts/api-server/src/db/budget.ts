@@ -1,5 +1,5 @@
 import { eq, and, gte, lte, inArray, sql } from "drizzle-orm";
-import { db } from "./connection";
+import { opsDb as db } from "./connection";
 import { budgets } from "@workspace/db";
 import { parseNumeric } from "../services/numerics";
 

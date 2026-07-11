@@ -22,8 +22,9 @@ type Props = {
  */
 export function EntityLogo({ entity, size = 28, rounded = "lg", className = "", dark = false }: Props) {
   const [imgError, setImgError] = useState(false);
-  useEffect(() => { setImgError(false); }, [entity.logoPath]);
-  const showImg = !!entity.logoPath && !imgError;
+  const src = dark && entity.logoPathDark ? entity.logoPathDark : entity.logoPath;
+  useEffect(() => { setImgError(false); }, [src]);
+  const showImg = !!src && !imgError;
   const roundedClass = `rounded-${rounded}`;
 
   if (showImg) {
@@ -39,7 +40,7 @@ export function EntityLogo({ entity, size = 28, rounded = "lg", className = "", 
       >
         {/* eslint-disable-next-line @next/next/no-img-element */}
         <img
-          src={entity.logoPath!}
+          src={src!}
           alt={entity.name}
           onError={() => setImgError(true)}
           style={{ width: "100%", height: "100%", objectFit: "contain" }}

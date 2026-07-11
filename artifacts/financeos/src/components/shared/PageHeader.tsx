@@ -21,7 +21,7 @@ export function PageHeader({ entitySlug, pageTitle, asOf, extra }: Props) {
   ];
 
   return (
-    <div className="bg-white border-b border-gray-100 px-6 py-4 flex-shrink-0">
+    <div className="bg-white border-b border-gray-100 px-4 sm:px-6 py-4 flex-shrink-0">
       {/* Breadcrumb */}
       <nav className="flex items-center gap-1 mb-1.5">
         {crumbs.map((c, i) => (

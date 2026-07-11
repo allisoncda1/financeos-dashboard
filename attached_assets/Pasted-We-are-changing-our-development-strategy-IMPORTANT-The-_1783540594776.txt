@@ -1,0 +1,90 @@
+We are changing our development strategy.
+
+IMPORTANT:
+The Reporting module is now considered the reference implementation for FinanceOS.
+
+Do NOT redesign, refactor, or modify the Reporting module.
+Do NOT change its routing, components, layout, database queries, or visual design unless I explicitly ask.
+Treat Reporting as frozen except for future bug fixes.
+
+Our priority is now to build out the rest of the platform.
+
+## Goal
+
+Complete every page of every remaining module so the entire application structure exists before adding advanced business logic.
+
+The objective is that every navigation item opens a complete page with the final FinanceOS layout and design language.
+
+Even if some pages initially use placeholder cards or mock data, every screen should exist.
+
+## Requirements
+
+- Keep the exact FinanceOS design system.
+- Reuse the same sidebar, header, spacing, typography, cards and interactions from Reporting.
+- Every page must feel like it belongs to the same application.
+- Every navigation item must work.
+- No dead links.
+- No empty routes.
+- No "Coming Soon" pages.
+- No missing layouts.
+
+## Development order
+
+1. Budget
+Complete every page.
+
+2. Forecast
+Complete every page.
+
+3. Commissions
+Complete every page.
+
+4. Accounting
+Complete every page.
+
+5. Control / Validation
+Complete any remaining pages.
+
+6. Administration / Settings
+Complete all pages.
+
+## Architecture
+
+Each module should already have:
+
+- Dashboard
+- Detail pages
+- Tables
+- Empty states
+- Filters
+- Actions
+- Navigation
+- Responsive layouts
+
+Build the UI architecture first.
+
+Business logic can initially use placeholders where backend endpoints do not yet exist.
+
+## Data
+
+Whenever Neon already contains real data that is safe to reuse, use it.
+
+If data does not yet exist, create realistic placeholders that follow the same structure as the Reporting module.
+
+Do NOT duplicate Reporting logic.
+
+Instead, build reusable shared components wherever possible.
+
+## Deliverables
+
+For each completed module:
+
+- every page exists
+- routing complete
+- responsive
+- follows FinanceOS design
+- no broken navigation
+- no placeholder "under construction" pages
+- ready for backend integration
+
+Focus on creating the complete FinanceOS platform, not adding new features to Reporting.

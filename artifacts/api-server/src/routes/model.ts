@@ -7,14 +7,33 @@ import {
   getEntityMetrics,
   getEntityAnomalies,
   getEntityFinancials,
+  getEntityHistory,
   getEntityCustomers,
   getEntityVendors,
   getEntityBanking,
 } from "../lib/dataSource";
+import { archiveMetricSnapshot, getMetricSnapshots } from "../lib/snapshotStore";
 import { combineSources, type DataSourceKind } from "../lib/sourceTracker";
-import type { EntitySlug } from "../lib/types";
+import type { EntityMetrics, EntitySlug } from "../lib/types";
 
 const router: IRouter = Router();
+
+/**
+ * Persist this month's metric snapshot for entities whose metrics came from
+ * live pipeline data (never mock — fabricated numbers must not enter the
+ * historical record). Fire-and-forget: archiving failures are logged but
+ * never fail the request that triggered them.
+ */
+function archiveLiveSnapshots(
+  entries: { slug: EntitySlug; metrics: EntityMetrics; source: DataSourceKind }[],
+): void {
+  for (const { slug, metrics, source } of entries) {
+    if (source === "mock") continue;
+    archiveMetricSnapshot(slug, metrics).catch((err) => {
+      console.warn(`[snapshots] failed to archive metric snapshot for ${slug}:`, err);
+    });
+  }
+}
 
 // GET /api/model — full dashboard data for all entities
 router.get("/model", async (req, res) => {
@@ -28,18 +47,16 @@ router.get("/model", async (req, res) => {
     const metrics = {} as Record<EntitySlug, unknown>;
     const anomalies = {} as Record<EntitySlug, unknown>;
     const sources: DataSourceKind[] = [portfolio.source, validation.source, freshness.source];
-
-    const entityResults = await Promise.all(
-      ENTITY_SLUGS.map(async (slug) => {
-        const [m, a] = await Promise.all([getEntityMetrics(slug), getEntityAnomalies(slug)]);
-        return { slug, m, a };
-      }),
-    );
-    for (const { slug, m, a } of entityResults) {
+    const snapshotEntries: { slug: EntitySlug; metrics: EntityMetrics; source: DataSourceKind }[] = [];
+    for (const slug of ENTITY_SLUGS) {
+      const m = await getEntityMetrics(slug);
+      const a = await getEntityAnomalies(slug);
       metrics[slug] = m.data;
       anomalies[slug] = a.data;
       sources.push(m.source, a.source);
+      snapshotEntries.push({ slug, metrics: m.data, source: m.source });
     }
+    archiveLiveSnapshots(snapshotEntries);
 
     const data = {
       portfolio: portfolio.data,
@@ -54,6 +71,53 @@ router.get("/model", async (req, res) => {
     res.status(500).json({
       ok: false,
       error: "Failed to load model data",
+      ts: new Date().toISOString(),
+    });
+  }
+});
+
+// GET /api/model/history/snapshots — stored monthly metric snapshots for all
+// entities (archived server-side from live pipeline data). Registered before
+// the /model/:slug routes so "history" is never treated as an entity slug.
+router.get("/model/history/snapshots", async (req, res) => {
+  try {
+    const data = await getMetricSnapshots();
+    res.json({ ok: true, data, source: "live", ts: new Date().toISOString() });
+  } catch (err) {
+    req.log.error({ err }, "Failed to load metric snapshots");
+    res.status(500).json({
+      ok: false,
+      error: "Failed to load metric snapshots",
+      ts: new Date().toISOString(),
+    });
+  }
+});
+
+// GET /api/model/:slug/history — real prior-period (prior fiscal year)
+// financial history for one entity, from the pipeline's archived exports.
+router.get("/model/:slug/history", async (req, res) => {
+  const slug = req.params["slug"] as EntitySlug;
+  if (!ENTITY_SLUGS.includes(slug)) {
+    res.status(404).json({
+      ok: false,
+      error: `Entity "${slug}" not found`,
+      ts: new Date().toISOString(),
+    });
+    return;
+  }
+  try {
+    const result = await getEntityHistory(slug);
+    res.json({
+      ok: true,
+      data: result.data,
+      source: result.source,
+      ts: new Date().toISOString(),
+    });
+  } catch (err) {
+    req.log.error({ err }, `Failed to load history data for ${slug}`);
+    res.status(500).json({
+      ok: false,
+      error: "Failed to load history data",
       ts: new Date().toISOString(),
     });
   }

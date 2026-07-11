@@ -1,9 +1,8 @@
 import { pgTable, uuid, text, date, timestamp, numeric, index, unique } from "drizzle-orm/pg-core";
-import { entities } from "./entities";
 
 export const budgets = pgTable("budgets", {
   id:               uuid("id").primaryKey().defaultRandom(),
-  entityId:         uuid("entity_id").notNull().references(() => entities.id),
+  entityId:         uuid("entity_id").notNull(),
   periodType:       text("period_type").notNull(),   // 'month' | 'annual'
   periodStart:      date("period_start").notNull(),
   periodEnd:        date("period_end").notNull(),

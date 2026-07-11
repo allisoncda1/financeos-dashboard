@@ -1,10 +1,10 @@
 import { eq, and, gte, lte, desc, sql } from "drizzle-orm";
 import { db } from "./connection";
-import { financialPeriods } from "@workspace/db";
+import { financialPeriodsTable as financialPeriods } from "@workspace/db";
 import { parseNumeric } from "../services/numerics";
 import { computeGrossMarginPct, computeNetMarginPct } from "../services/kpi";
 
-export type { FinancialPeriod } from "@workspace/db";
+export type { FinancialPeriodRow as FinancialPeriod } from "@workspace/db";
 
 /**
  * All monthly P&L rows for one entity in a given year, ordered by period_start.

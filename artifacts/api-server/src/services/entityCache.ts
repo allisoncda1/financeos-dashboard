@@ -15,12 +15,14 @@ let cache: Map<string, string | null> | null = null;
 
 async function warm(): Promise<Map<string, string | null>> {
   const all = await EntitiesService.getAllEntities();
-  return new Map(all.map((e) => [e.slug, e.id]));
+  // Core stores slugs lower-cased; Dashboard EntitySlug values are mixed-case
+  // (e.g. "CarDealer_ai"). Key the cache lower-cased so both resolve.
+  return new Map(all.map((e) => [e.slug.toLowerCase(), e.id]));
 }
 
 export async function getCachedEntityId(slug: string): Promise<string | null> {
   if (!cache) cache = await warm();
-  return cache.get(slug) ?? null;
+  return cache.get(slug.toLowerCase()) ?? null;
 }
 
 /** Pre-warm the cache at server startup to avoid a latency spike on the first request. */

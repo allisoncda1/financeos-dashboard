@@ -1,4 +1,4 @@
-import type { DashboardData, FinancialsData, CustomersData, VendorsData, BankingData, EntitySlug, BriefingResponse, Alert, EntityBudget, BvsAData, PortfolioBudget, BudgetPeriodInput } from "./types";
+import type { DashboardData, FinancialsData, CustomersData, VendorsData, BankingData, EntitySlug, BriefingResponse, Alert, ValidationMatrixData, EntityHistoryData, MetricSnapshotsData, EntityBudget, BvsAData, PortfolioBudget, BudgetPeriodInput } from "./types";
 import type { ReportTemplateSummary, ReportGenerateRequest, BuiltReport } from "./reportTypes";
 import type { AIStatus } from "./aiTypes";
 import type { PipelineStatus } from "./pipelineTypes";
@@ -11,7 +11,7 @@ const BASE = "/api";
 export type Sourced<T> = { data: T; source: ApiSource };
 
 function normalizeSource(value: unknown): ApiSource {
-  return value === "live" || value === "cache" || value === "mock" ? value : "live";
+  return value === "db" || value === "live" || value === "cache" || value === "mock" ? value : "live";
 }
 
 /**
@@ -120,7 +120,10 @@ export const api = {
   entityCustomers:  (s: string)  => getSourced<CustomersData>(`/model/${s}/customers`),
   entityVendors:    (s: string)  => getSourced<VendorsData>(`/model/${s}/vendors`),
   entityBanking:    (s: string)  => getSourced<BankingData>(`/model/${s}/banking`),
+  entityHistory:    (s: string)  => getSourced<EntityHistoryData>(`/model/${s}/history`),
+  historySnapshots: ()           => getSourced<MetricSnapshotsData>("/model/history/snapshots"),
   briefing:         ()           => getSourced<BriefingResponse>("/briefing"),
+  validationMatrix: ()           => getSourced<ValidationMatrixData>("/validation/matrix"),
   alerts:           ()           => getSourced<Alert[]>("/alerts"),
   reportTemplates:  ()           => getSourced<ReportTemplateSummary[]>("/reports"),
   generateReport:   (req: ReportGenerateRequest) => post<BuiltReport>("/reports/generate", req),

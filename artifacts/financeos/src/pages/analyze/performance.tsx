@@ -3,17 +3,11 @@ import { useDashboardData, useAllEntityFinancials } from "@/hooks/useApi";
 import { useMemo, useState } from "react";
 import { ENTITY_SLUGS, ENTITY_CONFIG, type EntitySlug } from "@/lib/entities";
 import { useEntitySelection } from "@/lib/entity-context";
-import { computeHealthScore } from "@/lib/briefing";
 import { TrendingUp, TrendingDown, Minus, ChevronUp, ChevronDown } from "lucide-react";
+import { formatCurrency, formatPercent, formatDays, NA } from "@/lib/format";
 
-function fmt(n: number) {
-  const sign = n < 0 ? "-" : "";
-  const abs = Math.abs(n);
-  if (abs >= 1_000_000) return `${sign}$${(abs / 1_000_000).toFixed(2)}M`;
-  if (abs >= 1_000) return `${sign}$${(abs / 1_000).toFixed(0)}K`;
-  return `${sign}$${Math.round(abs)}`;
-}
-function pct(n: number) { return `${n.toFixed(1)}%`; }
+const fmt = (n: number) => formatCurrency(n);
+const pct = (n: number) => formatPercent(n);
 
 function Spark({ values, color }: { values: number[]; color: string }) {
   const min = Math.min(...values); const max = Math.max(...values);
@@ -72,7 +66,7 @@ export default function PerformancePage() {
       const m = data.metrics[slug];
       const cfg = ENTITY_CONFIG[slug];
       const fin = allFins[slug];
-      const health = computeHealthScore(m);
+      const health = m.health_score;
       const monthlyRevenue = fin.monthly_pl.map(p => p.revenue);
       const monthlyNet     = fin.monthly_pl.map(p => p.net_income);
       const revTrend = monthlyRevenue.length >= 2 ? monthlyRevenue[monthlyRevenue.length - 1] - monthlyRevenue[0] : 0;
@@ -166,7 +160,7 @@ export default function PerformancePage() {
                 <KvRow label="Revenue YTD" value={fmt(m.revenue_ytd)} />
                 <KvRow label="Net Income"  value={fmt(m.net_income_ytd)} />
                 <KvRow label="Net Margin"  value={pct(m.net_margin_pct)} />
-                <KvRow label="DSO"         value={`${m.dso_days}d`} />
+                <KvRow label="DSO"         value={m.open_ar > 0 ? formatDays(m.dso_days) : NA} />
               </div>
               <div className="mt-2 flex items-center gap-1">
                 {revTrend > 0 ? <TrendingUp className="w-3 h-3 text-emerald-500" /> : revTrend < 0 ? <TrendingDown className="w-3 h-3 text-red-500" /> : <Minus className="w-3 h-3 text-gray-400" />}
@@ -259,7 +253,7 @@ export default function PerformancePage() {
                       <span className={`font-semibold ${m.net_margin_pct >= 30 ? "text-emerald-600" : m.net_margin_pct >= 20 ? "text-amber-600" : "text-red-500"}`}>{pct(m.net_margin_pct)}</span>
                     </td>
                     <td className="px-4 py-2.5 text-right text-[12px]">
-                      <span className={m.dso_days > 60 ? "text-red-600 font-semibold" : "text-gray-600"}>{m.dso_days}d</span>
+                      <span className={m.open_ar > 0 && m.dso_days > 60 ? "text-red-600 font-semibold" : "text-gray-600"}>{m.open_ar > 0 ? formatDays(m.dso_days) : NA}</span>
                     </td>
                     <td className="px-4 py-2.5 text-right text-[12px]">
                       <span className={m.ar_overdue_pct > 15 ? "text-red-600 font-semibold" : "text-gray-600"}>{pct(m.ar_overdue_pct)}</span>

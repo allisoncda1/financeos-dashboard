@@ -1,0 +1,206 @@
+FinanceOS V1 — Release Candidate QA
+
+We are pausing feature development.
+
+The goal is to validate the platform after the Neon migration before building Budget, Forecast and Commissions.
+
+Do NOT add new features.
+
+Do NOT redesign any UI.
+
+Do NOT modify Reporting unless a bug is found.
+
+--------------------------------------------------
+QA PASS 1
+Navigation
+--------------------------------------------------
+
+Verify every page loads successfully.
+
+Check:
+
+- Home
+- Reporting
+- Portfolio
+- Operations
+- Analyze
+- Entity Dashboard
+- Financials
+- Customers
+- Vendors
+- Banking
+- Reports
+- Control
+- Accounting
+- Accounting Transactions
+- Accounting Reconciliation
+
+Report:
+
+✓ Works
+
+⚠ Warning
+
+✗ Broken
+
+--------------------------------------------------
+QA PASS 2
+Data Validation
+--------------------------------------------------
+
+For every page verify:
+
+No undefined
+
+No NaN
+
+No Infinity
+
+No broken charts
+
+No empty tables caused by migration
+
+No console errors
+
+No API errors
+
+No missing logos
+
+No broken entity selector
+
+--------------------------------------------------
+QA PASS 3
+Financial Consistency
+--------------------------------------------------
+
+Verify for all four companies:
+
+Revenue
+
+Gross Profit
+
+Net Income
+
+Cash
+
+AR
+
+AP
+
+Entity Dashboard
+
+Financials page
+
+Accounting
+
+must all display consistent values.
+
+If any page computes different values from another page using the same period, identify the source.
+
+--------------------------------------------------
+QA PASS 4
+Data Source Audit
+--------------------------------------------------
+
+For every page report:
+
+Data Source:
+
+Neon
+
+Drive
+
+Mock
+
+Mixed
+
+Goal:
+
+Reporting:
+Mostly Neon
+
+Accounting:
+100% Neon
+
+Budget:
+Mock
+
+Forecast:
+Mock
+
+Commissions:
+Mock
+
+--------------------------------------------------
+QA PASS 5
+UX Audit
+--------------------------------------------------
+
+Check:
+
+Loading states
+
+Empty states
+
+Scroll behavior
+
+Responsive layout
+
+Sidebar consistency
+
+Entity selector
+
+Logo alignment
+
+Dark mode consistency
+
+Spacing
+
+Typography
+
+Cards
+
+Tables
+
+Charts
+
+--------------------------------------------------
+QA PASS 6
+Performance
+--------------------------------------------------
+
+Identify:
+
+Duplicate API calls
+
+Repeated queries
+
+Pages loading unnecessary data
+
+Slow endpoints
+
+Large payloads
+
+Easy optimizations
+
+--------------------------------------------------
+Deliverable
+--------------------------------------------------
+
+Do not modify code unless a critical bug is discovered.
+
+Produce a Release Candidate QA report containing:
+
+Critical issues
+
+High priority
+
+Medium priority
+
+Low priority
+
+Recommendations
+
+Overall readiness score (/100)
+
+Only after this report will we begin the Budget module migration.

@@ -18,18 +18,8 @@ import {
   type EntitySlug,
 } from "@/lib/entities";
 import { EntityLogo } from "@/components/ui/EntityLogo";
-import { getMockData } from "@/lib/mock";
-import { computeHealthScore, healthLabel } from "@/lib/briefing";
+import { useDashboardData } from "@/hooks/useApi";
 import { useAuth } from "@/lib/auth";
-
-// Pre-compute health scores once at module load (mock data is static)
-const _data = getMockData();
-const HEALTH: Record<EntitySlug, { score: number; label: string }> = Object.fromEntries(
-  ENTITY_SLUGS.map(s => {
-    const score = computeHealthScore(_data.metrics[s]);
-    return [s, { score, label: healthLabel(score) }];
-  })
-) as Record<EntitySlug, { score: number; label: string }>;
 
 type LucideIcon = ComponentType<{ className?: string }>;
 
@@ -57,6 +47,9 @@ export function Sidebar({ onClose }: { onClose?: () => void }) {
   const ref = useRef<HTMLDivElement>(null);
   const { selected, selectAll, setAgency } = useEntitySelection();
   const { user, logout } = useAuth();
+  // Single source of truth — health scores come from the live model, never
+  // recomputed here. Gracefully degrades (basis only) until data loads.
+  const { data: dashboard } = useDashboardData();
 
   // Derive current workspace context
   const rawSlug = pathname.startsWith("/entity/") ? pathname.split("/")[2] : null;
@@ -100,12 +93,19 @@ export function Sidebar({ onClose }: { onClose?: () => void }) {
       style={{ background: BG, width: 216, minHeight: "100vh" }}
     >
       {/* Logo row */}
-      <div className="px-4 pt-4 pb-3 flex items-center gap-2.5">
-        <FinanceOSLogo variant="sidebar" className="flex-1 min-w-0" />
+      <div className="relative px-4 py-4 flex items-center justify-center">
+        <Link
+          href="/home"
+          aria-label="Back to launcher"
+          title="Back to launcher"
+          className="flex items-center justify-center rounded-lg transition-opacity hover:opacity-80"
+        >
+          <FinanceOSLogo variant="sidebar" className="h-11 w-auto" />
+        </Link>
         {onClose && (
           <button
             onClick={onClose}
-            className="md:hidden w-6 h-6 flex items-center justify-center rounded text-white/50 hover:text-white/80 transition-colors"
+            className="md:hidden absolute right-3 top-1/2 -translate-y-1/2 w-6 h-6 flex items-center justify-center rounded text-white/50 hover:text-white/80 transition-colors"
           >
             <X className="w-3.5 h-3.5" />
           </button>
@@ -130,7 +130,12 @@ export function Sidebar({ onClose }: { onClose?: () => void }) {
             </p>
             <p className="text-[9px] leading-tight mt-0.5" style={{ color: MUTED }}>
               {currentSlug
-                ? `${ENTITY_META[currentSlug].basis} · ${HEALTH[currentSlug].label} · ${HEALTH[currentSlug].score}`
+                ? (() => {
+                    const cm = dashboard?.metrics[currentSlug];
+                    return cm
+                      ? `${ENTITY_META[currentSlug].basis} · ${cm.health_label} · ${cm.health_score}`
+                      : ENTITY_META[currentSlug].basis;
+                  })()
                 : isAgency
                 ? `${AGENCY_SLUGS.length} agencies · filtered`
                 : `All ${ENTITY_SLUGS.length} entities`}
@@ -184,8 +189,13 @@ export function Sidebar({ onClose }: { onClose?: () => void }) {
                   Entities
                 </p>
                 {ENTITY_META_LIST.map(meta => {
-                  const h = HEALTH[meta.slug];
-                  const healthColor = h.score >= 85 ? "#34D399" : h.score >= 70 ? "#FBBF24" : "#F87171";
+                  const em = dashboard?.metrics[meta.slug];
+                  const score = em?.health_score;
+                  const healthColor =
+                    score === undefined ? MUTED
+                    : score >= 85 ? "#34D399"
+                    : score >= 70 ? "#FBBF24"
+                    : "#F87171";
                   return (
                     <EntityWorkspaceItem
                       key={meta.slug}
@@ -193,8 +203,8 @@ export function Sidebar({ onClose }: { onClose?: () => void }) {
                       active={currentSlug === meta.slug}
                       onSelect={() => handleSelect(meta.slug)}
                       basis={meta.basis}
-                      healthLabel={h.label}
-                      healthScore={h.score}
+                      healthLabel={em?.health_label}
+                      healthScore={score}
                       healthColor={healthColor}
                     />
                   );
@@ -334,10 +344,11 @@ function EntityWorkspaceItem({
   active: boolean;
   onSelect: () => void;
   basis: string;
-  healthLabel: string;
-  healthScore: number;
+  healthLabel?: string;
+  healthScore?: number;
   healthColor: string;
 }) {
+  const hasHealth = healthScore !== undefined && healthLabel !== undefined;
   return (
     <button
       onClick={onSelect}
@@ -353,10 +364,14 @@ function EntityWorkspaceItem({
         </p>
         <p className="text-[9px] truncate mt-0.5" style={{ color: "rgba(255,255,255,0.30)" }}>
           {basis}
-          <span className="mx-1">·</span>
-          <span style={{ color: healthColor }}>{healthLabel}</span>
-          <span className="mx-1" style={{ color: "rgba(255,255,255,0.20)" }}>·</span>
-          <span style={{ color: healthColor }}>{healthScore}</span>
+          {hasHealth && (
+            <>
+              <span className="mx-1">·</span>
+              <span style={{ color: healthColor }}>{healthLabel}</span>
+              <span className="mx-1" style={{ color: "rgba(255,255,255,0.20)" }}>·</span>
+              <span style={{ color: healthColor }}>{healthScore}</span>
+            </>
+          )}
         </p>
       </div>
       {active && <Check className="w-3 h-3 flex-shrink-0 text-emerald-400" />}

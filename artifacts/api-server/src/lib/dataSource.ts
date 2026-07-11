@@ -1,7 +1,7 @@
 import { driveLoadJson } from "./driveLoader";
 import { loadMockData, loadEntityFile, loadValidationSummary, type EntityDataFile } from "./mockData";
 import { transformFinancials } from "../transformers/financials";
-import { transformFinancialsNeon } from "../transformers/financialsNeon";
+import { transformHistory } from "../transformers/history";
 import { transformCustomers } from "../transformers/customers";
 import { transformCustomersNeon } from "../transformers/customersNeon";
 import { transformVendors } from "../transformers/vendors";
@@ -12,6 +12,18 @@ import { transformMetricsNeon } from "../transformers/metricsNeon";
 import { transformPortfolioNeon } from "../transformers/portfolioNeon";
 import { computeNetMarginPct, computeGrossMarginPct, computeCashRunwayMonths } from "../services/kpi";
 import { trackSource, reportSource, type DataSourceKind } from "./sourceTracker";
+import { withHealth } from "./health";
+import {
+  getPortfolioSummaryFromNeon,
+  getValidationSummaryFromNeon,
+  getDataFreshnessFromNeon,
+  getEntityMetricsFromNeon,
+  getEntityFinancialsFromNeon,
+  getEntityHistoryFromNeon,
+  getEntityCustomersFromNeon,
+  getEntityVendorsFromNeon,
+  getEntityBankingFromNeon,
+} from "./neonSource";
 import type {
   PortfolioSummary,
   ValidationSummary,
@@ -20,6 +32,7 @@ import type {
   Anomaly,
   EntitySlug,
   FinancialsData,
+  EntityHistoryData,
   CustomersData,
   VendorsData,
   BankingData,
@@ -38,13 +51,13 @@ export const USE_DRIVE = Boolean(
 
 export async function getPortfolioSummary(): Promise<{ data: PortfolioSummary; source: DataSourceKind }> {
   return trackSource(async () => {
-    // Neon-first tier
+    // Primary: Neon (FinanceOS Core). Falls through to Drive, then mock.
     try {
-      const data = await transformPortfolioNeon();
-      reportSource("live");
+      const data = await getPortfolioSummaryFromNeon();
+      reportSource("db");
       return data;
     } catch (err) {
-      console.warn("[dataSource] Neon portfolio aggregation failed, trying Drive:", err);
+      console.warn("[dataSource] Neon portfolio summary unavailable, falling back to Drive/mock:", err);
     }
     if (USE_DRIVE) {
       try {
@@ -168,6 +181,14 @@ export async function getPortfolioSummary(): Promise<{ data: PortfolioSummary; s
 
 export async function getValidationSummary(): Promise<{ data: ValidationSummary; source: DataSourceKind }> {
   return trackSource(async () => {
+    // Primary: Neon (FinanceOS Core). Falls through to Drive, then mock.
+    try {
+      const data = await getValidationSummaryFromNeon();
+      reportSource("db");
+      return data;
+    } catch (err) {
+      console.warn("[dataSource] Neon validation summary unavailable, falling back to Drive/mock:", err);
+    }
     if (USE_DRIVE) {
       try {
         return await driveLoadJson<ValidationSummary>("validation/validation_summary.json");
@@ -182,6 +203,14 @@ export async function getValidationSummary(): Promise<{ data: ValidationSummary;
 
 export async function getDataFreshness(): Promise<{ data: DataFreshness; source: DataSourceKind }> {
   return trackSource(async () => {
+    // Primary: Neon (FinanceOS Core). Falls through to Drive, then mock.
+    try {
+      const data = await getDataFreshnessFromNeon();
+      reportSource("db");
+      return data;
+    } catch (err) {
+      console.warn("[dataSource] Neon freshness unavailable, falling back to Drive/mock:", err);
+    }
     if (USE_DRIVE) {
       try {
         return await driveLoadJson<DataFreshness>("audit/data_freshness.json");
@@ -253,24 +282,28 @@ async function enrichMetricsFromFinancials(slug: EntitySlug, raw: RawDriveMetric
 
 export async function getEntityMetrics(slug: EntitySlug): Promise<{ data: EntityMetrics; source: DataSourceKind }> {
   return trackSource(async () => {
-    // Neon-first tier
+    // Primary source (Sprint 6): FinanceOS Core's entity_snapshots via Neon.
+    // Read-only, never recomputed. Falls back to Google Drive, then mock.
     try {
-      const data = await transformMetricsNeon(slug);
-      reportSource("live");
-      return data;
+      const data = await getEntityMetricsFromNeon(slug);
+      reportSource("db");
+      return withHealth(data);
     } catch (err) {
-      console.warn(`[dataSource] Neon metrics failed for ${slug}, trying Drive:`, err);
+      console.warn(
+        `[dataSource] Neon entity metrics unavailable for ${slug}, falling back to Drive/mock:`,
+        err,
+      );
     }
     if (USE_DRIVE) {
       try {
         const raw = await driveLoadJson<RawDriveMetrics>(`entities/${slug}/metrics.json`);
-        return await enrichMetricsFromFinancials(slug, raw);
+        return withHealth(await enrichMetricsFromFinancials(slug, raw));
       } catch {
         // fall through to mock
       }
     }
     reportSource("mock");
-    return loadMockData().metrics[slug];
+    return withHealth(loadMockData().metrics[slug]);
   });
 }
 
@@ -301,12 +334,17 @@ export async function getEntityFinancials(
   asOf: string,
 ): Promise<{ data: FinancialsData; source: DataSourceKind }> {
   return trackSource(async () => {
+    // Primary source (Sprint 7): FinanceOS Core's financial_periods via Neon.
+    // Read-only, never recomputed. Falls back to Google Drive, then mock.
     try {
-      const data = await transformFinancialsNeon(slug, asOf);
-      reportSource("live");
+      const data = await getEntityFinancialsFromNeon(slug, asOf);
+      reportSource("db");
       return data;
     } catch (err) {
-      console.warn(`[dataSource] Neon financials failed for ${slug}, trying Drive:`, err);
+      console.warn(
+        `[dataSource] Neon financials unavailable for ${slug}, falling back to Drive/mock:`,
+        err,
+      );
     }
     if (USE_DRIVE) {
       try {
@@ -316,7 +354,45 @@ export async function getEntityFinancials(
       }
     }
     reportSource("mock");
-    return loadEntityFile<FinancialsData>(slug, "financials");
+    const mock = loadEntityFile<FinancialsData>(slug, "financials");
+    // Mock financials.json files predate the cash_flow field — normalize so
+    // the frontend can rely on `cash_flow` being present (null = unavailable).
+    return { ...mock, cash_flow: mock.cash_flow ?? null };
+  });
+}
+
+/**
+ * Real prior-period history for an entity, derived from the pipeline's
+ * archived prior-year exports on Drive (pnl_prior_year.csv +
+ * balance_sheet_prior_year.csv). There is deliberately NO mock fallback with
+ * fabricated prior years: when Drive is unavailable this returns an empty
+ * prior_years list so the frontend only ever shows real periods.
+ */
+export async function getEntityHistory(
+  slug: EntitySlug,
+): Promise<{ data: EntityHistoryData; source: DataSourceKind }> {
+  return trackSource(async () => {
+    // Primary source (Sprint 7): FinanceOS Core's financial_periods via Neon.
+    // Read-only, never recomputed. Falls back to Google Drive, then empty.
+    try {
+      const data = await getEntityHistoryFromNeon(slug);
+      reportSource("db");
+      return data;
+    } catch (err) {
+      console.warn(
+        `[dataSource] Neon history unavailable for ${slug}, falling back to Drive:`,
+        err,
+      );
+    }
+    if (USE_DRIVE) {
+      try {
+        return await transformHistory(slug);
+      } catch (err) {
+        console.warn(`[dataSource] failed to transform history for ${slug}:`, err);
+      }
+    }
+    reportSource("mock");
+    return { entity_slug: slug, prior_years: [] };
   });
 }
 
@@ -325,12 +401,13 @@ export async function getEntityCustomers(
   asOf: string,
 ): Promise<{ data: CustomersData; source: DataSourceKind }> {
   return trackSource(async () => {
+    // Primary: Neon (FinanceOS Core). Falls through to Drive, then mock.
     try {
-      const data = await transformCustomersNeon(slug, asOf);
-      reportSource("live");
+      const data = await getEntityCustomersFromNeon(slug, asOf);
+      reportSource("db");
       return data;
     } catch (err) {
-      console.warn(`[dataSource] Neon customers failed for ${slug}, trying Drive:`, err);
+      console.warn(`[dataSource] Neon customers unavailable for ${slug}, falling back to Drive/mock:`, err);
     }
     if (USE_DRIVE) {
       try {
@@ -349,12 +426,13 @@ export async function getEntityVendors(
   asOf: string,
 ): Promise<{ data: VendorsData; source: DataSourceKind }> {
   return trackSource(async () => {
+    // Primary: Neon (FinanceOS Core). Falls through to Drive, then mock.
     try {
-      const data = await transformVendorsNeon(slug, asOf);
-      reportSource("live");
+      const data = await getEntityVendorsFromNeon(slug, asOf);
+      reportSource("db");
       return data;
     } catch (err) {
-      console.warn(`[dataSource] Neon vendors failed for ${slug}, trying Drive:`, err);
+      console.warn(`[dataSource] Neon vendors unavailable for ${slug}, falling back to Drive/mock:`, err);
     }
     if (USE_DRIVE) {
       try {
@@ -373,15 +451,14 @@ export async function getEntityBanking(
   asOf: string,
 ): Promise<{ data: BankingData; source: DataSourceKind }> {
   return trackSource(async () => {
-    // Neon is the preferred source — typed tables (accounts, transactions)
+    // Primary: Neon (FinanceOS Core). Falls through to Drive, then mock.
     try {
-      const data = await transformBankingNeon(slug, asOf);
-      reportSource("live");
+      const data = await getEntityBankingFromNeon(slug, asOf);
+      reportSource("db");
       return data;
     } catch (err) {
-      console.warn(`[dataSource] Neon banking failed for ${slug}, trying Drive:`, err);
+      console.warn(`[dataSource] Neon banking unavailable for ${slug}, falling back to Drive/mock:`, err);
     }
-    // Drive fallback
     if (USE_DRIVE) {
       try {
         return await transformBanking(slug, asOf);

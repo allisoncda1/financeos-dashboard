@@ -129,6 +129,13 @@ export async function transformBanking(slug: EntitySlug, asOf: string): Promise<
     loadTransactions(slug),
   ]);
 
+  // NOTE: transaction_count / last_transaction_date are intentionally left
+  // undefined on the Drive fallback path. bill_lines.csv is AP bill line-item
+  // detail whose account_id is the expense/AP account, NOT a bank account id,
+  // so it cannot be mapped to per-bank-account activity reliably. Forcing 0 here
+  // would make every bank account look "dead" and get hidden by default. The
+  // frontend treats undefined stats as "show the account", which is the correct
+  // non-regressive behavior when no authoritative activity source exists.
   const total_cash = accounts.reduce((sum, account) => sum + account.balance, 0);
   const unreconciled_count = accounts.filter((account) => !account.reconciled).length;
   const reconciliation_status: BankingData["reconciliation_status"] =
