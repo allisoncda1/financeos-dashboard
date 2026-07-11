@@ -31,12 +31,14 @@ export default function CustomersPage() {
     );
   }
 
-  const overdueBuckets = cust.aging.slice(2);
-  const overdueAmt = overdueBuckets.reduce((s, b) => s + b.amount, 0);
-  const overduePct = cust.open_ar > 0 ? (overdueAmt / cust.open_ar) * 100 : null;
-  const currentDso = cust.dso_history[cust.dso_history.length - 1];
-  const prevDso    = cust.dso_history[0];
-  const dsoDelta   = currentDso - prevDso;
+  // Authoritative overdue values come directly from the API (Python semantic
+  // layer via QBO AgedReceivableSummary). Do not recompute from bucket slices.
+  const overdueAmt = cust.ar_overdue;
+  const overduePct = cust.ar_overdue_pct.toFixed(1);
+  const hasDsoHistory = cust.dso_history.length >= 2;
+  const currentDso = hasDsoHistory ? cust.dso_history[cust.dso_history.length - 1]! : null;
+  const prevDso    = hasDsoHistory ? cust.dso_history[0]! : null;
+  const dsoDelta   = currentDso !== null && prevDso !== null ? currentDso - prevDso : null;
 
   return (
     <div className="h-full flex flex-col overflow-hidden bg-[#F4F5F7]">
@@ -71,8 +73,14 @@ export default function CustomersPage() {
           <SummaryCard label="Active Customers" value={`${cust.top_customers.length}+`} sub="in AR aging" color="text-gray-900" />
         </div>
 
-        {/* AR Aging table */}
-        <AgingTable buckets={cust.aging} total={cust.open_ar} label="AR" />
+        {/* AR Aging table — totals from authoritative QBO Summary via Python semantic layer */}
+        <AgingTable
+          buckets={cust.aging}
+          total={cust.open_ar}
+          label="AR"
+          overdueAmt={cust.ar_overdue}
+          overduePct={cust.ar_overdue_pct}
+        />
 
         {/* Top customers */}
         <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">

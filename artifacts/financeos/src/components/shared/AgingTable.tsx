@@ -5,13 +5,21 @@ type Props = {
   buckets: AgingBucket[];
   total: number;
   label: "AR" | "AP";
+  /** Pre-computed authoritative overdue amount from the API (preferred).
+   *  When provided, this value is displayed instead of a local bucket slice. */
+  overdueAmt?: number;
+  /** Pre-computed authoritative overdue percentage from the API (preferred). */
+  overduePct?: number;
 };
 
 const BAR_COLORS = ["#10B981", "#F59E0B", "#F97316", "#EF4444", "#991B1B"];
 
-export function AgingTable({ buckets, total, label }: Props) {
-  const overdueAmt = buckets.slice(2).reduce((s, b) => s + b.amount, 0);
-  const overduePct = total > 0 ? (overdueAmt / total) * 100 : 0;
+export function AgingTable({ buckets, total, label, overdueAmt: overdueAmtProp, overduePct: overduePctProp }: Props) {
+  // Buckets are ordered: [0]=Current, [1]=1-30, [2]=31-60, [3]=61-90, [4]=90+
+  // Index >= 1 is overdue (1-30 days past due is already overdue).
+  // When authoritative API values are provided, use them; otherwise derive locally.
+  const overdueAmt = overdueAmtProp ?? buckets.slice(1).reduce((s, b) => s + b.amount, 0);
+  const overduePct = overduePctProp ?? (total > 0 ? (overdueAmt / total) * 100 : 0);
 
   // The aging buckets must reconcile to the authoritative total. When they
   // don't (Core published a headline balance but no per-bucket detail), we
@@ -85,7 +93,7 @@ export function AgingTable({ buckets, total, label }: Props) {
         <tbody>
           {buckets.map((b, i) => {
             const pct = total > 0 ? (b.amount / total) * 100 : 0;
-            const isOverdue = i >= 2;
+            const isOverdue = i >= 1;
             return (
               <tr key={b.label} className="border-t border-gray-50 hover:bg-gray-50 transition-colors">
                 <td className="px-4 py-2.5">

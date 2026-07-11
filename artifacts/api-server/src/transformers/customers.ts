@@ -149,11 +149,17 @@ export async function transformCustomers(slug: EntitySlug, asOf: string): Promis
 
   const open_ar = aging.reduce((sum, bucket) => sum + bucket.amount, 0);
 
+  const overdueAmt = aging.slice(1).reduce((s, b) => s + b.amount, 0);
+  const overduePct = open_ar > 0 ? (overdueAmt / open_ar) * 100 : 0;
+
   return {
     entity_slug: slug,
     as_of: asOf,
     open_ar,
+    ar_overdue: overdueAmt,
+    ar_overdue_pct: overduePct,
     aging,
+    aging_source: "invoices",
     top_customers,
     dso_history,
   };

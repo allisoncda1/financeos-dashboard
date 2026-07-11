@@ -156,8 +156,18 @@ export type Customer = {
 export type CustomersData = {
   entity_slug: string;
   as_of: string;
+  /** Authoritative open AR total — sourced from the QBO AgedReceivableSummary
+   *  via the Python semantic layer. Never derived from summing invoice records. */
   open_ar: number;
+  /** Authoritative overdue dollar amount (all non-Current buckets). */
+  ar_overdue: number;
+  /** Authoritative overdue percentage (ar_overdue / open_ar × 100). */
+  ar_overdue_pct: number;
+  /** Authoritative aging buckets — sourced from QBO AgedReceivableSummary. */
   aging: AgingBucket[];
+  /** Indicates whether aging totals came from the semantic layer snapshot or
+   *  fell back to the invoice table (snapshot should always be preferred). */
+  aging_source: "snapshot" | "invoices";
   top_customers: Customer[];
   dso_history: number[];
 };

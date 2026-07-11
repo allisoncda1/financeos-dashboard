@@ -31,8 +31,8 @@ export default function VendorsPage() {
     );
   }
 
-  const overdueBuckets = vend.aging.slice(2);
-  const overdueAmt = overdueBuckets.reduce((s, b) => s + b.amount, 0);
+  // Buckets: [0]=Current, [1]=1-30 (already overdue), [2]=31-60, [3]=61-90, [4]=90+
+  const overdueAmt = vend.aging.slice(1).reduce((s, b) => s + b.amount, 0);
   const overduePct = vend.open_ap > 0 ? (overdueAmt / vend.open_ap) * 100 : 0;
 
   return (
