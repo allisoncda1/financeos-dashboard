@@ -3,18 +3,89 @@
   "as_of": "2026-06-30",
   "open_ar": 32700,
   "aging": [
-    { "label": "Current",   "days": "0",     "amount": 14800, "count": 6 },
-    { "label": "1–30 days", "days": "1-30",  "amount": 11818, "count": 4 },
-    { "label": "31–60 days","days": "31-60", "amount": 3200,  "count": 2 },
-    { "label": "61–90 days","days": "61-90", "amount": 2000,  "count": 2 },
-    { "label": "90+ days",  "days": "90+",   "amount": 882,   "count": 1 }
+    {
+      "label": "Current",
+      "days": "0",
+      "amount": 14800,
+      "count": 6
+    },
+    {
+      "label": "1\u201330 days",
+      "days": "1-30",
+      "amount": 11818,
+      "count": 4
+    },
+    {
+      "label": "31\u201360 days",
+      "days": "31-60",
+      "amount": 3200,
+      "count": 2
+    },
+    {
+      "label": "61\u201390 days",
+      "days": "61-90",
+      "amount": 2000,
+      "count": 2
+    },
+    {
+      "label": "90+ days",
+      "days": "90+",
+      "amount": 882,
+      "count": 1
+    }
   ],
   "top_customers": [
-    { "name": "Sunrise Dental Partners", "balance": 9200,  "last_payment_date": "2026-05-28", "dso_days": 62, "status": "overdue" },
-    { "name": "Bright Smiles Clinic",    "balance": 7400,  "last_payment_date": "2026-06-02", "dso_days": 58, "status": "overdue" },
-    { "name": "Valley Orthodontics",     "balance": 6100,  "last_payment_date": "2026-06-15", "dso_days": 45, "status": "current" },
-    { "name": "Lakewood Dental Care",    "balance": 5400,  "last_payment_date": "2026-05-10", "dso_days": 81, "status": "late" },
-    { "name": "Family Smiles of Austin", "balance": 3800,  "last_payment_date": "2026-06-20", "dso_days": 38, "status": "current" }
+    {
+      "name": "Sunrise Dental Partners",
+      "balance": 9200,
+      "last_payment_date": "2026-05-28",
+      "dso_days": 62,
+      "status": "overdue"
+    },
+    {
+      "name": "Bright Smiles Clinic",
+      "balance": 7400,
+      "last_payment_date": "2026-06-02",
+      "dso_days": 58,
+      "status": "overdue"
+    },
+    {
+      "name": "Valley Orthodontics",
+      "balance": 6100,
+      "last_payment_date": "2026-06-15",
+      "dso_days": 45,
+      "status": "current"
+    },
+    {
+      "name": "Lakewood Dental Care",
+      "balance": 5400,
+      "last_payment_date": "2026-05-10",
+      "dso_days": 81,
+      "status": "late"
+    },
+    {
+      "name": "Family Smiles of Austin",
+      "balance": 3800,
+      "last_payment_date": "2026-06-20",
+      "dso_days": 38,
+      "status": "current"
+    }
   ],
-  "dso_history": [55, 56, 57, 58, 59, 60, 59, 61, 60, 62, 61, 62]
+  "dso_history": [
+    55,
+    56,
+    57,
+    58,
+    59,
+    60,
+    59,
+    61,
+    60,
+    62,
+    61,
+    62
+  ],
+  "ar_overdue": 17900,
+  "ar_overdue_pct": 54.7401,
+  "aging_source": "invoices"
 }

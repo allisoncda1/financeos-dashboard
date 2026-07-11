@@ -3,18 +3,89 @@
   "as_of": "2026-06-30",
   "open_ar": 87400,
   "aging": [
-    { "label": "Current",   "days": "0",     "amount": 55000, "count": 12 },
-    { "label": "1–30 days", "days": "1-30",  "amount": 21563, "count": 6 },
-    { "label": "31–60 days","days": "31-60", "amount": 5800,  "count": 3 },
-    { "label": "61–90 days","days": "61-90", "amount": 3200,  "count": 2 },
-    { "label": "90+ days",  "days": "90+",   "amount": 1837,  "count": 1 }
+    {
+      "label": "Current",
+      "days": "0",
+      "amount": 55000,
+      "count": 12
+    },
+    {
+      "label": "1\u201330 days",
+      "days": "1-30",
+      "amount": 21563,
+      "count": 6
+    },
+    {
+      "label": "31\u201360 days",
+      "days": "31-60",
+      "amount": 5800,
+      "count": 3
+    },
+    {
+      "label": "61\u201390 days",
+      "days": "61-90",
+      "amount": 3200,
+      "count": 2
+    },
+    {
+      "label": "90+ days",
+      "days": "90+",
+      "amount": 1837,
+      "count": 1
+    }
   ],
   "top_customers": [
-    { "name": "Riverside Auto Group",    "balance": 24800, "last_payment_date": "2026-06-12", "dso_days": 48, "status": "current" },
-    { "name": "Metro Ford Dealership",   "balance": 18600, "last_payment_date": "2026-06-20", "dso_days": 32, "status": "current" },
-    { "name": "Lakeside Honda",          "balance": 14200, "last_payment_date": "2026-05-28", "dso_days": 54, "status": "overdue" },
-    { "name": "Sunset Toyota of Austin", "balance": 9400,  "last_payment_date": "2026-06-05", "dso_days": 61, "status": "overdue" },
-    { "name": "Premier Chevrolet Inc.",  "balance": 7200,  "last_payment_date": "2026-06-18", "dso_days": 29, "status": "current" }
+    {
+      "name": "Riverside Auto Group",
+      "balance": 24800,
+      "last_payment_date": "2026-06-12",
+      "dso_days": 48,
+      "status": "current"
+    },
+    {
+      "name": "Metro Ford Dealership",
+      "balance": 18600,
+      "last_payment_date": "2026-06-20",
+      "dso_days": 32,
+      "status": "current"
+    },
+    {
+      "name": "Lakeside Honda",
+      "balance": 14200,
+      "last_payment_date": "2026-05-28",
+      "dso_days": 54,
+      "status": "overdue"
+    },
+    {
+      "name": "Sunset Toyota of Austin",
+      "balance": 9400,
+      "last_payment_date": "2026-06-05",
+      "dso_days": 61,
+      "status": "overdue"
+    },
+    {
+      "name": "Premier Chevrolet Inc.",
+      "balance": 7200,
+      "last_payment_date": "2026-06-18",
+      "dso_days": 29,
+      "status": "current"
+    }
   ],
-  "dso_history": [52, 54, 51, 53, 56, 55, 54, 57, 53, 55, 54, 54]
+  "dso_history": [
+    52,
+    54,
+    51,
+    53,
+    56,
+    55,
+    54,
+    57,
+    53,
+    55,
+    54,
+    54
+  ],
+  "ar_overdue": 32400,
+  "ar_overdue_pct": 37.0709,
+  "aging_source": "invoices"
 }

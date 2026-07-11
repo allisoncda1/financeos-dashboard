@@ -135,7 +135,10 @@ export type CustomersData = {
   entity_slug: string;
   as_of: string;
   open_ar: number;
+  ar_overdue: number;
+  ar_overdue_pct: number;
   aging: AgingBucket[];
+  aging_source: "snapshot" | "invoices";
   top_customers: Customer[];
   dso_history: number[];
 };
