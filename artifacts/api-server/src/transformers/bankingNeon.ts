@@ -30,19 +30,24 @@ export async function transformBankingNeon(slug: EntitySlug, asOf: string): Prom
     TransactionsService.getUnreconciledCount(entityId),
   ]);
 
-  const bankAccounts: BankAccount[] = neonAccounts.map((a) => ({
-    id: a.id,
-    name: a.name,
-    institution: parseInstitution(a.name),
-    account_type: a.accountSubtype ?? a.accountType,
-    last_four: parseLastFour(a.name),
-    balance: a.currentBalance,
-    // No color field in Neon — UI falls back to entity brand color
-    color: "",
-    // Reconciliation state unknown until a reconciliation table exists
-    reconciled: false,
-    last_reconciled: "",
-  }));
+  const bankAccounts: BankAccount[] = neonAccounts.map((a) => {
+    const name = a.name ?? "Unnamed account";
+    return {
+      id: a.id,
+      name,
+      institution: parseInstitution(name),
+      account_type: a.accountType === "Credit Card"
+        ? "Credit Card"
+        : (a.accountSubtype ?? a.accountType ?? "Bank"),
+      last_four: parseLastFour(name),
+      balance: a.currentBalance,
+      // No color field in Neon — UI falls back to entity brand color
+      color: "",
+      // Reconciliation state unknown until a reconciliation table exists
+      reconciled: false,
+      last_reconciled: "",
+    };
+  });
 
   const accountIdSet = new Set(bankAccounts.map((a) => a.id));
 
@@ -58,7 +63,11 @@ export async function transformBankingNeon(slug: EntitySlug, asOf: string): Prom
       reconciled: t.isReconciled ?? false,
     }));
 
-  const total_cash = bankAccounts.reduce((sum, a) => sum + a.balance, 0);
+  // Credit-card balances are liabilities. They belong in the Banking account
+  // and transaction views, but must never inflate or reduce the cash KPI.
+  const total_cash = neonAccounts
+    .filter((a) => a.accountType === "Bank")
+    .reduce((sum, a) => sum + a.currentBalance, 0);
 
   return {
     entity_slug: slug,

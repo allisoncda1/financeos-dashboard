@@ -1,4 +1,4 @@
-import { eq, and } from "drizzle-orm";
+import { eq, and, inArray } from "drizzle-orm";
 import { db } from "./connection";
 import { accounts } from "@workspace/db";
 
@@ -10,7 +10,8 @@ function n(v: string | null | undefined): number {
 }
 
 /**
- * All active bank accounts for one entity (account_type = 'Bank').
+ * All active cash and credit-card accounts for one entity.
+ * QBO stores the card type exactly as "Credit Card" (with a space).
  */
 export async function getBankAccounts(entityId: string) {
   const rows = await db
@@ -19,7 +20,7 @@ export async function getBankAccounts(entityId: string) {
     .where(
       and(
         eq(accounts.entityId, entityId),
-        eq(accounts.accountType, "Bank"),
+        inArray(accounts.accountType, ["Bank", "Credit Card"]),
         eq(accounts.isActive, true),
       ),
     )
