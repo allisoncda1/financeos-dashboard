@@ -234,8 +234,8 @@ export function Sidebar({ onClose }: { onClose?: () => void }) {
           <NavItem icon={FileText}       label="Report Center" href="/reports"                 active={pathname.startsWith("/reports")} />
         </Section>
         <Section label="Control">
-          <NavItem icon={ShieldCheck}    label="Integrity"     href="/control/integrity"       active={pathname.startsWith("/control/integrity")}  badge={98}  badgeColor="#10B981" />
-          <NavItem icon={CheckCircle2}   label="Validation"    href="/control/validation"      active={pathname.startsWith("/control/validation")} badge={40}  badgeColor="#10B981" />
+          <NavItem icon={ShieldCheck}    label="Integrity"     href="/control/integrity"       active={pathname.startsWith("/control/integrity")} />
+          <NavItem icon={CheckCircle2}   label="Validation"    href="/control/validation"      active={pathname.startsWith("/control/validation")} />
           <NavItem icon={Settings}       label="Settings"      href="/control/settings"        active={pathname.startsWith("/control/settings")} />
         </Section>
       </nav>

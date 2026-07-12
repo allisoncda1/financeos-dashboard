@@ -47,6 +47,7 @@ import type {
   BankAccount,
   BankTransaction,
 } from "./types";
+import { computePipelineMetrics } from "./pipelineMetrics";
 
 /** Canonical display order, mirroring the Drive/mock `entities` array. */
 const SLUG_ORDER = ["cardealer_ai", "t3_marketing", "topmrktr", "smile_more"];
@@ -261,8 +262,21 @@ export async function getDataFreshnessFromNeon(): Promise<DataFreshness> {
   const [latestSync] = await db
     .select()
     .from(syncRunsTable)
+    .where(eq(syncRunsTable.syncType, "incremental"))
     .orderBy(desc(syncRunsTable.startedAt))
     .limit(1);
+
+  const recentRuns = await db
+    .select({
+      status: syncRunsTable.status,
+      startedAt: syncRunsTable.startedAt,
+      completedAt: syncRunsTable.completedAt,
+    })
+    .from(syncRunsTable)
+    .where(and(
+      eq(syncRunsTable.syncType, "incremental"),
+      sql`${syncRunsTable.startedAt} >= now() - interval '30 days'`,
+    ));
 
   const [snapshot] = await db
     .select()
@@ -276,6 +290,12 @@ export async function getDataFreshnessFromNeon(): Promise<DataFreshness> {
     .from(entitySnapshotsTable)
     .where(eq(entitySnapshotsTable.isCurrent, true));
   const entitiesBuilt = new Set(builtRows.map((r) => r.entityId)).size;
+
+  const [historyRow] = await db
+    .select({ count: sql<number>`count(*)::int` })
+    .from(financialPeriodsTable);
+
+  const pipelineMetrics = computePipelineMetrics(recentRuns);
 
   if (!latestSync && !snapshot) {
     throw new Error("Neon has no sync_runs or portfolio_snapshots for freshness");
@@ -292,11 +312,16 @@ export async function getDataFreshnessFromNeon(): Promise<DataFreshness> {
     data_as_of: snapshot ? snapshot.asOf : new Date().toISOString().slice(0, 10),
     entities_built: entitiesBuilt,
     qbo_connection: latestSync?.status === "success" ? "healthy" : (latestSync?.status ?? "unknown"),
-    phase2_extraction: "complete",
-    model_build: "complete",
-    drive_upload: "complete",
+    phase2_extraction: latestSync?.status === "success" ? "complete" : (latestSync?.status ?? "unknown"),
+    model_build: snapshot ? "complete" : "unknown",
+    drive_upload: "not_applicable",
     snapshot_archived: Boolean(snapshot),
-    model_history_archived: true,
+    model_history_archived: (historyRow?.count ?? 0) > 0,
+    latest_trigger: latestSync?.triggeredBy ?? null,
+    avg_entity_sync_duration_seconds: pipelineMetrics.avgEntitySyncDurationSeconds,
+    pipeline_uptime_30d_pct: pipelineMetrics.pipelineUptime30dPct,
+    successful_runs_30d: pipelineMetrics.successfulRuns30d,
+    total_runs_30d: pipelineMetrics.totalRuns30d,
   };
 }
 
