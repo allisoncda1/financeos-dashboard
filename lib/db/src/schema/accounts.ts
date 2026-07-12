@@ -24,3 +24,8 @@ export const accountsTable = pgTable("accounts", {
 });
 
 export type AccountRow = typeof accountsTable.$inferSelect;
+
+// Aliases matching the naming used by the GitHub-authored api-server services
+// (RC-006 Banking): they import { accounts } / type { Account }.
+export const accounts = accountsTable;
+export type Account = AccountRow;
