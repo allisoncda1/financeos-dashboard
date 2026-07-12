@@ -12,6 +12,7 @@ function statusStyle(s: string | boolean) {
   const warn = s === "warning";
   if (pass) return { bg: "bg-emerald-50", text: "text-emerald-700", dot: "bg-emerald-500", label: s === true ? "Yes" : String(s) };
   if (warn) return { bg: "bg-amber-50",   text: "text-amber-700",   dot: "bg-amber-400",  label: "Warning" };
+  if (s === "not_applicable") return { bg: "bg-gray-50", text: "text-gray-500", dot: "bg-gray-300", label: "Not applicable" };
   return { bg: "bg-red-50", text: "text-red-700", dot: "bg-red-500", label: s === false ? "No" : String(s) };
 }
 
@@ -30,6 +31,12 @@ export default function IntegrityPage() {
   // Overall confidence derived from the real validation pass rate only.
   const passPct = v.total_checks > 0 ? v.passed / v.total_checks : 0;
   const confidence = Math.round(passPct * 100);
+  const avgDuration = f.avg_entity_sync_duration_seconds == null
+    ? "—"
+    : `${f.avg_entity_sync_duration_seconds.toFixed(1)}s`;
+  const uptime = f.pipeline_uptime_30d_pct == null
+    ? "—"
+    : `${f.pipeline_uptime_30d_pct.toFixed(1)}% (${f.successful_runs_30d ?? 0}/${f.total_runs_30d ?? 0})`;
 
   const entityFreshness = ENTITY_SLUGS.map((slug) => {
     const m = data.metrics[slug];
@@ -98,9 +105,9 @@ export default function IntegrityPage() {
                 { label: "Last successful run",  value: fmtTs(f.pipeline_run) },
                 { label: "Data as of",           value: f.data_as_of },
                 { label: "Entities processed",   value: `${f.entities_built} / 4` },
-                { label: "Run frequency",        value: "Daily at 6:00 AM CT" },
-                { label: "Avg run duration",     value: "~2m 30s" },
-                { label: "Pipeline uptime (30d)",value: "98.3%" },
+                { label: "Latest trigger",       value: f.latest_trigger ?? "—" },
+                { label: "Avg entity sync duration (30d)", value: avgDuration },
+                { label: "Pipeline success rate (30d)", value: uptime },
               ].map((r) => (
                 <div key={r.label} className="flex items-center justify-between">
                   <span className="text-[11px] text-gray-500">{r.label}</span>

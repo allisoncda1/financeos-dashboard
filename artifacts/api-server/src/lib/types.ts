@@ -100,6 +100,11 @@ export type DataFreshness = {
   drive_upload: string;
   snapshot_archived: boolean;
   model_history_archived: boolean;
+  latest_trigger?: string | null;
+  avg_entity_sync_duration_seconds?: number | null;
+  pipeline_uptime_30d_pct?: number | null;
+  successful_runs_30d?: number;
+  total_runs_30d?: number;
 };
 
 export type DashboardData = {
@@ -475,4 +480,3 @@ export type PortfolioBudget = {
   months_with_budgets: number;
   months_without_budgets: number;
 };
-
