@@ -3,34 +3,1321 @@ info:
   # Do not change the title, if the title changes, the import paths will be broken
   title: Api
   version: 0.1.0
-  description: API specification
+  description: FinanceOS Dashboard API
+
 servers:
   - url: /api
     description: Base API path
+
 tags:
   - name: health
-    description: Health operations
-paths:
-  /healthz:
-    get:
-      operationId: healthCheck
-      tags: [health]
-      summary: Health check
-      description: Returns server health status
-      responses:
-        "200":
-          description: Healthy
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/HealthStatus"
+    description: Health and connectivity checks
+  - name: auth
+    description: Authentication (public — no session required)
+  - name: pipeline
+    description: Pipeline status and cache refresh
+  - name: entities
+    description: Entity registry
+  - name: model
+    description: Dashboard model data — portfolio, per-entity metrics, and sub-pages
+  - name: validation
+    description: Validation summary and rule matrix
+  - name: drive
+    description: Google Drive connectivity status
+  - name: briefing
+    description: AI-generated CFO briefing (legacy alias)
+  - name: rules
+    description: Rules engine metadata and alerts
+  - name: reports
+    description: Report templates and generation
+  - name: ai
+    description: AI Platform — briefing, analysis, Q&A
+  - name: budget
+    description: Budget targets and budget-vs-actual
+
+# ─── Reusable components ─────────────────────────────────────────────────────
+
 components:
+  # ── Security schemes ────────────────────────────────────────────────────────
+  securitySchemes:
+    sessionCookie:
+      type: apiKey
+      in: cookie
+      name: connect.sid
+      description: |
+        Session cookie set by POST /api/auth/login. Required for all
+        protected routes (everything except /api/healthz, /api/health,
+        /api/auth/*, and /api/pipeline/* which uses its own auth).
+    pipelineRefreshToken:
+      type: apiKey
+      in: header
+      name: x-refresh-token
+      description: |
+        Shared webhook token for POST /api/pipeline/refresh when called by
+        the external pipeline job. Alternatively, an authenticated session
+        with the `pipeline_refresh` permission is accepted.
+
+  # ── Parameters ──────────────────────────────────────────────────────────────
+  parameters:
+    entitySlug:
+      name: slug
+      in: path
+      required: true
+      schema:
+        type: string
+        enum: [CarDealer_ai, T3_Marketing, TopMrktr, Smile_More]
+      description: Entity slug identifier
+    yearQuery:
+      name: year
+      in: query
+      required: false
+      schema:
+        type: integer
+        minimum: 2020
+        maximum: 2099
+      description: Fiscal year (defaults to current calendar year when omitted)
+
+  # ── Schemas ─────────────────────────────────────────────────────────────────
   schemas:
+    # Primitive / envelope
     HealthStatus:
       type: object
       properties:
         status:
           type: string
-      required:
-        - status
+      required: [status]
 
+    ApiEnvelope:
+      type: object
+      description: Standard JSON envelope returned by all successful responses
+      properties:
+        ok:
+          type: boolean
+          enum: [true]
+        data:
+          description: Response payload (shape varies by endpoint)
+        source:
+          type: string
+          enum: [live, mock, cache, db]
+          description: Where the data was sourced from
+        ts:
+          type: string
+          format: date-time
+          description: Server timestamp (ISO 8601)
+      required: [ok, data, ts]
+
+    SimpleOkResponse:
+      type: object
+      description: Minimal success envelope for endpoints that return no payload (e.g. logout)
+      properties:
+        ok:
+          type: boolean
+          enum: [true]
+        ts:
+          type: string
+          format: date-time
+          description: Server timestamp (ISO 8601)
+      required: [ok, ts]
+
+    ErrorResponse:
+      type: object
+      properties:
+        ok:
+          type: boolean
+          enum: [false]
+        error:
+          type: string
+        code:
+          type: string
+          description: Machine-readable error code (optional)
+        ts:
+          type: string
+          format: date-time
+      required: [ok, error, ts]
+
+    # Auth
+    LoginRequest:
+      type: object
+      properties:
+        email:
+          type: string
+          format: email
+        password:
+          type: string
+          format: password
+      required: [email, password]
+
+    UserInfo:
+      type: object
+      properties:
+        email:
+          type: string
+        role:
+          type: string
+          enum: [admin, cfo, controller, bookkeeper, investor, readonly]
+        name:
+          type: string
+        permissions:
+          type: array
+          items:
+            type: string
+      required: [email, role, name]
+
+    # Budget upsert
+    BudgetPeriodInput:
+      type: object
+      properties:
+        period_start:
+          type: string
+          format: date
+          description: "YYYY-MM-DD"
+        period_end:
+          type: string
+          format: date
+          description: "YYYY-MM-DD"
+        period_type:
+          type: string
+          enum: [month, annual]
+        revenue_target:
+          type: number
+          nullable: true
+          minimum: 0
+        cogs_target:
+          type: number
+          nullable: true
+          minimum: 0
+        opex_target:
+          type: number
+          nullable: true
+          minimum: 0
+        net_income_target:
+          type: number
+          nullable: true
+      required: [period_start, period_end]
+
+    BudgetAnnualInput:
+      type: object
+      properties:
+        year:
+          type: integer
+          minimum: 2020
+          maximum: 2099
+        revenue_target:
+          type: number
+          nullable: true
+          minimum: 0
+        cogs_target:
+          type: number
+          nullable: true
+          minimum: 0
+        opex_target:
+          type: number
+          nullable: true
+          minimum: 0
+        net_income_target:
+          type: number
+          nullable: true
+      required: [year]
+
+    # Report generation
+    ReportGenerateRequest:
+      type: object
+      properties:
+        template:
+          type: string
+          description: Report template ID
+        entities:
+          oneOf:
+            - type: string
+              enum: [all]
+            - type: array
+              items:
+                type: string
+                enum: [CarDealer_ai, T3_Marketing, TopMrktr, Smile_More]
+        period:
+          type: string
+          description: Reporting period string (e.g. "2026-Q2" or "2026-07")
+        format:
+          type: string
+          enum: [json, pdf, excel, html]
+      required: [template, period, format, entities]
+
+    # AI
+    AiAnalyzeRequest:
+      type: object
+      properties:
+        entities:
+          type: array
+          items:
+            type: string
+            enum: [CarDealer_ai, T3_Marketing, TopMrktr, Smile_More]
+          description: Optional subset of entities to analyze (omit for all)
+
+    AiQuestionRequest:
+      type: object
+      properties:
+        question:
+          type: string
+          description: Natural-language question about the portfolio
+        entities:
+          type: array
+          items:
+            type: string
+            enum: [CarDealer_ai, T3_Marketing, TopMrktr, Smile_More]
+      required: [question]
+
+    AiReportSummaryRequest:
+      type: object
+      properties:
+        template:
+          type: string
+          description: Optional report template name for context
+        sections:
+          type: object
+          additionalProperties: true
+          description: Report section data to summarize
+
+  # ── Common responses ─────────────────────────────────────────────────────────
+  responses:
+    Unauthorized:
+      description: Not authenticated — session cookie missing or invalid
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+    Forbidden:
+      description: Authenticated but lacks required permission
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+    NotFound:
+      description: Resource not found
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+    TooManyRequests:
+      description: Rate limit exceeded
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+    ServerError:
+      description: Internal server error
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+
+# ─── Paths ───────────────────────────────────────────────────────────────────
+
+paths:
+
+  # ── Health ──────────────────────────────────────────────────────────────────
+
+  /healthz:
+    get:
+      operationId: healthCheck
+      tags: [health]
+      summary: Simple health check
+      description: 'Returns `{ status: "ok" }`. No authentication required.'
+      responses:
+        "200":
+          description: Server is healthy
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HealthStatus"
+
+  /health:
+    get:
+      operationId: healthDetail
+      tags: [health]
+      summary: Detailed health status
+      description: |
+        Returns runtime health including data source mode, Google Drive
+        connectivity, AI provider identity, and server uptime.
+        No authentication required.
+      responses:
+        "200":
+          description: Detailed health status
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiEnvelope"
+
+  # ── Auth ────────────────────────────────────────────────────────────────────
+
+  /auth/login:
+    post:
+      operationId: authLogin
+      tags: [auth]
+      summary: Log in and establish a session
+      description: |
+        Validates credentials and sets the `connect.sid` session cookie.
+        Rate-limited to 10 requests per 15 minutes per IP.
+        No authentication required.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/LoginRequest"
+      responses:
+        "200":
+          description: Login successful — `connect.sid` cookie is set
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiEnvelope"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "429":
+          $ref: "#/components/responses/TooManyRequests"
+
+  /auth/logout:
+    post:
+      operationId: authLogout
+      tags: [auth]
+      summary: Destroy the current session
+      description: Clears the `connect.sid` cookie and destroys the server-side session.
+      responses:
+        "200":
+          description: Logged out successfully
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SimpleOkResponse"
+
+  /auth/me:
+    get:
+      operationId: authMe
+      tags: [auth]
+      summary: Return the current session user
+      description: |
+        Returns the signed-in user's email, role, name, and effective
+        permission list. Returns 401 when no valid session exists.
+      responses:
+        "200":
+          description: Current user info
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiEnvelope"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
+  # ── Pipeline ─────────────────────────────────────────────────────────────────
+
+  /pipeline/status:
+    get:
+      operationId: pipelineStatus
+      tags: [pipeline]
+      summary: Pipeline status summary
+      description: |
+        Returns the external pipeline's self-reported status (last run
+        timestamp, Drive upload, QBO connection state, and a staleness
+        classification). Read-only — never triggers the pipeline.
+        Session authentication is NOT required for this route; it is
+        mounted outside the requireAuth gate.
+      responses:
+        "200":
+          description: Pipeline status
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiEnvelope"
+
+  /pipeline/refresh:
+    post:
+      operationId: pipelineRefresh
+      tags: [pipeline]
+      summary: Invalidate server-side caches
+      description: |
+        Clears this server's in-memory caches (Drive data, rules engine,
+        AI briefing) so the next request re-fetches from Google Drive.
+        Never writes to Drive or triggers any external process.
+
+        Authorization accepts **either**:
+        - An authenticated session cookie with the `pipeline_refresh`
+          permission (`admin` or `controller` roles), **or**
+        - The `x-refresh-token` header carrying the shared webhook token
+          (used by the external pipeline job).
+      security:
+        - sessionCookie: []
+        - pipelineRefreshToken: []
+      responses:
+        "200":
+          description: Caches cleared
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiEnvelope"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "503":
+          description: Refresh endpoint not configured (PIPELINE_REFRESH_TOKEN env var missing)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  # ── Entities ─────────────────────────────────────────────────────────────────
+
+  /entities:
+    get:
+      operationId: listEntities
+      tags: [entities]
+      summary: List all entity definitions
+      security:
+        - sessionCookie: []
+      responses:
+        "200":
+          description: Entity registry
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiEnvelope"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
+  /entities/{slug}:
+    get:
+      operationId: getEntity
+      tags: [entities]
+      summary: Get a single entity definition
+      security:
+        - sessionCookie: []
+      parameters:
+        - $ref: "#/components/parameters/entitySlug"
+      responses:
+        "200":
+          description: Entity definition
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiEnvelope"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  # ── Model ─────────────────────────────────────────────────────────────────────
+
+  /model:
+    get:
+      operationId: getModel
+      tags: [model]
+      summary: Full dashboard model for all entities
+      description: |
+        Returns portfolio summary, validation summary, data freshness,
+        per-entity metrics, and per-entity anomalies in a single response.
+      security:
+        - sessionCookie: []
+      responses:
+        "200":
+          description: Full dashboard model
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiEnvelope"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "500":
+          $ref: "#/components/responses/ServerError"
+
+  /model/history/snapshots:
+    get:
+      operationId: getModelHistorySnapshots
+      tags: [model]
+      summary: Stored monthly metric snapshots for all entities
+      description: |
+        Returns archived server-side metric snapshots built from live
+        pipeline data. Registered before `/model/{slug}` so the literal
+        path segment `history` is never interpreted as an entity slug.
+      security:
+        - sessionCookie: []
+      responses:
+        "200":
+          description: Metric snapshot history
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiEnvelope"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "500":
+          $ref: "#/components/responses/ServerError"
+
+  /model/{slug}:
+    get:
+      operationId: getEntityModel
+      tags: [model]
+      summary: Single-entity metrics, anomalies, and freshness
+      security:
+        - sessionCookie: []
+      parameters:
+        - $ref: "#/components/parameters/entitySlug"
+      responses:
+        "200":
+          description: Entity model data
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiEnvelope"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "500":
+          $ref: "#/components/responses/ServerError"
+
+  /model/{slug}/history:
+    get:
+      operationId: getEntityHistory
+      tags: [model]
+      summary: Prior-period financial history for one entity
+      security:
+        - sessionCookie: []
+      parameters:
+        - $ref: "#/components/parameters/entitySlug"
+      responses:
+        "200":
+          description: Historical financial data
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiEnvelope"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "500":
+          $ref: "#/components/responses/ServerError"
+
+  /model/{slug}/financials:
+    get:
+      operationId: getEntityFinancials
+      tags: [model]
+      summary: Income statement and balance sheet for one entity
+      security:
+        - sessionCookie: []
+      parameters:
+        - $ref: "#/components/parameters/entitySlug"
+      responses:
+        "200":
+          description: Financial data
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiEnvelope"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "500":
+          $ref: "#/components/responses/ServerError"
+
+  /model/{slug}/customers:
+    get:
+      operationId: getEntityCustomers
+      tags: [model]
+      summary: Accounts receivable and customer aging for one entity
+      security:
+        - sessionCookie: []
+      parameters:
+        - $ref: "#/components/parameters/entitySlug"
+      responses:
+        "200":
+          description: Customers / AR data
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiEnvelope"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "500":
+          $ref: "#/components/responses/ServerError"
+
+  /model/{slug}/vendors:
+    get:
+      operationId: getEntityVendors
+      tags: [model]
+      summary: Accounts payable and vendor aging for one entity
+      security:
+        - sessionCookie: []
+      parameters:
+        - $ref: "#/components/parameters/entitySlug"
+      responses:
+        "200":
+          description: Vendors / AP data
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiEnvelope"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "500":
+          $ref: "#/components/responses/ServerError"
+
+  /model/{slug}/banking:
+    get:
+      operationId: getEntityBanking
+      tags: [model]
+      summary: Bank accounts and transactions for one entity
+      security:
+        - sessionCookie: []
+      parameters:
+        - $ref: "#/components/parameters/entitySlug"
+      responses:
+        "200":
+          description: Banking data
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiEnvelope"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "500":
+          $ref: "#/components/responses/ServerError"
+
+  # ── Validation ───────────────────────────────────────────────────────────────
+
+  /validation:
+    get:
+      operationId: getValidation
+      tags: [validation]
+      summary: Validation summary
+      description: Returns the pipeline's validation summary (pass/fail counts, entities, rules).
+      security:
+        - sessionCookie: []
+      responses:
+        "200":
+          description: Validation summary
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiEnvelope"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "500":
+          $ref: "#/components/responses/ServerError"
+
+  /validation/matrix:
+    get:
+      operationId: getValidationMatrix
+      tags: [validation]
+      summary: Per-entity × per-rule validation matrix
+      description: |
+        Returns a matrix of validation outcomes per entity per rule,
+        derived strictly from the pipeline's published summary output.
+        Cells are "unknown" when the pipeline never reported an outcome.
+      security:
+        - sessionCookie: []
+      responses:
+        "200":
+          description: Validation matrix
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiEnvelope"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "500":
+          $ref: "#/components/responses/ServerError"
+
+  # ── Drive ─────────────────────────────────────────────────────────────────────
+
+  /drive/status:
+    get:
+      operationId: driveStatus
+      tags: [drive]
+      summary: Google Drive connectivity status
+      description: Returns configuration and connectivity state for the Google Drive data source.
+      security:
+        - sessionCookie: []
+      responses:
+        "200":
+          description: Drive status
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiEnvelope"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
+  # ── Briefing (legacy) ─────────────────────────────────────────────────────────
+
+  /briefing:
+    get:
+      operationId: getBriefing
+      tags: [briefing]
+      summary: AI CFO briefing (legacy alias for /api/ai/briefing)
+      description: |
+        Stable legacy URL that proxies to the AI Platform's briefing
+        capability. Cached for 15 minutes; concurrent requests are
+        deduplicated. Prefer `/api/ai/briefing` for new integrations.
+      security:
+        - sessionCookie: []
+      responses:
+        "200":
+          description: CFO briefing
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiEnvelope"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "500":
+          $ref: "#/components/responses/ServerError"
+
+  # ── Rules / Alerts ────────────────────────────────────────────────────────────
+
+  /rules:
+    get:
+      operationId: listRules
+      tags: [rules]
+      summary: Registered rules metadata
+      description: Returns metadata for every rule registered in the rules engine (no evaluation).
+      security:
+        - sessionCookie: []
+      responses:
+        "200":
+          description: Rules list
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiEnvelope"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "500":
+          $ref: "#/components/responses/ServerError"
+
+  /alerts:
+    get:
+      operationId: listAlerts
+      tags: [rules]
+      summary: All active alerts
+      description: |
+        Returns every non-resolved alert read directly from FinanceOS Core
+        (Neon). The Dashboard does not calculate alerts — they are
+        sourced as-is from the Core `alerts` table.
+      security:
+        - sessionCookie: []
+      responses:
+        "200":
+          description: Active alerts list
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiEnvelope"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "500":
+          $ref: "#/components/responses/ServerError"
+
+  /alerts/portfolio:
+    get:
+      operationId: listPortfolioAlerts
+      tags: [rules]
+      summary: Portfolio-scoped alerts
+      description: |
+        Returns non-resolved alerts with `scope = "portfolio"` (Core
+        entity_id IS NULL). Registered before `/alerts/{entity}` so the
+        literal path segment "portfolio" is never treated as an entity.
+      security:
+        - sessionCookie: []
+      responses:
+        "200":
+          description: Portfolio alerts
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiEnvelope"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "500":
+          $ref: "#/components/responses/ServerError"
+
+  /alerts/{entity}:
+    get:
+      operationId: listEntityAlerts
+      tags: [rules]
+      summary: Alerts for a single entity
+      description: |
+        Matches by Core slug (lower-case), display-cased slug, or display
+        name. Returns only non-resolved entity-scoped alerts.
+      security:
+        - sessionCookie: []
+      parameters:
+        - name: entity
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Entity slug or display name (case-insensitive match)
+      responses:
+        "200":
+          description: Entity alerts
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiEnvelope"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "500":
+          $ref: "#/components/responses/ServerError"
+
+  # ── Reports ───────────────────────────────────────────────────────────────────
+
+  /reports:
+    get:
+      operationId: listReports
+      tags: [reports]
+      summary: List available report templates
+      description: Returns metadata for all enabled and disabled report templates.
+      security:
+        - sessionCookie: []
+      responses:
+        "200":
+          description: Report template list
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiEnvelope"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "500":
+          $ref: "#/components/responses/ServerError"
+
+  /reports/generate:
+    post:
+      operationId: generateReport
+      tags: [reports]
+      summary: Generate a report
+      description: |
+        Builds and renders a report. Requires the `reports` permission.
+
+        When `format` is `json`, returns a JSON envelope. When `format` is
+        `pdf`, `excel`, or `html`, streams the binary/text output directly
+        with the appropriate `Content-Type` and `Content-Disposition` headers
+        — not wrapped in the standard JSON envelope.
+      security:
+        - sessionCookie: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ReportGenerateRequest"
+      responses:
+        "200":
+          description: |
+            Report output. Content-Type varies by `format`:
+            - `json` → `application/json`
+            - `pdf` → `application/pdf`
+            - `excel` → `application/vnd.openxmlformats-officedocument.spreadsheetml.sheet`
+            - `html` → `text/html`
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiEnvelope"
+            application/pdf:
+              schema:
+                type: string
+                format: binary
+            application/vnd.openxmlformats-officedocument.spreadsheetml.sheet:
+              schema:
+                type: string
+                format: binary
+            text/html:
+              schema:
+                type: string
+        "400":
+          description: Invalid request parameters
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+
+  /reports/{template}:
+    get:
+      operationId: getReportTemplate
+      tags: [reports]
+      summary: Get a single report template definition
+      security:
+        - sessionCookie: []
+      parameters:
+        - name: template
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Report template ID
+      responses:
+        "200":
+          description: Template definition
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiEnvelope"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "500":
+          $ref: "#/components/responses/ServerError"
+
+  # ── AI ────────────────────────────────────────────────────────────────────────
+
+  /ai/status:
+    get:
+      operationId: aiStatus
+      tags: [ai]
+      summary: AI provider identity and availability
+      description: |
+        Returns provider name, model, availability flag, cache statistics,
+        and token/cost settings. Never exposes API keys or prompts.
+        Requires `ai` permission.
+      security:
+        - sessionCookie: []
+      responses:
+        "200":
+          description: AI status
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiEnvelope"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "500":
+          $ref: "#/components/responses/ServerError"
+
+  /ai/usage:
+    get:
+      operationId: aiUsage
+      tags: [ai]
+      summary: AI cost and usage tracking
+      description: |
+        Returns daily and total request counts, token usage, and estimated
+        cost. Never exposes API keys, prompts, or raw context data.
+        Requires `ai` permission.
+      security:
+        - sessionCookie: []
+      responses:
+        "200":
+          description: AI usage stats
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiEnvelope"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "500":
+          $ref: "#/components/responses/ServerError"
+
+  /ai/briefing:
+    get:
+      operationId: aiBriefing
+      tags: [ai]
+      summary: AI-generated CFO briefing
+      description: |
+        Generates (or returns from 15-minute cache) a structured CFO
+        briefing covering portfolio highlights, risks, opportunities,
+        and priorities. Concurrent requests are deduplicated.
+        Requires `ai` permission.
+      security:
+        - sessionCookie: []
+      responses:
+        "200":
+          description: CFO briefing
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiEnvelope"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "500":
+          $ref: "#/components/responses/ServerError"
+
+  /ai/report-summary:
+    post:
+      operationId: aiReportSummary
+      tags: [ai]
+      summary: AI-generated narrative summary of report sections
+      description: |
+        Accepts optional report section data and returns a natural-language
+        narrative summary. Requires `ai` permission.
+      security:
+        - sessionCookie: []
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AiReportSummaryRequest"
+      responses:
+        "200":
+          description: Report narrative summary
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiEnvelope"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "500":
+          $ref: "#/components/responses/ServerError"
+
+  /ai/analyze:
+    post:
+      operationId: aiAnalyze
+      tags: [ai]
+      summary: AI financial analysis
+      description: |
+        Runs the AI provider's `analyzeFinancials` capability over the
+        given entities (or all entities when omitted).
+        Requires `ai` permission.
+      security:
+        - sessionCookie: []
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AiAnalyzeRequest"
+      responses:
+        "200":
+          description: Financial analysis
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiEnvelope"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "500":
+          $ref: "#/components/responses/ServerError"
+
+  /ai/question:
+    post:
+      operationId: aiQuestion
+      tags: [ai]
+      summary: Answer a natural-language question about the portfolio
+      description: Requires `ai` permission.
+      security:
+        - sessionCookie: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AiQuestionRequest"
+      responses:
+        "200":
+          description: Answer
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiEnvelope"
+        "400":
+          description: Missing or invalid `question` field
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "500":
+          $ref: "#/components/responses/ServerError"
+
+  # ── Budget ────────────────────────────────────────────────────────────────────
+
+  /budget/portfolio:
+    get:
+      operationId: getBudgetPortfolio
+      tags: [budget]
+      summary: Portfolio-level budget summary
+      description: |
+        Returns aggregated budget targets, actuals, and attainment for the
+        full portfolio for the given year.
+        Registered before `/budget/{slug}` so the literal segment
+        "portfolio" is never interpreted as an entity slug.
+      security:
+        - sessionCookie: []
+      parameters:
+        - $ref: "#/components/parameters/yearQuery"
+      responses:
+        "200":
+          description: Portfolio budget
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiEnvelope"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "500":
+          $ref: "#/components/responses/ServerError"
+
+  /budget/{slug}:
+    get:
+      operationId: getEntityBudget
+      tags: [budget]
+      summary: Entity budget with month-by-month breakdown
+      security:
+        - sessionCookie: []
+      parameters:
+        - $ref: "#/components/parameters/entitySlug"
+        - $ref: "#/components/parameters/yearQuery"
+      responses:
+        "200":
+          description: Entity budget
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiEnvelope"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "500":
+          $ref: "#/components/responses/ServerError"
+
+  /budget/{slug}/vs-actual:
+    get:
+      operationId: getEntityBudgetVsActual
+      tags: [budget]
+      summary: Budget vs actual comparison for one entity
+      security:
+        - sessionCookie: []
+      parameters:
+        - $ref: "#/components/parameters/entitySlug"
+        - $ref: "#/components/parameters/yearQuery"
+      responses:
+        "200":
+          description: Budget vs actual
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiEnvelope"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "500":
+          $ref: "#/components/responses/ServerError"
+
+  /budget/{slug}/annual:
+    get:
+      operationId: getEntityAnnualBudget
+      tags: [budget]
+      summary: Annual budget targets for one entity
+      security:
+        - sessionCookie: []
+      parameters:
+        - $ref: "#/components/parameters/entitySlug"
+        - $ref: "#/components/parameters/yearQuery"
+      responses:
+        "200":
+          description: Annual budget row (null data when no annual budget exists)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiEnvelope"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "500":
+          $ref: "#/components/responses/ServerError"
+    put:
+      operationId: upsertEntityAnnualBudget
+      tags: [budget]
+      summary: Create or replace annual budget targets for one entity
+      security:
+        - sessionCookie: []
+      parameters:
+        - $ref: "#/components/parameters/entitySlug"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/BudgetAnnualInput"
+      responses:
+        "200":
+          description: Saved annual budget
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiEnvelope"
+        "400":
+          description: Invalid input
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "500":
+          $ref: "#/components/responses/ServerError"
+
+  /budget/{slug}/period:
+    put:
+      operationId: upsertEntityBudgetPeriod
+      tags: [budget]
+      summary: Create or replace a monthly budget period for one entity
+      security:
+        - sessionCookie: []
+      parameters:
+        - $ref: "#/components/parameters/entitySlug"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/BudgetPeriodInput"
+      responses:
+        "200":
+          description: Saved budget period
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiEnvelope"
+        "400":
+          description: Invalid input
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "500":
+          $ref: "#/components/responses/ServerError"
