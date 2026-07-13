@@ -23,7 +23,9 @@ export async function transformMetricsNeon(slug: EntitySlug): Promise<EntityMetr
 
   const def = ENTITY_DEFINITIONS.find((e) => e.slug === slug);
   const asOf = ytdRow.periodEnd;
-  const pipelineRun = lastRun?.completedAt?.toISOString() ?? new Date().toISOString();
+  // Never fabricate a "just now" sync timestamp. If no successful automated
+  // sync exists, the financial period's generated_at is the honest fallback.
+  const pipelineRun = lastRun?.completedAt?.toISOString() ?? ytdRow.generatedAt.toISOString();
 
   const revenueYtd    = ytdRow.revenue;
   const grossProfitYtd = ytdRow.grossProfit;

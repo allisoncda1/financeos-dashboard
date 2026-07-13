@@ -1,8 +1,8 @@
 import { eq, and, desc } from "drizzle-orm";
 import { db } from "./connection";
-import { syncRuns } from "@workspace/db";
+import { syncRunsTable } from "@workspace/db";
 
-export type { SyncRun } from "@workspace/db";
+export type { SyncRunRow as SyncRun } from "@workspace/db";
 
 /**
  * Most recent completed sync run for one entity.
@@ -11,14 +11,15 @@ export type { SyncRun } from "@workspace/db";
 export async function getLastSuccessfulRun(entityId: string) {
   const rows = await db
     .select()
-    .from(syncRuns)
+    .from(syncRunsTable)
     .where(
       and(
-        eq(syncRuns.entityId, entityId),
-        eq(syncRuns.status, "complete"),
+        eq(syncRunsTable.entityId, entityId),
+        eq(syncRunsTable.syncType, "incremental"),
+        eq(syncRunsTable.status, "success"),
       ),
     )
-    .orderBy(desc(syncRuns.startedAt))
+    .orderBy(desc(syncRunsTable.completedAt))
     .limit(1);
 
   return rows[0] ?? null;
@@ -31,8 +32,8 @@ export async function getLastSuccessfulRun(entityId: string) {
 export async function getRecentRuns(limit = 20) {
   return db
     .select()
-    .from(syncRuns)
-    .orderBy(desc(syncRuns.startedAt))
+    .from(syncRunsTable)
+    .orderBy(desc(syncRunsTable.startedAt))
     .limit(limit);
 }
 
@@ -42,8 +43,8 @@ export async function getRecentRuns(limit = 20) {
 export async function getRunsByEntity(entityId: string, limit = 10) {
   return db
     .select()
-    .from(syncRuns)
-    .where(eq(syncRuns.entityId, entityId))
-    .orderBy(desc(syncRuns.startedAt))
+    .from(syncRunsTable)
+    .where(eq(syncRunsTable.entityId, entityId))
+    .orderBy(desc(syncRunsTable.startedAt))
     .limit(limit);
 }
