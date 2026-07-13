@@ -9,7 +9,7 @@ Remote Budget code pulled from origin assumes a single database and mixed-case e
 - **Schema names**: remote schema exports (`entities`, `financialPeriods`, plain type names) differ from local (`entitiesTable`, `financialPeriodsTable`, `*Row` types). Preferred fix: add plain-name alias exports in lib/db schema (e.g. `export const accounts = accountsTable; export type Account = AccountRow;`) so GitHub-authored service files compile unmodified and future pulls don't conflict; only rename remote modules when aliasing isn't possible. Remote duplicate schema files (periods/qbo/snapshots/operational/sync) must not be re-introduced.
 - **Slug casing**: Core stores slugs lower-cased; Dashboard `EntitySlug` values are mixed-case (`CarDealer_ai`). `entityCache` lower-cases on both warm and lookup — any new Core lookup by slug must do the same or it 500s with "Entity not found in Neon".
 - **Actuals periodType** in Core is `"monthly"` (not `"month"`); budgets use `"month"`/`"annual"`.
-- **Git history**: remote commits could not be merged (main-agent git writes blocked); content was merged file-by-file, so origin commits are not ancestors of local history.
+- **Post-merge coherence**: after any file-by-file pull from origin, run BOTH `tsc -b lib/db` (stale declaration files hide export mismatches) and the api-server typecheck — pulled service files may reference exports/helpers that were renamed or dropped locally.
 
 **Why:** upstream budget code is written against a single-DB Supabase-style setup; deploying it unmodified breaks against the read-only Core boundary.
 **How to apply:** when pulling future budget/forecast commits from origin, re-check db connection imports, schema export names, slug casing, and migration SQL FKs before restarting.

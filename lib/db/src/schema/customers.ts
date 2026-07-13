@@ -20,3 +20,8 @@ export const customersTable = pgTable("customers", {
 });
 
 export type CustomerRow = typeof customersTable.$inferSelect;
+
+// Aliases matching the naming used by the GitHub-authored api-server services:
+// they import { customers } / type { Customer }.
+export const customers = customersTable;
+export type Customer = CustomerRow;

@@ -18,3 +18,8 @@ export const portfolioSnapshotsTable = pgTable("portfolio_snapshots", {
 });
 
 export type PortfolioSnapshotRow = typeof portfolioSnapshotsTable.$inferSelect;
+
+// Aliases matching the naming used by the GitHub-authored api-server services:
+// they import { portfolioSnapshots } / type { PortfolioSnapshot }.
+export const portfolioSnapshots = portfolioSnapshotsTable;
+export type PortfolioSnapshot = PortfolioSnapshotRow;

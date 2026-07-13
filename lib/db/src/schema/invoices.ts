@@ -25,3 +25,8 @@ export const invoicesTable = pgTable("invoices", {
 });
 
 export type InvoiceRow = typeof invoicesTable.$inferSelect;
+
+// Aliases matching the naming used by the GitHub-authored api-server services:
+// they import { invoices } / type { Invoice }.
+export const invoices = invoicesTable;
+export type Invoice = InvoiceRow;

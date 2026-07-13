@@ -25,3 +25,8 @@ export const billsTable = pgTable("bills", {
 });
 
 export type BillRow = typeof billsTable.$inferSelect;
+
+// Aliases matching the naming used by the GitHub-authored api-server services:
+// they import { bills } / type { Bill }.
+export const bills = billsTable;
+export type Bill = BillRow;

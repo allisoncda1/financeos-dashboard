@@ -88,7 +88,7 @@ export function parseBalanceSheetRows(rows: Record<string, string>[], asOf: stri
     const accountName = row["account_name"] ?? "";
     const accountType = row["account_type"] ?? "";
     const subtype = row["account_subtype"] ?? "";
-    const amount = toNumber(row["amount"]);
+    const amount = parseNumeric(row["amount"]);
     const category = classifyRow(accountType, subtype);
 
     if (category === "asset") {

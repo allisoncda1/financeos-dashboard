@@ -22,3 +22,8 @@ export const entitySnapshotsTable = pgTable("entity_snapshots", {
 });
 
 export type EntitySnapshotRow = typeof entitySnapshotsTable.$inferSelect;
+
+// Aliases matching the naming used by the GitHub-authored api-server services:
+// they import { entitySnapshots } / type { EntitySnapshot }.
+export const entitySnapshots = entitySnapshotsTable;
+export type EntitySnapshot = EntitySnapshotRow;

@@ -56,8 +56,8 @@ export async function transformBankingNeon(slug: EntitySlug, asOf: string): Prom
     .map((t) => ({
       id: t.id,
       account_id: t.accountId ?? "",
-      date: t.transactionDate,
-      description: t.memo ?? t.entityRef ?? t.transactionType,
+      date: t.transactionDate ?? "",
+      description: t.memo ?? t.entityRef ?? t.transactionType ?? "",
       amount: t.amount,
       category: t.category ?? t.accountName ?? "",
       reconciled: t.isReconciled ?? false,

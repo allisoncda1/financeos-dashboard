@@ -21,7 +21,7 @@ export async function getCurrentSnapshot(entityId: string) {
     )
     .limit(1);
 
-  return rows[0] ?? null;
+  return rows.at(0) ?? null;
 }
 
 /**

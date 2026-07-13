@@ -29,3 +29,8 @@ export const alertsTable = pgTable("alerts", {
 });
 
 export type AlertRow = typeof alertsTable.$inferSelect;
+
+// Aliases matching the naming used by the GitHub-authored api-server services:
+// they import { alerts }.
+export const alerts = alertsTable;
+export type Alert = AlertRow;

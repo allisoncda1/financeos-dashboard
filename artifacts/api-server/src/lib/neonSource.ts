@@ -857,7 +857,22 @@ export async function getEntityCustomersFromNeon(
   const open_ar = num(ytd.openAr);
   const dso_history = trailingMonthly(periods, (r) => num(r.dsoDays));
 
-  return { entity_slug: slug, as_of: asOf, open_ar, aging, top_customers, dso_history };
+  const ar_overdue = aging
+    .filter((b) => b.label !== "Current")
+    .reduce((sum, b) => sum + b.amount, 0);
+  const ar_overdue_pct = open_ar > 0 ? (ar_overdue / open_ar) * 100 : 0;
+
+  return {
+    entity_slug: slug,
+    as_of: asOf,
+    open_ar,
+    ar_overdue,
+    ar_overdue_pct,
+    aging,
+    aging_source: "invoices",
+    top_customers,
+    dso_history,
+  };
 }
 
 /**

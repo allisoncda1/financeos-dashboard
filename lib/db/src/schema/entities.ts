@@ -22,3 +22,8 @@ export const entitiesTable = pgTable("entities", {
 
 export type EntityRow = typeof entitiesTable.$inferSelect;
 export type InsertEntityRow = typeof entitiesTable.$inferInsert;
+
+// Aliases matching the naming used by the GitHub-authored api-server services
+// and legacy schema files: they import { entities }.
+export const entities = entitiesTable;
+export type Entity = EntityRow;

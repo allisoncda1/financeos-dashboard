@@ -19,3 +19,8 @@ export const vendorsTable = pgTable("vendors", {
 });
 
 export type VendorRow = typeof vendorsTable.$inferSelect;
+
+// Aliases matching the naming used by the GitHub-authored api-server services:
+// they import { vendors } / type { Vendor }.
+export const vendors = vendorsTable;
+export type Vendor = VendorRow;
