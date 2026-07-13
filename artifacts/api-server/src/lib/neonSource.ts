@@ -543,7 +543,13 @@ async function getCashFlowFromNeon(entityId: string): Promise<CashFlowStatement 
   const rows = await db
     .select()
     .from(cashFlowStatementsTable)
-    .where(eq(cashFlowStatementsTable.entityId, entityId))
+    .where(
+      and(
+        eq(cashFlowStatementsTable.entityId, entityId),
+        eq(cashFlowStatementsTable.validationStatus, "passed"),
+        eq(cashFlowStatementsTable.publicationStatus, "published"),
+      ),
+    )
     .orderBy(desc(cashFlowStatementsTable.periodEnd))
     .limit(1);
 
