@@ -5,7 +5,9 @@ import {
   integer,
   timestamp,
   index,
+  check,
 } from "drizzle-orm/pg-core";
+import { sql } from "drizzle-orm";
 
 export const reportHistory = pgTable(
   "report_history",
@@ -35,6 +37,8 @@ export const reportHistory = pgTable(
   (t) => [
     index("idx_report_history_created").on(t.createdAt),
     index("idx_report_history_template").on(t.template, t.createdAt),
+    check("chk_report_history_status", sql`${t.status} IN ('queued', 'processing', 'completed', 'failed')`),
+    check("chk_report_history_format", sql`${t.format} IN ('json', 'pdf', 'excel', 'html')`),
   ],
 );
 
