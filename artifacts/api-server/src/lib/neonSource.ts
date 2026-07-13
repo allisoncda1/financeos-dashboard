@@ -25,6 +25,7 @@ import {
   transactionsTable,
   customersTable,
   alertsTable,
+  cashFlowStatementsTable,
 } from "@workspace/db";
 import type {
   PortfolioSummary,
@@ -46,6 +47,7 @@ import type {
   Vendor,
   BankAccount,
   BankTransaction,
+  CashFlowStatement,
 } from "./types";
 import { computePipelineMetrics } from "./pipelineMetrics";
 
@@ -532,23 +534,50 @@ function toMonthlyPl(r: PeriodRow): MonthlyPL {
 }
 
 /**
+ * Latest Cash Flow statement for an entity, read from cash_flow_statements.
+ * Returns null if no statement has been published for this entity yet.
+ * The `sections` JSONB column stores the full CashFlowStatement object written
+ * by financeos_core build_semantic_layer.py after validation passes.
+ */
+async function getCashFlowFromNeon(entityId: string): Promise<CashFlowStatement | null> {
+  const rows = await db
+    .select()
+    .from(cashFlowStatementsTable)
+    .where(eq(cashFlowStatementsTable.entityId, entityId))
+    .orderBy(desc(cashFlowStatementsTable.periodEnd))
+    .limit(1);
+
+  if (rows.length === 0) return null;
+
+  const raw = rows[0].sections as unknown;
+  if (!raw || typeof raw !== "object") return null;
+
+  return raw as CashFlowStatement;
+}
+
+/**
  * Current-year financials for an entity, read from financial_periods:
  *   - monthly_pl  : the current fiscal year's `monthly` rows (asc by period)
  *   - ytd_summary : the current `ytd` row (read directly, NOT re-summed)
  *   - balance_sheet: aggregate totals from the same `ytd` row
- * `financial_periods` stores only balance-sheet TOTALS (no line-item split) and
- * no cash-flow statement, so the detailed BalanceSheet sub-lines are 0 and
- * cash_flow is null — the exact same typed shape the Drive path produced.
+ *   - cash_flow   : latest published Cash Flow statement from cash_flow_statements
  */
 export async function getEntityFinancialsFromNeon(
   slug: EntitySlug,
   asOf: string,
 ): Promise<FinancialsData> {
   const coreSlug = slug.toLowerCase();
-  const rows = await fetchEntityPeriods(coreSlug);
+  const [rows, entityRows] = await Promise.all([
+    fetchEntityPeriods(coreSlug),
+    db.select({ id: entitiesTable.id })
+      .from(entitiesTable)
+      .where(eq(entitiesTable.slug, coreSlug))
+      .limit(1),
+  ]);
   if (rows.length === 0) {
     throw new Error(`Neon has no financial_periods for "${slug}" (core slug "${coreSlug}")`);
   }
+  const entityId = entityRows[0]?.id ?? null;
 
   // The authoritative current-period roll-up. Pick the latest ytd row by
   // period_end (Core may retain more than one over time).
@@ -601,14 +630,15 @@ export async function getEntityFinancialsFromNeon(
     },
   };
 
+  const cash_flow = entityId ? await getCashFlowFromNeon(entityId) : null;
+
   return {
     entity_slug: slug,
     as_of: asOf,
     monthly_pl,
     ytd_summary,
-    // financial_periods does not store a cash-flow statement.
     balance_sheet,
-    cash_flow: null,
+    cash_flow,
   };
 }
 
