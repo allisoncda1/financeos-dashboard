@@ -35,6 +35,15 @@ export interface ApiEnvelope {
   ts: string;
 }
 
+/**
+ * Minimal success envelope for endpoints that return no payload (e.g. logout)
+ */
+export interface SimpleOkResponse {
+  ok: true;
+  /** Server timestamp (ISO 8601) */
+  ts: string;
+}
+
 export interface ErrorResponse {
   ok: false;
   error: string;

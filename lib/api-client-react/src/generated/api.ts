@@ -37,6 +37,7 @@ import type {
   NotFoundResponse,
   ReportGenerateRequest,
   ServerErrorResponse,
+  SimpleOkResponse,
   TooManyRequestsResponse,
   UnauthorizedResponse
 } from './api.schemas';
@@ -311,9 +312,9 @@ export const getAuthLogoutUrl = () => {
  * Clears the `connect.sid` cookie and destroys the server-side session.
  * @summary Destroy the current session
  */
-export const authLogout = async ( options?: RequestInit): Promise<ApiEnvelope> => {
+export const authLogout = async ( options?: RequestInit): Promise<SimpleOkResponse> => {
 
-  return customFetch<ApiEnvelope>(getAuthLogoutUrl(),
+  return customFetch<SimpleOkResponse>(getAuthLogoutUrl(),
   {
     ...options,
     method: 'POST'

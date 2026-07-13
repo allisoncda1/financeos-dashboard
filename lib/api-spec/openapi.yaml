@@ -106,6 +106,19 @@ components:
           description: Server timestamp (ISO 8601)
       required: [ok, data, ts]
 
+    SimpleOkResponse:
+      type: object
+      description: Minimal success envelope for endpoints that return no payload (e.g. logout)
+      properties:
+        ok:
+          type: boolean
+          enum: [true]
+        ts:
+          type: string
+          format: date-time
+          description: Server timestamp (ISO 8601)
+      required: [ok, ts]
+
     ErrorResponse:
       type: object
       properties:
@@ -375,7 +388,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/ApiEnvelope"
+                $ref: "#/components/schemas/SimpleOkResponse"
 
   /auth/me:
     get:

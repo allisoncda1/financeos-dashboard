@@ -56,10 +56,8 @@ export const AuthLoginResponse = zod.object({
  */
 export const AuthLogoutResponse = zod.object({
   "ok": zod.literal(true),
-  "data": zod.unknown().describe('Response payload (shape varies by endpoint)'),
-  "source": zod.enum(['live', 'mock', 'cache', 'db']).optional().describe('Where the data was sourced from'),
   "ts": zod.coerce.date().describe('Server timestamp (ISO 8601)')
-}).describe('Standard JSON envelope returned by all successful responses')
+}).describe('Minimal success envelope for endpoints that return no payload (e.g. logout)')
 
 
 /**
