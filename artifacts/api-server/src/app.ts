@@ -67,6 +67,11 @@ export async function initSession(): Promise<void> {
 
 const app: Express = express();
 
+// Replit terminates HTTPS at a single reverse proxy. Trust exactly that first
+// hop so Express and express-rate-limit use the real client IP from
+// X-Forwarded-For instead of putting every user in the proxy's shared bucket.
+app.set("trust proxy", 1);
+
 app.use(
   pinoHttp({
     logger,
