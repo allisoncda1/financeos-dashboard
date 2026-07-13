@@ -534,12 +534,87 @@ function toMonthlyPl(r: PeriodRow): MonthlyPL {
 }
 
 /**
- * Latest Cash Flow statement for an entity, read from cash_flow_statements.
- * Returns null if no statement has been published for this entity yet.
- * The `sections` JSONB column stores the full CashFlowStatement object written
- * by financeos_core build_semantic_layer.py after validation passes.
+ * Parse and validate raw JSONB from the `sections` column into a typed
+ * CashFlowStatement. Returns null if the shape is invalid or any line amount
+ * is non-finite (null, NaN, ±Infinity are all rejected).
+ *
+ * This is the authoritative contract between the Python writer
+ * (financeos_core build_semantic_layer.py) and the TypeScript reader.
+ * Every field constraint here corresponds to a validation rule on the write side.
+ *
+ * Rules enforced:
+ * - as_of must be a string
+ * - sections must be a non-empty array
+ * - Each section: name=string, net_cash=finite number, lines=array
+ * - Each line: label=string, amount=finite number (null NOT accepted),
+ *   is_subtotal=boolean
+ * - Missing optional lines are acceptable (they are simply absent from the array)
+ * - net_cash_change and cash_at_end may be null (not yet published) but
+ *   if present must be finite numbers
  */
-async function getCashFlowFromNeon(entityId: string): Promise<CashFlowStatement | null> {
+export function parseCashFlowSectionsJson(raw: unknown): CashFlowStatement | null {
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return null;
+  const obj = raw as Record<string, unknown>;
+
+  if (typeof obj.as_of !== "string") return null;
+  if (!Array.isArray(obj.sections)) return null;
+
+  // net_cash_change and cash_at_end are number | null at the type level
+  const netCashChange = obj.net_cash_change;
+  if (netCashChange !== null && netCashChange !== undefined && !Number.isFinite(netCashChange)) {
+    return null;
+  }
+  const cashAtEnd = obj.cash_at_end;
+  if (cashAtEnd !== null && cashAtEnd !== undefined && !Number.isFinite(cashAtEnd)) {
+    return null;
+  }
+
+  const sections: import("./types").CashFlowSection[] = [];
+  for (const s of obj.sections) {
+    if (!s || typeof s !== "object" || Array.isArray(s)) return null;
+    const sec = s as Record<string, unknown>;
+    if (typeof sec.name !== "string") return null;
+    if (!Number.isFinite(sec.net_cash)) return null;
+    if (!Array.isArray(sec.lines)) return null;
+
+    const lines: import("./types").CashFlowLine[] = [];
+    for (const l of sec.lines) {
+      if (!l || typeof l !== "object" || Array.isArray(l)) return null;
+      const line = l as Record<string, unknown>;
+      if (typeof line.label !== "string") return null;
+      // amount must be a finite number — null is not valid per TypeScript type
+      if (!Number.isFinite(line.amount)) return null;
+      if (typeof line.is_subtotal !== "boolean") return null;
+      lines.push({
+        label:       line.label,
+        amount:      line.amount as number,
+        is_subtotal: line.is_subtotal,
+      });
+    }
+    sections.push({ name: sec.name, lines, net_cash: sec.net_cash as number });
+  }
+
+  return {
+    as_of:           obj.as_of,
+    sections,
+    net_cash_change: (netCashChange ?? null) as number | null,
+    cash_at_end:     (cashAtEnd ?? null) as number | null,
+  };
+}
+
+/**
+ * Latest Cash Flow statement for an entity, read from cash_flow_statements.
+ * Returns null if no statement has been published for this entity yet,
+ * or if the stored JSONB does not pass contract validation.
+ *
+ * Eligible rows must have:
+ *   validation_status = 'passed'   — all 15 Python validation checks passed
+ *   publication_status = 'published' — publication gate cleared
+ * Invalid, blocked, skipped, or unpublished rows are never returned.
+ *
+ * The most recent eligible statement (by period_end DESC) is selected.
+ */
+export async function getCashFlowFromNeon(entityId: string): Promise<CashFlowStatement | null> {
   const rows = await db
     .select()
     .from(cashFlowStatementsTable)
@@ -555,10 +630,7 @@ async function getCashFlowFromNeon(entityId: string): Promise<CashFlowStatement 
 
   if (rows.length === 0) return null;
 
-  const raw = rows[0].sections as unknown;
-  if (!raw || typeof raw !== "object") return null;
-
-  return raw as CashFlowStatement;
+  return parseCashFlowSectionsJson(rows[0].sections);
 }
 
 /**
