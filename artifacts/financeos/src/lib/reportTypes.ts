@@ -60,6 +60,24 @@ export type ReportBranding = {
   financeosBranding: boolean;
 };
 
+export type ReportHistoryEntry = {
+  id: string;
+  template: string;
+  title: string;
+  period: string;
+  format: string;
+  entitySlugs: string[];
+  status: "completed" | "failed" | "queued" | "processing";
+  source: string | null;
+  dataFreshness: string | null;
+  entityCount: number | null;
+  confidenceScore: number | null;
+  requestedBy: string | null;
+  errorMessage: string | null;
+  completedAt: string | null;
+  createdAt: string;
+};
+
 export type BuiltReport = {
   reportId: string;
   template: ReportTemplate;

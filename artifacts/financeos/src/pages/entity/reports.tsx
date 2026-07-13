@@ -1,10 +1,10 @@
 import { useParams, Link } from "wouter";
 import NotFound from "@/pages/not-found";
 import { ENTITY_SLUGS, type EntitySlug } from "@/lib/entities";
-import { useDashboardData } from "@/hooks/useApi";
+import { useDashboardData, useReportHistory } from "@/hooks/useApi";
 import { ENTITY_CONFIG } from "@/lib/entities";
 import { PageHeader } from "@/components/shared/PageHeader";
-import { FileText, BarChart3, Users, ShoppingBag, Layers, ArrowRight } from "lucide-react";
+import { FileText, BarChart3, Users, ShoppingBag, Layers, ArrowRight, CheckCircle2, XCircle, Clock, Loader2, History } from "lucide-react";
 
 
 export function generateStaticParams() {
@@ -33,6 +33,7 @@ export default function ReportsPage() {
   if (!slug || !ENTITY_SLUGS.includes(slug as EntitySlug)) return <NotFound />;
   const eSlug = slug as EntitySlug;
   const { data, source } = useDashboardData();
+  const { data: historyData, source: historySource } = useReportHistory(eSlug);
   const cfg = ENTITY_CONFIG[eSlug];
   if (!data) {
     return (
@@ -92,6 +93,81 @@ export default function ReportsPage() {
               Jan 2026 — Jun 2026
             </div>
           </div>
+        </div>
+
+        {/* Report History — entity-scoped */}
+        <div>
+          <div className="flex items-center gap-2 mb-3">
+            <History className="w-3.5 h-3.5 text-gray-400" />
+            <p className="text-[11px] font-semibold text-gray-500 uppercase tracking-widest">Report History</p>
+          </div>
+
+          {historySource === "loading" && (
+            <div className="flex items-center gap-2 text-[11px] text-gray-400 py-2">
+              <Loader2 className="w-3.5 h-3.5 animate-spin" /> Loading history…
+            </div>
+          )}
+
+          {historySource === "unavailable" && (
+            <p className="text-[11px] text-gray-400">History unavailable.</p>
+          )}
+
+          {historySource !== "loading" && historyData !== null && (
+            historyData!.length === 0 ? (
+              <p className="text-[11px] text-gray-400" data-testid="entity-report-history-empty">
+                No reports generated yet for {cfg.name}.
+              </p>
+            ) : (
+              <div className="bg-white rounded-xl border border-gray-200 overflow-hidden" data-testid="entity-report-history-table">
+                <table className="w-full text-[11px]">
+                  <thead className="bg-gray-50 border-b border-gray-100">
+                    <tr className="text-[10px] font-semibold text-gray-400 uppercase tracking-wide">
+                      <th className="text-left px-4 py-2.5">Report</th>
+                      <th className="text-left px-4 py-2.5">Period</th>
+                      <th className="text-left px-4 py-2.5">Format</th>
+                      <th className="text-left px-4 py-2.5">Status</th>
+                      <th className="text-left px-4 py-2.5">Generated</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {historyData!.map((entry) => (
+                      <tr
+                        key={entry.id}
+                        className="border-b border-gray-100 last:border-0 hover:bg-gray-50 transition-colors"
+                        data-testid={`entity-report-history-row-${entry.id}`}
+                      >
+                        <td className="px-4 py-3 font-medium text-gray-900">{entry.title}</td>
+                        <td className="px-4 py-3 text-gray-500 whitespace-nowrap">{entry.period}</td>
+                        <td className="px-4 py-3">
+                          <span className="text-[9px] font-semibold px-1.5 py-0.5 rounded-full bg-violet-50 text-violet-700 uppercase">
+                            {entry.format}
+                          </span>
+                        </td>
+                        <td className="px-4 py-3">
+                          {entry.status === "completed" ? (
+                            <span className="flex items-center gap-1 text-emerald-600">
+                              <CheckCircle2 className="w-3 h-3" /> Done
+                            </span>
+                          ) : entry.status === "failed" ? (
+                            <span className="flex items-center gap-1 text-red-500">
+                              <XCircle className="w-3 h-3" /> Failed
+                            </span>
+                          ) : (
+                            <span className="flex items-center gap-1 text-amber-500">
+                              <Clock className="w-3 h-3" /> {entry.status}
+                            </span>
+                          )}
+                        </td>
+                        <td className="px-4 py-3 text-gray-400 whitespace-nowrap">
+                          {new Date(entry.createdAt).toLocaleDateString()}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )
+          )}
         </div>
 
         {/* Report Center pointer */}

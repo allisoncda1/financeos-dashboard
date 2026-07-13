@@ -33,6 +33,7 @@ import type {
   GetEntityBudgetParams,
   GetEntityBudgetVsActualParams,
   HealthStatus,
+  ListReportHistoryParams,
   LoginRequest,
   NotFoundResponse,
   ReportGenerateRequest,
@@ -2085,6 +2086,93 @@ export function useListReports<TData = Awaited<ReturnType<typeof listReports>>, 
  ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
 
   const queryOptions = getListReportsQueryOptions(options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getListReportHistoryUrl = (params?: ListReportHistoryParams,) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : String(value))
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0 ? `/api/reports/history?${stringifiedParams}` : `/api/reports/history`
+}
+
+/**
+ * Returns persisted report generation records from the Dashboard operational
+ * database, ordered newest-first. Optionally filter to a single entity with
+ * `?slug=`. Supports pagination via `limit` and `offset`.
+ * @summary List report generation history
+ */
+export const listReportHistory = async (params?: ListReportHistoryParams, options?: RequestInit): Promise<ApiEnvelope> => {
+
+  return customFetch<ApiEnvelope>(getListReportHistoryUrl(params),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getListReportHistoryQueryKey = (params?: ListReportHistoryParams,) => {
+    return [
+    `/api/reports/history`, ...(params ? [params] : [])
+    ] as const;
+    }
+
+
+export const getListReportHistoryQueryOptions = <TData = Awaited<ReturnType<typeof listReportHistory>>, TError = ErrorType<ErrorResponse | UnauthorizedResponse | ServerErrorResponse>>(params?: ListReportHistoryParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listReportHistory>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getListReportHistoryQueryKey(params);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof listReportHistory>>> = ({ signal }) => listReportHistory(params, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof listReportHistory>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type ListReportHistoryQueryResult = NonNullable<Awaited<ReturnType<typeof listReportHistory>>>
+export type ListReportHistoryQueryError = ErrorType<ErrorResponse | UnauthorizedResponse | ServerErrorResponse>
+
+
+/**
+ * @summary List report generation history
+ */
+
+export function useListReportHistory<TData = Awaited<ReturnType<typeof listReportHistory>>, TError = ErrorType<ErrorResponse | UnauthorizedResponse | ServerErrorResponse>>(
+ params?: ListReportHistoryParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listReportHistory>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getListReportHistoryQueryOptions(params,options)
 
   const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
 

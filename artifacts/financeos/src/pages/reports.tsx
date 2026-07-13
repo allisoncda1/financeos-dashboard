@@ -1,15 +1,16 @@
 
-import { useState, useMemo } from "react";
+import { useState, useMemo, useCallback } from "react";
 import { motion } from "framer-motion";
 import {
   FileText, Download, Eye, Calendar, Building2,
   BarChart3, TrendingUp, Users, Landmark, Briefcase,
   Package, Clock, CheckCircle2, ChevronRight,
   FileSpreadsheet, Sparkles, AlertTriangle, Loader2,
+  XCircle, History,
 } from "lucide-react";
 import { ENTITY_CONFIG, ENTITY_SLUGS, ENTITY_META } from "@/lib/entities";
 import { EntityLogo } from "@/components/ui/EntityLogo";
-import { useReportTemplates, useReportGenerator, useReportDownload } from "@/hooks/useApi";
+import { useReportTemplates, useReportGenerator, useReportDownload, useReportHistory } from "@/hooks/useApi";
 import type { EntitySlug } from "@/lib/types";
 
 // ── Template definitions ───────────────────────────────────────────────────
@@ -135,12 +136,14 @@ export default function ReportCenterPage() {
   const [format, setFormat]             = useState<"json" | "pdf" | "excel" | "html">("json");
   const [previewOpen, setPreviewOpen]   = useState(false);
   const [resultOpen, setResultOpen]     = useState(false);
+  const [historyRefreshKey, setHistoryRefreshKey] = useState(0);
 
   const { data: liveTemplatesData, source: templatesSource } = useReportTemplates();
   const liveTemplates = liveTemplatesData ?? [];
   const templatesLoading = templatesSource === "loading";
   const { report, generating, error: generateError, generate, reset: resetReport } = useReportGenerator();
   const { downloadingFormat, error: downloadError, download } = useReportDownload();
+  const { data: historyData, source: historySource } = useReportHistory(undefined, historyRefreshKey);
 
   const template = TEMPLATE_MAP[selectedTemplate];
 
@@ -154,7 +157,7 @@ export default function ReportCenterPage() {
       prev.includes(slug) ? prev.filter((s) => s !== slug) : [...prev, slug]
     );
 
-  const handleGenerate = async () => {
+  const handleGenerate = useCallback(async () => {
     setResultOpen(true);
     try {
       await generate({
@@ -165,8 +168,11 @@ export default function ReportCenterPage() {
       });
     } catch {
       // error state surfaced via generateError
+    } finally {
+      // Refresh history regardless of success/failure — the server always writes a row.
+      setHistoryRefreshKey((k) => k + 1);
     }
-  };
+  }, [generate, selectedTemplate, selectedEntities, period]);
 
   const handleDownload = async (downloadFormat: "pdf" | "excel" | "html") => {
     try {
@@ -274,6 +280,81 @@ export default function ReportCenterPage() {
                   );
                 })}
               </motion.div>
+            </div>
+
+            {/* ── Report History ─────────────────────────────────────────── */}
+            <div>
+              <div className="flex items-center gap-2 mb-3">
+                <History className="w-3.5 h-3.5 text-gray-400" />
+                <p className="text-[11px] font-semibold text-gray-500 uppercase tracking-widest">Report History</p>
+              </div>
+
+              {historySource === "loading" && (
+                <div className="flex items-center gap-2 text-[11px] text-gray-400 py-2">
+                  <Loader2 className="w-3.5 h-3.5 animate-spin" /> Loading history…
+                </div>
+              )}
+
+              {historySource === "unavailable" && (
+                <p className="text-[11px] text-gray-400 py-2">History unavailable.</p>
+              )}
+
+              {historySource !== "loading" && historyData !== null && (
+                historyData!.length === 0 ? (
+                  <p className="text-[11px] text-gray-400 py-2" data-testid="report-history-empty">
+                    No reports generated yet. Generate your first report above.
+                  </p>
+                ) : (
+                  <div className="bg-white rounded-xl border border-gray-200 overflow-hidden" data-testid="report-history-table">
+                    <table className="w-full text-[11px]">
+                      <thead className="bg-gray-50 border-b border-gray-100">
+                        <tr className="text-[10px] font-semibold text-gray-400 uppercase tracking-wide">
+                          <th className="text-left px-4 py-2.5">Report</th>
+                          <th className="text-left px-4 py-2.5">Period</th>
+                          <th className="text-left px-4 py-2.5">Format</th>
+                          <th className="text-left px-4 py-2.5">Status</th>
+                          <th className="text-left px-4 py-2.5">Generated</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {historyData!.map((entry) => (
+                          <tr
+                            key={entry.id}
+                            className="border-b border-gray-100 last:border-0 hover:bg-gray-50 transition-colors"
+                            data-testid={`report-history-row-${entry.id}`}
+                          >
+                            <td className="px-4 py-3 font-medium text-gray-900">{entry.title}</td>
+                            <td className="px-4 py-3 text-gray-500 whitespace-nowrap">{entry.period}</td>
+                            <td className="px-4 py-3">
+                              <span className="text-[9px] font-semibold px-1.5 py-0.5 rounded-full bg-violet-50 text-violet-700 uppercase">
+                                {entry.format}
+                              </span>
+                            </td>
+                            <td className="px-4 py-3">
+                              {entry.status === "completed" ? (
+                                <span className="flex items-center gap-1 text-emerald-600">
+                                  <CheckCircle2 className="w-3 h-3" /> Done
+                                </span>
+                              ) : entry.status === "failed" ? (
+                                <span className="flex items-center gap-1 text-red-500">
+                                  <XCircle className="w-3 h-3" /> Failed
+                                </span>
+                              ) : (
+                                <span className="flex items-center gap-1 text-amber-500">
+                                  <Clock className="w-3 h-3" /> {entry.status}
+                                </span>
+                              )}
+                            </td>
+                            <td className="px-4 py-3 text-gray-400 whitespace-nowrap">
+                              {new Date(entry.createdAt).toLocaleDateString()}
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )
+              )}
             </div>
 
           </div>

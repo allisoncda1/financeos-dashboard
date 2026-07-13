@@ -4,6 +4,7 @@ import { generateReport } from "../reports/engine";
 import type { EntitySlug } from "../lib/types";
 import { ENTITY_SLUGS } from "../lib/types";
 import { requirePermission } from "../auth/permissions";
+import { ReportHistoryService } from "../db";
 
 const router: IRouter = Router();
 
@@ -27,7 +28,6 @@ router.get("/reports", (_req, res) => {
       supportedFormats,
       enabled,
     }));
-    // Template catalog is static application config, not fetched data.
     res.json({ ok: true, data, source: "live", ts: new Date().toISOString() });
   } catch (err) {
     res.status(500).json({
@@ -38,7 +38,37 @@ router.get("/reports", (_req, res) => {
   }
 });
 
+// GET /api/reports/history — report generation history
+// Optional ?slug=<entity_slug> filters to reports that included that entity.
+// Optional ?limit=<n> (max 200, default 50) and ?offset=<n> for pagination.
+router.get("/reports/history", async (req, res) => {
+  try {
+    const slug   = typeof req.query["slug"]   === "string" ? req.query["slug"]   : undefined;
+    const limit  = req.query["limit"]  ? Number(req.query["limit"])  : undefined;
+    const offset = req.query["offset"] ? Number(req.query["offset"]) : undefined;
+
+    if (slug && !(ENTITY_SLUGS as readonly string[]).includes(slug)) {
+      res.status(400).json({
+        ok: false,
+        error: `Unknown entity slug "${slug}"`,
+        ts: new Date().toISOString(),
+      });
+      return;
+    }
+
+    const data = await ReportHistoryService.listReportHistory({ slug, limit, offset });
+    res.json({ ok: true, data, source: "db", ts: new Date().toISOString() });
+  } catch (err) {
+    res.status(500).json({
+      ok: false,
+      error: err instanceof Error ? err.message : "Failed to load report history",
+      ts: new Date().toISOString(),
+    });
+  }
+});
+
 // GET /api/reports/:template — single template definition
+// Must be registered AFTER /reports/history to prevent "history" matching :template.
 router.get("/reports/:template", (req, res) => {
   try {
     const template = REPORT_TEMPLATES.find((t) => t.id === req.params["template"]);
@@ -66,6 +96,8 @@ function isEntitySlug(value: unknown): value is EntitySlug {
 
 // POST /api/reports/generate — build + render a report
 router.post("/reports/generate", requirePermission("reports"), async (req, res) => {
+  const requestedBy = req.session?.user?.email ?? null;
+
   try {
     const body = req.body as {
       template?: unknown;
@@ -84,9 +116,6 @@ router.post("/reports/generate", requirePermission("reports"), async (req, res) 
     if (format !== "json" && format !== "pdf" && format !== "excel" && format !== "html") {
       throw new Error('`format` must be one of "json", "pdf", "excel", "html"');
     }
-    // The report model uses "excel" internally (matches ReportOutputFormat),
-    // but the file extension / MIME type / filename all use "xlsx" per
-    // spreadsheet convention.
     const fileExtension = format === "excel" ? "xlsx" : format;
 
     let entities: EntitySlug[] | "all";
@@ -103,6 +132,28 @@ router.post("/reports/generate", requirePermission("reports"), async (req, res) 
       entities,
       period: body.period,
       format: format as ReportOutputFormat,
+    });
+
+    // Persist history record. Fire-and-forget: a write failure must never prevent
+    // the report from being delivered to the client.
+    const entitySlugsArray: string[] =
+      entities === "all" ? [...ENTITY_SLUGS] : entities;
+
+    void ReportHistoryService.insertReportHistory({
+      template:        report.template.id,
+      title:           report.template.name,
+      period:          report.period,
+      format,
+      entitySlugs:     entitySlugsArray,
+      status:          "completed",
+      source:          report.source,
+      dataFreshness:   report.metadata.dataFreshness,
+      entityCount:     report.metadata.entityCount,
+      confidenceScore: report.metadata.confidenceScore,
+      requestedBy,
+      completedAt:     new Date(),
+    }).catch((err) => {
+      req.log.error({ err }, "Failed to persist report history — report already delivered");
     });
 
     if (format === "json") {
@@ -123,26 +174,43 @@ router.post("/reports/generate", requirePermission("reports"), async (req, res) 
       return;
     }
 
-    // Binary/text formats stream the rendered output directly — no envelope,
-    // no temp files. Everything stays in-memory buffers end to end.
     const filename = sanitizeFilename(`financeos-report-${report.template.id}-${report.period}`);
     const contentTypeByFormat: Record<string, string> = {
-      html: "text/html; charset=utf-8",
-      pdf: "application/pdf",
+      html:  "text/html; charset=utf-8",
+      pdf:   "application/pdf",
       excel: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
     };
 
     res.setHeader("Content-Type", contentTypeByFormat[format] ?? "application/octet-stream");
-    res.setHeader(
-      "Content-Disposition",
-      `attachment; filename="${filename}.${fileExtension}"`,
-    );
+    res.setHeader("Content-Disposition", `attachment; filename="${filename}.${fileExtension}"`);
     res.setHeader("X-Report-Source", report.source);
     res.send(output);
   } catch (err) {
+    const errorMessage = err instanceof Error ? err.message : "Failed to generate report";
+
+    // Record the failure. Non-blocking — if this also fails the original error
+    // is still returned to the client and the failure is logged.
+    void ReportHistoryService.insertReportHistory({
+      template:    typeof (req.body as Record<string, unknown>)["template"] === "string"
+        ? (req.body as Record<string, string>)["template"]!
+        : "unknown",
+      title:       "Failed report",
+      period:      typeof (req.body as Record<string, unknown>)["period"] === "string"
+        ? (req.body as Record<string, string>)["period"]!
+        : "unknown",
+      format:      typeof (req.body as Record<string, unknown>)["format"] === "string"
+        ? (req.body as Record<string, string>)["format"]!
+        : "unknown",
+      entitySlugs: [],
+      status:      "failed",
+      requestedBy,
+      errorMessage,
+      completedAt: new Date(),
+    }).catch(() => {/* swallow — original error takes precedence */});
+
     res.status(400).json({
       ok: false,
-      error: err instanceof Error ? err.message : "Failed to generate report",
+      error: errorMessage,
       ts: new Date().toISOString(),
     });
   }
