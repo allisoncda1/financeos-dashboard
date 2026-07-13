@@ -535,39 +535,38 @@ function toMonthlyPl(r: PeriodRow): MonthlyPL {
 
 /**
  * Parse and validate raw JSONB from the `sections` column into a typed
- * CashFlowStatement. Returns null if the shape is invalid or any line amount
- * is non-finite (null, NaN, ±Infinity are all rejected).
+ * CashFlowStatement. Returns null if the shape is invalid or any field
+ * violates the published-data contract.
  *
  * This is the authoritative contract between the Python writer
  * (financeos_core build_semantic_layer.py) and the TypeScript reader.
  * Every field constraint here corresponds to a validation rule on the write side.
  *
- * Rules enforced:
+ * Rules enforced (published-data reader — all totals must be finite):
  * - as_of must be a string
- * - sections must be a non-empty array
+ * - sections must be a non-empty array (at least one section)
  * - Each section: name=string, net_cash=finite number, lines=array
  * - Each line: label=string, amount=finite number (null NOT accepted),
  *   is_subtotal=boolean
  * - Missing optional lines are acceptable (they are simply absent from the array)
- * - net_cash_change and cash_at_end may be null (not yet published) but
- *   if present must be finite numbers
+ * - net_cash_change must be a finite number (null/undefined/NaN/Inf all rejected:
+ *   a published row always has a reconciled net change)
+ * - cash_at_end must be a finite number (same reasoning as net_cash_change)
  */
 export function parseCashFlowSectionsJson(raw: unknown): CashFlowStatement | null {
   if (!raw || typeof raw !== "object" || Array.isArray(raw)) return null;
   const obj = raw as Record<string, unknown>;
 
   if (typeof obj.as_of !== "string") return null;
-  if (!Array.isArray(obj.sections)) return null;
+  if (!Array.isArray(obj.sections) || obj.sections.length === 0) return null;
 
-  // net_cash_change and cash_at_end are number | null at the type level
+  // net_cash_change and cash_at_end must be finite numbers for published rows.
+  // null, undefined, NaN, and Infinity are all invalid here.
   const netCashChange = obj.net_cash_change;
-  if (netCashChange !== null && netCashChange !== undefined && !Number.isFinite(netCashChange)) {
-    return null;
-  }
+  if (!Number.isFinite(netCashChange)) return null;
+
   const cashAtEnd = obj.cash_at_end;
-  if (cashAtEnd !== null && cashAtEnd !== undefined && !Number.isFinite(cashAtEnd)) {
-    return null;
-  }
+  if (!Number.isFinite(cashAtEnd)) return null;
 
   const sections: import("./types").CashFlowSection[] = [];
   for (const s of obj.sections) {
@@ -597,8 +596,8 @@ export function parseCashFlowSectionsJson(raw: unknown): CashFlowStatement | nul
   return {
     as_of:           obj.as_of,
     sections,
-    net_cash_change: (netCashChange ?? null) as number | null,
-    cash_at_end:     (cashAtEnd ?? null) as number | null,
+    net_cash_change: netCashChange as number,
+    cash_at_end:     cashAtEnd as number,
   };
 }
 
