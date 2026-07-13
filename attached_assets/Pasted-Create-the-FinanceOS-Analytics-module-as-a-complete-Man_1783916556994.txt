@@ -1,0 +1,898 @@
+Create the FinanceOS Analytics module as a complete Management Accounting and Cost Allocation workspace.
+
+IMPORTANT:
+
+This is NOT a marketing analytics dashboard.
+
+This module is dedicated to:
+
+- Cost accounting
+- Cost centers
+- Shared expense allocation
+- Department profitability
+- Client and project profitability
+- Multi-entity cost allocation
+- Management P&L reporting
+
+The purpose of this module is to show where costs are truly consumed, regardless of which legal entity originally paid the expense.
+
+For example:
+
+An employee may be paid by CarDealer.ai but work for CarDealer.ai, T3 Marketing, TopMrktr and Smile More.
+
+The accounting books show that CarDealer.ai paid the full cost.
+
+The Analytics module must show the economic reality by reallocating that cost across the four companies based on a defined allocation rule.
+
+--------------------------------------------------
+DESIGN REQUIREMENTS
+--------------------------------------------------
+
+The Analytics module MUST match the exact structure and visual system of the existing FinanceOS dashboards.
+
+Use the Budget dashboard as the primary visual reference.
+
+Reuse the same:
+
+- Left navigation structure
+- Header layout
+- Company selector
+- Period selector
+- Action menu
+- Buttons
+- Tabs
+- KPI cards
+- Tables
+- Card styling
+- Typography
+- Spacing
+- Shadows
+- Border radius
+- Responsive behavior
+
+Do not create a new design language.
+
+Analytics must feel like a native FinanceOS module.
+
+--------------------------------------------------
+MODULE NAME
+--------------------------------------------------
+
+Main module name:
+
+Analytics
+
+Page title:
+
+Cost Accounting Overview
+
+Subtitle:
+
+Understand the true cost and profitability of every company, department, client and activity.
+
+--------------------------------------------------
+MAIN NAVIGATION
+--------------------------------------------------
+
+Create the following pages in the Analytics sidebar:
+
+1. Overview
+2. Cost Centers
+3. Shared Expenses
+4. Allocation Rules
+5. Allocations
+6. Department P&L
+7. Entity Profitability
+8. Client Profitability
+9. Project Profitability
+10. Allocation Simulator
+11. Reports
+12. Settings
+
+Each navigation item must have its own route and active state.
+
+Suggested routes:
+
+/analytics
+/analytics/cost-centers
+/analytics/shared-expenses
+/analytics/allocation-rules
+/analytics/allocations
+/analytics/department-pnl
+/analytics/entity-profitability
+/analytics/client-profitability
+/analytics/project-profitability
+/analytics/simulator
+/analytics/reports
+/analytics/settings
+
+--------------------------------------------------
+GLOBAL FILTERS
+--------------------------------------------------
+
+The header should include:
+
+- Entity selector
+- Period selector
+- Accounting basis selector
+- Allocation scenario selector
+- More actions menu
+- New Allocation button
+
+Entity selector options:
+
+- Consolidated
+- CarDealer.ai
+- T3 Marketing
+- TopMrktr
+- Smile More
+
+Accounting basis options:
+
+- Accrual
+- Cash
+
+Allocation scenario options:
+
+- Actual Books
+- Approved Allocation
+- Draft Scenario
+- Custom Scenario
+
+--------------------------------------------------
+1. OVERVIEW PAGE
+--------------------------------------------------
+
+Create a management accounting executive overview.
+
+Top KPI cards:
+
+1. Total Operating Costs
+2. Shared Costs
+3. Allocated Costs
+4. Unallocated Costs
+5. Allocation Coverage
+6. Adjusted Net Income
+
+Use the same KPI card structure as the Budget dashboard.
+
+Below the KPI cards, create the following sections.
+
+A. Cost Allocation Status
+
+Show:
+
+- Total expenses reviewed
+- Direct expenses
+- Shared expenses
+- Fully allocated expenses
+- Partially allocated expenses
+- Unallocated expenses
+- Allocation completion percentage
+
+B. Cost by Center
+
+Table columns:
+
+- Cost Center
+- Direct Costs
+- Allocated Costs
+- Total Costs
+- Percentage of Total
+- Budget
+- Variance
+
+C. Entity Profitability Before and After Allocation
+
+Table columns:
+
+- Entity
+- Book Revenue
+- Book Expenses
+- Book Net Income
+- Allocated Shared Costs
+- Adjusted Expenses
+- Adjusted Net Income
+- Adjusted Margin
+
+D. Shared Cost Breakdown
+
+Show shared expenses by category:
+
+- Finance
+- Executive
+- Technology
+- Software
+- Human Resources
+- Marketing
+- Operations
+- Insurance
+- Professional Services
+- General Administration
+
+E. Allocation Trend
+
+Create a monthly chart comparing:
+
+- Direct Costs
+- Shared Costs
+- Allocated Costs
+- Unallocated Costs
+
+F. Largest Unallocated Expenses
+
+Table columns:
+
+- Vendor
+- Expense
+- Amount
+- Paying Entity
+- Proposed Cost Center
+- Status
+- Action
+
+--------------------------------------------------
+2. COST CENTERS PAGE
+--------------------------------------------------
+
+Create a full cost center management page.
+
+Default cost centers:
+
+- Finance
+- Accounting
+- Executive
+- Sales
+- Marketing
+- Operations
+- Call Center
+- Customer Success
+- Technology
+- Product
+- Human Resources
+- Legal
+- Administration
+- Shared Services
+
+Allow users to create additional cost centers.
+
+Cost center table columns:
+
+- Cost Center
+- Code
+- Parent Center
+- Owner
+- Type
+- Entity Scope
+- Direct Costs
+- Allocated Costs
+- Total Costs
+- Status
+- Actions
+
+Cost center types:
+
+- Operating
+- Support
+- Revenue Generating
+- Shared Service
+- Administrative
+
+Add support for cost center hierarchy.
+
+Example:
+
+Shared Services
+  - Finance
+  - Accounting
+  - Human Resources
+  - Technology
+
+Operations
+  - Call Center
+  - Customer Success
+  - Fulfillment
+
+Each cost center detail page should show:
+
+- Monthly spend
+- Budget
+- Variance
+- Direct expenses
+- Allocated expenses
+- Vendors
+- Employees
+- Linked clients
+- Linked projects
+- Allocation history
+
+--------------------------------------------------
+3. SHARED EXPENSES PAGE
+--------------------------------------------------
+
+Create a page dedicated to expenses paid by one entity but consumed by multiple entities, departments, clients or projects.
+
+Examples:
+
+- Employee compensation
+- QuickBooks
+- Google Workspace
+- Insurance
+- Rent
+- Professional services
+- Software subscriptions
+- Executive payroll
+- Finance team costs
+- Legal fees
+- Shared contractors
+
+Table columns:
+
+- Date
+- Vendor or Employee
+- Description
+- Paying Entity
+- Original Account
+- Amount
+- Cost Category
+- Allocation Rule
+- Allocation Status
+- Allocated Amount
+- Remaining Amount
+- Actions
+
+Allocation status options:
+
+- Unreviewed
+- Rule Suggested
+- Draft
+- Approved
+- Partially Allocated
+- Fully Allocated
+- Excluded
+
+Add filters for:
+
+- Entity
+- Vendor
+- Employee
+- Cost Center
+- Allocation Status
+- Date
+- Amount
+- Account
+
+Clicking an expense should open a detail drawer showing:
+
+- Original transaction
+- Source system
+- Paying entity
+- Original account
+- Supporting document
+- Current allocation
+- Allocation history
+- Notes
+- Approval status
+
+--------------------------------------------------
+4. ALLOCATION RULES PAGE
+--------------------------------------------------
+
+Create a rules engine for allocating shared expenses.
+
+Each rule should contain:
+
+- Rule Name
+- Rule Type
+- Source Entity
+- Vendor or Employee
+- Account
+- Cost Category
+- Destination Entities
+- Destination Cost Centers
+- Allocation Method
+- Effective Date
+- End Date
+- Priority
+- Approval Status
+- Active Status
+
+Supported allocation methods:
+
+1. Fixed Percentage
+2. Equal Split
+3. Revenue Based
+4. Headcount Based
+5. Employee Time Based
+6. Transaction Volume Based
+7. Client Count Based
+8. User Count Based
+9. Square Footage Based
+10. Manual Allocation
+11. Custom Driver
+
+Example rule:
+
+Rule Name:
+Allison Finance Compensation
+
+Source Entity:
+CarDealer.ai
+
+Cost Category:
+Finance Payroll
+
+Allocation Method:
+Employee Time Based
+
+Destination:
+
+- CarDealer.ai: 35%
+- T3 Marketing: 25%
+- TopMrktr: 25%
+- Smile More: 15%
+
+The total allocation must equal 100%.
+
+Show a validation warning when it does not equal 100%.
+
+Add:
+
+- Rule preview
+- Monthly impact estimate
+- Historical impact estimate
+- Approval workflow
+- Version history
+- Audit log
+
+--------------------------------------------------
+5. ALLOCATIONS PAGE
+--------------------------------------------------
+
+Create a detailed allocation journal.
+
+This page should show the result of applying allocation rules.
+
+Table columns:
+
+- Allocation Date
+- Source Transaction
+- Source Entity
+- Destination Entity
+- Destination Cost Center
+- Allocation Driver
+- Allocation Percentage
+- Allocated Amount
+- Scenario
+- Status
+- Approved By
+- Actions
+
+Status options:
+
+- Draft
+- Pending Review
+- Approved
+- Rejected
+- Posted to Analytics
+- Posted to Accounting
+
+Important:
+
+The first version should calculate allocations only inside FinanceOS.
+
+Do not automatically create journal entries in QuickBooks.
+
+Include a future action:
+
+Create Intercompany Journal Entry
+
+But keep it disabled or marked as future functionality.
+
+--------------------------------------------------
+6. DEPARTMENT P&L PAGE
+--------------------------------------------------
+
+Create a management P&L by department or cost center.
+
+Allow the user to select:
+
+- Entity
+- Department
+- Cost Center
+- Period
+- Scenario
+- Accounting Basis
+
+P&L structure:
+
+Revenue
+Direct Revenue
+Other Revenue
+
+Cost of Revenue
+Direct Labor
+Contractors
+Software
+Call Center Costs
+Other Direct Costs
+
+Gross Profit
+Gross Margin
+
+Operating Expenses
+Sales
+Marketing
+Finance
+Accounting
+Technology
+Human Resources
+Executive
+Administration
+Other Operating Expenses
+
+Operating Income
+Operating Margin
+
+Show three columns:
+
+- Book Amount
+- Allocation Adjustments
+- Adjusted Amount
+
+Also include:
+
+- Budget
+- Variance
+- Prior Period
+- Prior Year
+
+--------------------------------------------------
+7. ENTITY PROFITABILITY PAGE
+--------------------------------------------------
+
+Create a true profitability view for each legal entity.
+
+The purpose is to compare:
+
+- Accounting profitability
+- Economic profitability after allocation
+
+Table columns:
+
+- Entity
+- Revenue
+- Direct Costs
+- Shared Costs Paid
+- Shared Costs Received
+- Net Allocation Impact
+- Adjusted Operating Expenses
+- Adjusted Net Income
+- Adjusted Margin
+
+Include a bridge chart:
+
+Book Net Income
++ Costs Reallocated Out
+- Costs Reallocated In
+= Adjusted Net Income
+
+Add an entity comparison view for:
+
+- CarDealer.ai
+- T3 Marketing
+- TopMrktr
+- Smile More
+
+--------------------------------------------------
+8. CLIENT PROFITABILITY PAGE
+--------------------------------------------------
+
+Create a client profitability workspace.
+
+Each client should include:
+
+- Revenue
+- Direct Labor
+- Contractors
+- Software Costs
+- Call Costs
+- Media Costs
+- Allocated Overhead
+- Total Cost to Serve
+- Gross Profit
+- Contribution Margin
+- Profitability Percentage
+
+Table columns:
+
+- Client
+- Entity
+- Revenue
+- Direct Costs
+- Allocated Costs
+- Total Cost
+- Profit
+- Margin
+- Trend
+- Status
+
+Profitability status:
+
+- Highly Profitable
+- Profitable
+- Low Margin
+- Break Even
+- Unprofitable
+- Missing Data
+
+Add client detail pages showing:
+
+- Monthly revenue
+- Monthly cost
+- Employees assigned
+- Software usage
+- Call volume
+- Projects
+- Allocation drivers
+- Profitability trend
+
+--------------------------------------------------
+9. PROJECT PROFITABILITY PAGE
+--------------------------------------------------
+
+Create a project and service-line profitability page.
+
+Allow profitability analysis by:
+
+- Project
+- Service
+- Product
+- Campaign
+- Contract
+- Client Engagement
+
+Table columns:
+
+- Project
+- Client
+- Entity
+- Revenue
+- Labor Cost
+- Vendor Cost
+- Software Cost
+- Allocated Overhead
+- Total Cost
+- Profit
+- Margin
+- Status
+
+Support projects without revenue, such as internal development projects.
+
+Examples:
+
+- FinanceOS Development
+- Commission Portal
+- Client Onboarding
+- Direct Mail Campaign
+- Call Center Campaign
+- Website Project
+- Internal Accounting Cleanup
+
+--------------------------------------------------
+10. ALLOCATION SIMULATOR PAGE
+--------------------------------------------------
+
+Create a scenario modeling tool.
+
+The user should be able to change allocation assumptions without modifying approved results.
+
+Allow users to:
+
+- Change percentages
+- Change allocation method
+- Exclude expenses
+- Change destination entities
+- Change destination cost centers
+- Apply rules retroactively
+- Compare multiple scenarios
+
+Show side-by-side:
+
+Current Books
+Approved Allocation
+New Scenario
+
+For each entity show:
+
+- Revenue
+- Expenses
+- Net Income
+- Net Margin
+- Allocation Impact
+
+Include a before-and-after bridge.
+
+Example:
+
+CarDealer.ai
+
+Book Net Income:
+$120,000
+
+Costs Allocated Out:
+$24,000
+
+Costs Allocated In:
+$8,000
+
+Adjusted Net Income:
+$136,000
+
+The simulator must never modify accounting records.
+
+It is an analytical modeling tool only.
+
+--------------------------------------------------
+11. REPORTS PAGE
+--------------------------------------------------
+
+Create downloadable management accounting reports.
+
+Reports:
+
+- Cost Center P&L
+- Department P&L
+- Entity Profitability
+- Client Profitability
+- Project Profitability
+- Shared Expense Report
+- Allocation Detail Report
+- Allocation Rule Audit
+- Unallocated Expense Report
+- Intercompany Allocation Report
+- Before and After Allocation P&L
+- Monthly Management Accounting Package
+
+Formats:
+
+- PDF
+- Excel
+- CSV
+
+The export buttons can be UI-only for now.
+
+--------------------------------------------------
+12. SETTINGS PAGE
+--------------------------------------------------
+
+Create settings for:
+
+- Cost center structure
+- Department structure
+- Default allocation methods
+- Materiality threshold
+- Approval requirements
+- Allocation periods
+- Fiscal year
+- Accounting basis
+- Currency
+- Intercompany settings
+- Rule priorities
+- Allocation rounding
+- Closed period controls
+
+Add a setting:
+
+Allocation Materiality Threshold
+
+Example:
+
+Do not require manual allocation review for shared expenses below $25.
+
+--------------------------------------------------
+DATA MODEL REQUIREMENTS
+--------------------------------------------------
+
+Create or prepare the frontend for the following core concepts:
+
+- entities
+- departments
+- cost_centers
+- cost_center_hierarchy
+- shared_expenses
+- allocation_rules
+- allocation_rule_versions
+- allocation_drivers
+- allocation_scenarios
+- allocation_runs
+- allocation_entries
+- allocation_approvals
+- allocation_audit_log
+- clients
+- projects
+- employee_assignments
+- profitability_snapshots
+
+Do not use random mock data scattered throughout components.
+
+Use a centralized typed data layer.
+
+Clearly label demo data as demo data.
+
+--------------------------------------------------
+BUSINESS RULES
+--------------------------------------------------
+
+1. Every allocation must total 100%.
+
+2. Allocated amount plus remaining unallocated amount must equal the original expense.
+
+3. An expense cannot be allocated twice within the same scenario.
+
+4. Allocation rules must have effective dates.
+
+5. Approved periods should be locked.
+
+6. Allocation changes must be auditable.
+
+7. Direct costs should not be allocated unless explicitly overridden.
+
+8. Intercompany allocations should remain separate from legal accounting entries until formally posted.
+
+9. Book results must always remain visible alongside adjusted analytical results.
+
+10. Never overwrite original accounting data.
+
+--------------------------------------------------
+IMPORTANT TERMINOLOGY
+--------------------------------------------------
+
+Use these terms consistently:
+
+Book Amount:
+The amount recorded in the accounting system.
+
+Allocation Adjustment:
+The analytical redistribution of a cost.
+
+Adjusted Amount:
+Book Amount plus or minus Allocation Adjustments.
+
+Paying Entity:
+The legal entity that paid the expense.
+
+Consuming Entity:
+The entity that economically used the resource.
+
+Direct Cost:
+A cost directly attributable to one entity, department, client or project.
+
+Shared Cost:
+A cost consumed by multiple entities, departments, clients or projects.
+
+Allocation Driver:
+The basis used to distribute a shared cost.
+
+--------------------------------------------------
+FINAL PRODUCT VISION
+--------------------------------------------------
+
+FinanceOS Analytics should answer:
+
+- Which company actually consumed this expense?
+- Which department truly costs the most?
+- What is the real cost of the finance function?
+- What is the true profitability of each entity?
+- Which clients are profitable after overhead allocation?
+- Which projects consume the most resources?
+- How much cost is still unallocated?
+- How would profitability change under another allocation method?
+
+QuickBooks shows who paid the expense.
+
+FinanceOS Analytics must show who actually consumed the expense.
+
+Build the complete interface and routing structure, but do not connect to live accounting data yet unless an existing FinanceOS data source is already available.
+
+Do not break or modify the existing Reporting, Budget, Forecast, Commission or Accounting modules.

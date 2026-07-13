@@ -42,6 +42,19 @@ import BudgetVersionsPage from "@/pages/budget/versions";
 import BudgetAssumptionsPage from "@/pages/budget/assumptions";
 import BudgetReportsPage from "@/pages/budget/reports";
 import BudgetSettingsPage from "@/pages/budget/settings";
+import AnalyticsOverviewPage from "@/pages/analytics/index";
+import CostCentersPage from "@/pages/analytics/cost-centers";
+import SharedExpensesPage from "@/pages/analytics/shared-expenses";
+import AllocationRulesPage from "@/pages/analytics/allocation-rules";
+import AllocationsPage from "@/pages/analytics/allocations";
+import DepartmentPnlPage from "@/pages/analytics/department-pnl";
+import EntityProfitabilityPage from "@/pages/analytics/entity-profitability";
+import ClientProfitabilityPage from "@/pages/analytics/client-profitability";
+import ProjectProfitabilityPage from "@/pages/analytics/project-profitability";
+import AllocationSimulatorPage from "@/pages/analytics/simulator";
+import AnalyticsReportsPage from "@/pages/analytics/reports";
+import AnalyticsSettingsPage from "@/pages/analytics/settings";
+import { AnalyticsProvider } from "@/lib/analytics-context";
 import AccountingWorkspacePage from "@/pages/accounting/workspace";
 import AccountingInvoicesPage from "@/pages/accounting/invoices";
 import AccountingTransactionsPage from "@/pages/accounting/transactions";
@@ -139,6 +152,28 @@ function BudgetRoutes() {
         <Route component={NotFound} />
       </Switch>
     </BudgetEntityProvider>
+  );
+}
+
+function AnalyticsRoutes() {
+  return (
+    <AnalyticsProvider>
+      <Switch>
+        <Route path="/analytics" component={AnalyticsOverviewPage} />
+        <Route path="/analytics/cost-centers" component={CostCentersPage} />
+        <Route path="/analytics/shared-expenses" component={SharedExpensesPage} />
+        <Route path="/analytics/allocation-rules" component={AllocationRulesPage} />
+        <Route path="/analytics/allocations" component={AllocationsPage} />
+        <Route path="/analytics/department-pnl" component={DepartmentPnlPage} />
+        <Route path="/analytics/entity-profitability" component={EntityProfitabilityPage} />
+        <Route path="/analytics/client-profitability" component={ClientProfitabilityPage} />
+        <Route path="/analytics/project-profitability" component={ProjectProfitabilityPage} />
+        <Route path="/analytics/simulator" component={AllocationSimulatorPage} />
+        <Route path="/analytics/reports" component={AnalyticsReportsPage} />
+        <Route path="/analytics/settings" component={AnalyticsSettingsPage} />
+        <Route component={NotFound} />
+      </Switch>
+    </AnalyticsProvider>
   );
 }
 
@@ -244,6 +279,11 @@ function Router() {
       <Route path="/budget/*?">
         <ProtectedRoute>
           <BudgetRoutes />
+        </ProtectedRoute>
+      </Route>
+      <Route path="/analytics/*?">
+        <ProtectedRoute>
+          <AnalyticsRoutes />
         </ProtectedRoute>
       </Route>
       <Route path="/accounting/*?">

@@ -96,7 +96,7 @@ const MODULES: ModuleCard[] = [
     iconColor: "text-indigo-600",
     titleColor: "text-indigo-600",
     active: true,
-    href: "/analyze/performance",
+    href: "/analytics",
     cta: "Open Analytics",
     buttonClasses:
       "bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700",
