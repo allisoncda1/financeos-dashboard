@@ -66,8 +66,8 @@ router.get("/reports/history", requirePermission("reports"), async (req, res) =>
     const rawLimit  = req.query["limit"]  ? Number(req.query["limit"])  : 50;
     const rawOffset = req.query["offset"] ? Number(req.query["offset"]) : 0;
 
-    if (!Number.isFinite(rawLimit) || !Number.isInteger(rawLimit) || rawLimit < 1) {
-      res.status(400).json({ ok: false, error: "limit must be a positive integer", ts: new Date().toISOString() });
+    if (!Number.isFinite(rawLimit) || !Number.isInteger(rawLimit) || rawLimit < 1 || rawLimit > 200) {
+      res.status(400).json({ ok: false, error: "limit must be an integer between 1 and 200", ts: new Date().toISOString() });
       return;
     }
     if (!Number.isFinite(rawOffset) || !Number.isInteger(rawOffset) || rawOffset < 0) {
