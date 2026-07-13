@@ -1,5 +1,5 @@
 /**
- * Schema isolation tests — SI-01 through SI-10.
+ * Schema isolation tests — SI-01 through SI-06.
  *
  * Verifies that:
  *   1. ops.ts exports ONLY Dashboard-owned operational tables.
@@ -7,11 +7,14 @@
  *   3. reportHistory.ts declares the two required indexes.
  *   4. Core (Neon) tables are absent from the operational schema.
  *   5. Existing operational tables (session, metric_snapshots, budgets) still export.
+ *   6. scripts/post-merge.sh contains no database push command.
  *
  * These tests are read-only introspection: no DB connections are opened.
  */
 
 import { describe, it, expect } from "vitest";
+import { readFileSync } from "fs";
+import { resolve } from "path";
 import { getTableConfig } from "drizzle-orm/pg-core";
 
 // Operational schema exports (must contain exactly these tables and no Core tables)
@@ -173,5 +176,35 @@ describe("SI-05: ops schema exports required runtime values", () => {
   it("exports budgets table object", () => {
     expect(opsSchema).toHaveProperty("budgets");
     expect(typeof opsSchema.budgets).toBe("object");
+  });
+});
+
+// ──────────────────────────────────────────────────────────────────────────────
+// SI-06: post-merge.sh must not run any database push command automatically
+// ──────────────────────────────────────────────────────────────────────────────
+describe("SI-06: scripts/post-merge.sh contains no automatic database push", () => {
+  const scriptPath = resolve(__dirname, "../../../../../scripts/post-merge.sh");
+  const script = readFileSync(scriptPath, "utf-8");
+
+  it("does not contain 'drizzle-kit push'", () => {
+    // Any active drizzle-kit push invocation (not commented out) would risk
+    // applying an unreviewed schema diff to the operational database on merge.
+    const activeLines = script
+      .split("\n")
+      .filter((line) => !line.trimStart().startsWith("#"))
+      .join("\n");
+    expect(activeLines).not.toContain("drizzle-kit push");
+  });
+
+  it("does not contain 'push:ops' as an active command", () => {
+    const activeLines = script
+      .split("\n")
+      .filter((line) => !line.trimStart().startsWith("#"))
+      .join("\n");
+    expect(activeLines).not.toContain("push:ops");
+  });
+
+  it("still installs dependencies", () => {
+    expect(script).toContain("pnpm install --frozen-lockfile");
   });
 });
