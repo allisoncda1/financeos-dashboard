@@ -263,20 +263,57 @@ describe("parseCashFlowSectionsJson — JSONB contract validation", () => {
     expect(parseCashFlowSectionsJson(broken)).toBeNull();
   });
 
-  it("net_cash_change=null is valid (not yet published)", () => {
-    const result = parseCashFlowSectionsJson({ ...VALID_CF_JSON, net_cash_change: null });
-    expect(result).not.toBeNull();
-    expect(result!.net_cash_change).toBeNull();
+  // Published-data contract: net_cash_change must be a finite number
+  it("net_cash_change=null is invalid for published data", () => {
+    expect(parseCashFlowSectionsJson({ ...VALID_CF_JSON, net_cash_change: null })).toBeNull();
+  });
+
+  it("net_cash_change=undefined is invalid for published data", () => {
+    const { net_cash_change: _, ...noNetChange } = VALID_CF_JSON;
+    expect(parseCashFlowSectionsJson(noNetChange)).toBeNull();
   });
 
   it("net_cash_change=NaN is rejected", () => {
     expect(parseCashFlowSectionsJson({ ...VALID_CF_JSON, net_cash_change: NaN })).toBeNull();
   });
 
-  it("cash_at_end=null is valid", () => {
-    const result = parseCashFlowSectionsJson({ ...VALID_CF_JSON, cash_at_end: null });
+  it("net_cash_change=Infinity is rejected", () => {
+    expect(parseCashFlowSectionsJson({ ...VALID_CF_JSON, net_cash_change: Infinity })).toBeNull();
+  });
+
+  it("net_cash_change=0 is valid (zero net change is legitimate)", () => {
+    const result = parseCashFlowSectionsJson({ ...VALID_CF_JSON, net_cash_change: 0 });
     expect(result).not.toBeNull();
-    expect(result!.cash_at_end).toBeNull();
+    expect(result!.net_cash_change).toBe(0);
+  });
+
+  // Published-data contract: cash_at_end must be a finite number
+  it("cash_at_end=null is invalid for published data", () => {
+    expect(parseCashFlowSectionsJson({ ...VALID_CF_JSON, cash_at_end: null })).toBeNull();
+  });
+
+  it("cash_at_end=undefined is invalid for published data", () => {
+    const { cash_at_end: _, ...noCashAtEnd } = VALID_CF_JSON;
+    expect(parseCashFlowSectionsJson(noCashAtEnd)).toBeNull();
+  });
+
+  it("cash_at_end=NaN is rejected", () => {
+    expect(parseCashFlowSectionsJson({ ...VALID_CF_JSON, cash_at_end: NaN })).toBeNull();
+  });
+
+  it("cash_at_end=Infinity is rejected", () => {
+    expect(parseCashFlowSectionsJson({ ...VALID_CF_JSON, cash_at_end: Infinity })).toBeNull();
+  });
+
+  it("cash_at_end=0 is valid (zero ending balance is legitimate)", () => {
+    const result = parseCashFlowSectionsJson({ ...VALID_CF_JSON, cash_at_end: 0 });
+    expect(result).not.toBeNull();
+    expect(result!.cash_at_end).toBe(0);
+  });
+
+  // Empty sections array is rejected (at least one section required for published data)
+  it("empty sections array is rejected", () => {
+    expect(parseCashFlowSectionsJson({ ...VALID_CF_JSON, sections: [] })).toBeNull();
   });
 });
 
