@@ -1,5 +1,5 @@
 import type { DashboardData, FinancialsData, CustomersData, VendorsData, BankingData, EntitySlug, BriefingResponse, Alert, ValidationMatrixData, EntityHistoryData, MetricSnapshotsData, EntityBudget, BvsAData, PortfolioBudget, BudgetPeriodInput } from "./types";
-import type { ReportTemplateSummary, ReportGenerateRequest, BuiltReport } from "./reportTypes";
+import type { ReportTemplateSummary, ReportGenerateRequest, BuiltReport, ReportHistoryEntry } from "./reportTypes";
 import type { AIStatus } from "./aiTypes";
 import type { PipelineStatus } from "./pipelineTypes";
 import type { ApiSource } from "./dataState";
@@ -126,6 +126,14 @@ export const api = {
   validationMatrix: ()           => getSourced<ValidationMatrixData>("/validation/matrix"),
   alerts:           ()           => getSourced<Alert[]>("/alerts"),
   reportTemplates:  ()           => getSourced<ReportTemplateSummary[]>("/reports"),
+  reportHistory:    (slug?: string, limit?: number, offset?: number) => {
+    const params = new URLSearchParams();
+    if (slug)   params.set("slug",   slug);
+    if (limit)  params.set("limit",  String(limit));
+    if (offset) params.set("offset", String(offset));
+    const qs = params.toString();
+    return getSourced<ReportHistoryEntry[]>(`/reports/history${qs ? `?${qs}` : ""}`);
+  },
   generateReport:   (req: ReportGenerateRequest) => post<BuiltReport>("/reports/generate", req),
   downloadReport:   (req: ReportGenerateRequest) => postForBlob("/reports/generate", req),
   aiStatus:         ()           => getSourced<AIStatus>("/ai/status"),

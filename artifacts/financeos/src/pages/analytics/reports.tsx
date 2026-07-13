@@ -4,13 +4,6 @@ import {
 import type { ComponentType } from "react";
 import { AnalyticsLayout } from "@/components/analytics/AnalyticsLayout";
 import { Button } from "@/components/ui/button";
-import {
-  SHARED_EXPENSES,
-  ALLOCATION_ENTRIES,
-  ALLOCATION_RULES,
-  CLIENTS,
-  COST_CENTERS,
-} from "@/lib/analyticsDemoData";
 
 type ReportCard = {
   id: string;
@@ -30,13 +23,6 @@ const REPORTS: ReportCard[] = [
   { id: "audit-trail", title: "Audit Trail", description: "Allocation rule changes, approvals and posting history.", icon: ScrollText, iconBg: "#EF4444", period: "FY2026 YTD" },
 ];
 
-const RECENT_ACTIVITY = [
-  { report: "Allocation Summary", format: "PDF", date: "2026-06-30", records: ALLOCATION_ENTRIES.length },
-  { report: "Shared Expense Register", format: "Excel", date: "2026-06-28", records: SHARED_EXPENSES.length },
-  { report: "Client Profitability", format: "CSV", date: "2026-06-25", records: CLIENTS.length },
-  { report: "Cost Center Spend", format: "PDF", date: "2026-06-20", records: COST_CENTERS.length },
-  { report: "Audit Trail", format: "Excel", date: "2026-06-15", records: ALLOCATION_RULES.length },
-];
 
 export default function AnalyticsReportsPage() {
   return (
@@ -105,38 +91,15 @@ export default function AnalyticsReportsPage() {
         })}
       </div>
 
-      <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
+      <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden" data-testid="analytics-report-activity">
         <div className="px-4 py-3 border-b border-gray-100">
           <h3 className="text-sm font-semibold text-gray-900">Recent Report Activity</h3>
         </div>
-        <div className="overflow-x-auto">
-          <table className="w-full text-sm whitespace-nowrap" data-testid="table-report-activity">
-            <thead className="bg-gray-50 border-b border-gray-100">
-              <tr className="text-[10px] font-semibold text-gray-400 uppercase tracking-wide">
-                <th className="text-left px-4 py-2.5">Report</th>
-                <th className="text-left px-4 py-2.5">Format</th>
-                <th className="text-left px-4 py-2.5">Generated</th>
-                <th className="text-right px-4 py-2.5">Records</th>
-              </tr>
-            </thead>
-            <tbody>
-              {RECENT_ACTIVITY.map((a, i) => (
-                <tr
-                  key={i}
-                  className="border-b border-gray-100 last:border-0 hover:bg-gray-50 transition-colors"
-                >
-                  <td className="px-4 py-3 font-medium text-gray-900">{a.report}</td>
-                  <td className="px-4 py-3">
-                    <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-indigo-50 text-indigo-700">
-                      {a.format}
-                    </span>
-                  </td>
-                  <td className="px-4 py-3 text-gray-600">{a.date}</td>
-                  <td className="px-4 py-3 text-right text-gray-700">{a.records}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+        <div className="px-4 py-6 text-center">
+          <p className="text-[12px] text-gray-400">
+            Management accounting exports are not yet enabled. Generate reports in the{" "}
+            <a href="/reports" className="text-indigo-600 hover:underline font-medium">Report Center</a>.
+          </p>
         </div>
       </div>
     </AnalyticsLayout>

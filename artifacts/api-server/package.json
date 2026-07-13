@@ -36,6 +36,8 @@
   },
   "devDependencies": {
     "@types/bcryptjs": "^3.0.0",
+    "@types/supertest": "^6.0.2",
+    "supertest": "^7.0.0",
     "@types/connect-pg-simple": "^7.0.3",
     "@types/cookie-parser": "^1.4.10",
     "@types/cors": "^2.8.19",

@@ -374,6 +374,34 @@ export const ListReportsResponse = zod.object({
 
 
 /**
+ * Returns persisted report generation records from the Dashboard operational
+ * database, ordered newest-first. Optionally filter to a single entity with
+ * `?slug=`. Supports pagination via `limit` and `offset`.
+ * @summary List report generation history
+ */
+export const listReportHistoryQueryLimitDefault = 50;
+export const listReportHistoryQueryLimitMax = 200;
+
+export const listReportHistoryQueryOffsetDefault = 0;
+export const listReportHistoryQueryOffsetMin = 0;
+
+
+
+export const ListReportHistoryQueryParams = zod.object({
+  "slug": zod.coerce.string().optional().describe('Entity slug to filter history by (e.g. `cardealer_ai`)'),
+  "limit": zod.coerce.number().min(1).max(listReportHistoryQueryLimitMax).default(listReportHistoryQueryLimitDefault),
+  "offset": zod.coerce.number().min(listReportHistoryQueryOffsetMin).default(listReportHistoryQueryOffsetDefault)
+})
+
+export const ListReportHistoryResponse = zod.object({
+  "ok": zod.literal(true),
+  "data": zod.unknown().describe('Response payload (shape varies by endpoint)'),
+  "source": zod.enum(['live', 'mock', 'cache', 'db']).optional().describe('Where the data was sourced from'),
+  "ts": zod.coerce.date().describe('Server timestamp (ISO 8601)')
+}).describe('Standard JSON envelope returned by all successful responses')
+
+
+/**
  * Builds and renders a report. Requires the `reports` permission.
  *
  * When `format` is `json`, returns a JSON envelope. When `format` is

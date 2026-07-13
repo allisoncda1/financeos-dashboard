@@ -3,7 +3,7 @@ import { api } from '@/lib/api';
 import { getMockData, getFinancials, getCustomers, getVendors, getBanking } from '@/lib/mock';
 import { ENTITY_SLUGS } from '@/lib/entities';
 import type { DashboardData, FinancialsData, CustomersData, VendorsData, BankingData, EntitySlug, BriefingResponse, Alert, ValidationMatrixData, EntityHistoryData, MetricSnapshotsData, EntityBudget, BvsAData, PortfolioBudget, BudgetPeriodInput } from '@/lib/types';
-import type { ReportTemplateSummary, ReportGenerateRequest, BuiltReport } from '@/lib/reportTypes';
+import type { ReportTemplateSummary, ReportGenerateRequest, BuiltReport, ReportHistoryEntry } from '@/lib/reportTypes';
 import type { AIStatus } from '@/lib/aiTypes';
 import type { PipelineStatus } from '@/lib/pipelineTypes';
 import {
@@ -258,6 +258,23 @@ export function useBriefing(): FetchState<BriefingResponse> {
  */
 export function useReportTemplates(): FetchState<ReportTemplateSummary[]> {
   return useTrackedFetch('reportTemplates', () => api.reportTemplates(), null, []);
+}
+
+/**
+ * useReportHistory — fetches the persisted report generation history from
+ * GET /api/reports/history. Pass a slug to scope to a single entity.
+ * No mock fallback: returns null source="unavailable" when the endpoint fails
+ * so the UI can show an empty state rather than fabricated data.
+ * The refreshKey param can be incremented to force a re-fetch after generation.
+ */
+export function useReportHistory(slug?: string, refreshKey?: number): FetchState<ReportHistoryEntry[]> {
+  return useTrackedFetch(
+    `reportHistory:${slug ?? 'all'}`,
+    () => api.reportHistory(slug),
+    null,
+    [slug, refreshKey],
+    false,
+  );
 }
 
 /**
