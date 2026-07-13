@@ -1,0 +1,149 @@
+I want to redesign the FinanceOS home page to better integrate AI into the experience.
+
+## Goal
+
+AI should NOT be a separate module anymore.
+
+Instead, AI should feel like an intelligent assistant that is always available across the entire platform.
+
+The empty "AI Assistant" card should be replaced with an "Analytics" module.
+
+---
+
+# 1. Replace AI Assistant Card
+
+Replace the current "AI Assistant" card with:
+
+Title:
+Analytics
+
+Icon:
+A modern analytics / chart icon.
+
+Description:
+Advanced financial analysis, trends and business insights.
+
+Button:
+Open Analytics
+
+Use the same card size, spacing, hover effects and animations as the other modules.
+
+Use a blue/purple gradient consistent with FinanceOS branding.
+
+---
+
+# 2. Create an AI Companion section
+
+Under:
+
+Welcome back, Allison 👋
+All your finance. One platform. Total clarity.
+
+Add a new horizontal section before the module grid.
+
+Layout:
+
+-----------------------------------------------------
+        🤖 Character           AI Chat Bubble
+-----------------------------------------------------
+
+On the LEFT:
+
+Create a small FinanceOS mascot.
+
+Requirements:
+
+- friendly
+- premium
+- minimal
+- modern
+- slightly futuristic
+- looks intelligent
+- not childish
+- white / blue / navy colors
+- rounded design
+- inspired by modern SaaS products
+- subtle finance identity
+    (small dollar, chart, calculator, or geometric financial symbol)
+
+The mascot should feel like:
+
+"Your CFO copilot"
+
+NOT a cartoon.
+
+NOT an anime.
+
+NOT a robot with too many details.
+
+Think:
+Stripe
+Linear
+Notion
+OpenAI
+Apple
+
+Very clean.
+
+---
+
+On the RIGHT:
+
+Instead of a button,
+
+Create a large rounded AI prompt box.
+
+Placeholder:
+
+Ask me anything about your business...
+
+Examples underneath (small clickable chips):
+
+• Why did profit decrease this month?
+• Forecast next quarter
+• Show overdue invoices
+• Explain this cash flow
+• Compare this month vs last month
+
+The prompt box does not need backend functionality yet.
+
+For now it only needs beautiful UI.
+
+---
+
+# 3. Design
+
+The AI area should feel like the centerpiece of the application.
+
+Requirements:
+
+- premium
+- lots of whitespace
+- glassmorphism/light shadows
+- soft gradients
+- smooth hover animations
+- rounded corners (18-20px)
+- fully responsive
+
+Do NOT make it look like ChatGPT.
+
+Make it feel like an executive financial assistant.
+
+---
+
+# 4. Keep consistency
+
+Do NOT modify:
+
+- module cards
+- typography
+- colors
+- spacing
+- overall landing page
+
+Only:
+
+- replace AI card with Analytics
+- add the new AI companion section above the modules.
+
+The final result should feel like a modern CFO operating system where the AI is the main entry point into the platform instead of a standalone feature.

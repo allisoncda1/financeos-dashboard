@@ -1,5 +1,10 @@
 uploads = []
-generated = []
+
+[[generated]]
+id = "j8nKVYBX-kDh8A86Lh4wM"
+uri = "file://artifacts/financeos/public/branding/finos-mascot.png"
+type = "image"
+title = "generated_image"
 
 [[outputs]]
 id = "9mNWH22buxn2okcQZioFX"
