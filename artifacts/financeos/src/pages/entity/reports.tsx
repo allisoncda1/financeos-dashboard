@@ -127,6 +127,7 @@ export default function ReportsPage() {
                       <th className="text-left px-4 py-2.5">Format</th>
                       <th className="text-left px-4 py-2.5">Status</th>
                       <th className="text-left px-4 py-2.5">Generated</th>
+                      <th className="text-left px-4 py-2.5">File</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -160,6 +161,9 @@ export default function ReportsPage() {
                         </td>
                         <td className="px-4 py-3 text-gray-400 whitespace-nowrap">
                           {new Date(entry.createdAt).toLocaleDateString()}
+                        </td>
+                        <td className="px-4 py-3 text-[10px] text-gray-300 whitespace-nowrap">
+                          Metadata only
                         </td>
                       </tr>
                     ))}

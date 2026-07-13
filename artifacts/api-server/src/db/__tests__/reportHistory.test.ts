@@ -137,7 +137,10 @@ describe("insertReportHistory", () => {
     expect(result.errorMessage).toBe("Template disabled");
   });
 
-  it("4. error messages do not expose secrets or tokens", async () => {
+  it("4. DB service stores errorMessage verbatim — caller must sanitize before insert", async () => {
+    // The DB layer is not responsible for sanitization; it stores what it receives.
+    // Sanitization happens in routes/reports.ts (sanitizeErrorMessage) before insert.
+    // This test documents that expectation: the service returns exactly what was stored.
     const safeMessage = "Template disabled";
     const row = makeRow({ status: "failed", errorMessage: safeMessage });
     insertMock.mockReturnValue({ values: () => ({ returning: async () => [row] }) });
@@ -147,7 +150,6 @@ describe("insertReportHistory", () => {
       entitySlugs: [], status: "failed", errorMessage: safeMessage,
     });
 
-    expect(result.errorMessage).not.toMatch(/password|token|secret|key|Bearer/i);
     expect(result.errorMessage).toBe(safeMessage);
   });
 

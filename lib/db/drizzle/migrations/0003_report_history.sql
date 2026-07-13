@@ -11,9 +11,11 @@ CREATE TABLE IF NOT EXISTS "report_history" (
   "template"         TEXT NOT NULL,
   "title"            TEXT NOT NULL,
   "period"           TEXT NOT NULL,
-  "format"           TEXT NOT NULL,
   "entity_slugs"     TEXT[] NOT NULL,
-  "status"           TEXT NOT NULL DEFAULT 'completed',
+  "status"           TEXT NOT NULL DEFAULT 'completed'
+                       CHECK (status IN ('queued', 'processing', 'completed', 'failed')),
+  "format"           TEXT NOT NULL
+                       CHECK (format IN ('json', 'pdf', 'excel', 'html')),
   "source"           TEXT,
   "data_freshness"   TEXT,
   "entity_count"     INTEGER,
