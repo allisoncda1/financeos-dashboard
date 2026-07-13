@@ -34,7 +34,7 @@ export default function CustomersPage() {
   // Authoritative overdue values come directly from the API (Python semantic
   // layer via QBO AgedReceivableSummary). Do not recompute from bucket slices.
   const overdueAmt = cust.ar_overdue;
-  const overduePct = cust.ar_overdue_pct.toFixed(1);
+  const overduePct = cust.ar_overdue_pct;
   const hasDsoHistory = cust.dso_history.length >= 2;
   const currentDso = hasDsoHistory ? cust.dso_history[cust.dso_history.length - 1]! : null;
   const prevDso    = hasDsoHistory ? cust.dso_history[0]! : null;
@@ -54,7 +54,7 @@ export default function CustomersPage() {
             <p className="text-[10px] text-gray-400 font-medium uppercase tracking-wide mb-1">DSO Trend (12M)</p>
             <div className="flex items-end justify-between gap-2">
               <div>
-                <p className={`text-[20px] font-bold ${currentDso > 60 ? "text-red-600" : currentDso > 45 ? "text-amber-600" : "text-gray-900"}`}>
+                <p className={`text-[20px] font-bold ${currentDso !== null && currentDso > 60 ? "text-red-600" : currentDso !== null && currentDso > 45 ? "text-amber-600" : "text-gray-900"}`}>
                   {cust.open_ar > 0 ? formatDays(currentDso) : "N/A"}
                 </p>
                 <p className={`text-[10px] font-medium ${dsoDelta !== null && dsoDelta > 0 ? "text-red-500" : "text-emerald-600"}`}>
