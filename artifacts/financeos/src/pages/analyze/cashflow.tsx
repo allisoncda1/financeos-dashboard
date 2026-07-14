@@ -1,5 +1,5 @@
 import { useMemo } from "react";
-import { useDashboardData, useAllEntityBanking } from "@/hooks/useApi";
+import { useDashboardData, useAllEntityBanking, useConsolidatedCashFlow } from "@/hooks/useApi";
 import { ENTITY_SLUGS, ENTITY_CONFIG } from "@/lib/entities";
 import { useEntitySelection } from "@/lib/entity-context";
 import { Droplets } from "lucide-react";
@@ -11,6 +11,7 @@ export default function CashFlowPage() {
   const { data: allBanking } = useAllEntityBanking();
 
   const slugs = useMemo(() => ENTITY_SLUGS.filter(s => selected.includes(s)), [selected]);
+  const { data: cashFlow } = useConsolidatedCashFlow(slugs);
 
   const totalCash = useMemo(() => (data ? slugs.reduce((s, slug) => s + data.metrics[slug].cash_on_hand, 0) : 0), [slugs, data]);
   const totalAR   = useMemo(() => (data ? slugs.reduce((s, slug) => s + data.metrics[slug].open_ar, 0) : 0), [slugs, data]);
@@ -67,13 +68,58 @@ export default function CashFlowPage() {
           ))}
         </div>
 
-        {/* Cash flow statement — honest empty state (Core does not publish one) */}
-        <div className="bg-white rounded-xl border border-gray-200 px-6 py-10 text-center">
-          <p className="text-[13px] font-semibold text-gray-900">Cash flow statement is not available yet from FinanceOS Core.</p>
-          <p className="text-[12px] text-gray-500 mt-1 max-w-md mx-auto">
-            The cash position below is drawn from live Core figures. A full statement of cash flows (operating / investing / financing activities) is not yet published.
-          </p>
-        </div>
+        {/* Consolidated statement of cash flows — all totals summed server-side
+            from FinanceOS Core's published Neon rows; this component only renders. */}
+        {cashFlow && cashFlow.available ? (
+          <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
+            <div className="px-4 py-3 border-b border-gray-100 flex items-center justify-between gap-3">
+              <h3 className="text-[13px] font-semibold text-gray-900">Consolidated Statement of Cash Flows</h3>
+              {cashFlow.as_of && <span className="text-[10px] text-gray-400">As of {cashFlow.as_of}</span>}
+            </div>
+            {cashFlow.partial && (
+              <div className="px-4 py-2 bg-amber-50 border-b border-amber-100">
+                <p className="text-[11px] text-amber-700">
+                  Partial: {cashFlow.missing.map(s => ENTITY_CONFIG[s].name).join(", ")} {cashFlow.missing.length === 1 ? "has" : "have"} no published statement and {cashFlow.missing.length === 1 ? "is" : "are"} excluded from these totals.
+                </p>
+              </div>
+            )}
+            <div className="p-4 grid grid-cols-1 sm:grid-cols-3 gap-3">
+              {[
+                { label: "Operating Activities", value: cashFlow.operating },
+                { label: "Investing Activities", value: cashFlow.investing },
+                { label: "Financing Activities", value: cashFlow.financing },
+              ].map(row => (
+                <div key={row.label} className="rounded-lg border border-gray-100 bg-gray-50 px-3 py-2.5">
+                  <p className="text-[10px] text-gray-400 font-medium uppercase tracking-wide">{row.label}</p>
+                  <p className="text-[15px] font-bold mt-1 text-gray-900">{formatCurrency(row.value)}</p>
+                </div>
+              ))}
+            </div>
+            <div className="px-4 pb-4 grid grid-cols-1 sm:grid-cols-3 gap-3">
+              {[
+                { label: "Beginning Cash", value: cashFlow.beginning_cash },
+                { label: "Net Cash Change", value: cashFlow.net_change },
+                { label: "Ending Cash", value: cashFlow.ending_cash },
+              ].map(row => (
+                <div key={row.label} className="rounded-lg border border-gray-100 px-3 py-2.5">
+                  <p className="text-[10px] text-gray-400 font-medium uppercase tracking-wide">{row.label}</p>
+                  <p className="text-[15px] font-bold mt-1" style={{ color: row.value < 0 ? "#EF4444" : "#111827" }}>{formatCurrency(row.value)}</p>
+                </div>
+              ))}
+            </div>
+          </div>
+        ) : (
+          <div className="bg-white rounded-xl border border-gray-200 px-6 py-10 text-center">
+            <p className="text-[13px] font-semibold text-gray-900">
+              {cashFlow && cashFlow.reason === "incompatible_periods"
+                ? "Cash flow statements span different periods and cannot be consolidated."
+                : "Cash flow statement is not available yet for the selected entities."}
+            </p>
+            <p className="text-[12px] text-gray-500 mt-1 max-w-md mx-auto">
+              The cash position below is drawn from live Core figures. A consolidated statement of cash flows will appear once compatible published statements exist for the selected entities.
+            </p>
+          </div>
+        )}
 
         {/* Per-entity cash position — real figures */}
         <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">

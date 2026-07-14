@@ -11,6 +11,7 @@ import {
   getEntityCustomers,
   getEntityVendors,
   getEntityBanking,
+  getConsolidatedCashFlow,
 } from "../lib/dataSource";
 import { archiveMetricSnapshot, getMetricSnapshots } from "../lib/snapshotStore";
 import { combineSources, type DataSourceKind } from "../lib/sourceTracker";
@@ -88,6 +89,37 @@ router.get("/model/history/snapshots", async (req, res) => {
     res.status(500).json({
       ok: false,
       error: "Failed to load metric snapshots",
+      ts: new Date().toISOString(),
+    });
+  }
+});
+
+// GET /api/model/cashflow — consolidated (portfolio) statement of cash flows
+// across the selected entities, summed server-side from published Neon rows.
+// Registered before the /model/:slug routes so "cashflow" is never treated as
+// an entity slug. Optional ?slugs=A,B,C selects entities (defaults to all).
+router.get("/model/cashflow", async (req, res) => {
+  const raw = typeof req.query["slugs"] === "string" ? (req.query["slugs"] as string) : "";
+  const requested = raw
+    .split(",")
+    .map((s) => s.trim())
+    .filter(Boolean);
+  const slugs = (requested.length > 0 ? requested : ENTITY_SLUGS).filter(
+    (s): s is EntitySlug => (ENTITY_SLUGS as readonly string[]).includes(s),
+  );
+  try {
+    const result = await getConsolidatedCashFlow(slugs);
+    res.json({
+      ok: true,
+      data: result.data,
+      source: result.source,
+      ts: new Date().toISOString(),
+    });
+  } catch (err) {
+    req.log.error({ err }, "Failed to load consolidated cash flow");
+    res.status(500).json({
+      ok: false,
+      error: "Failed to load consolidated cash flow",
       ts: new Date().toISOString(),
     });
   }

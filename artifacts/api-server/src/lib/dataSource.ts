@@ -23,6 +23,7 @@ import {
   getEntityCustomersFromNeon,
   getEntityVendorsFromNeon,
   getEntityBankingFromNeon,
+  getConsolidatedCashFlowFromNeon,
 } from "./neonSource";
 import type {
   PortfolioSummary,
@@ -36,6 +37,7 @@ import type {
   CustomersData,
   VendorsData,
   BankingData,
+  ConsolidatedCashFlow,
 } from "./types";
 import { ENTITY_SLUGS } from "./types";
 
@@ -358,6 +360,43 @@ export async function getEntityFinancials(
     // Mock financials.json files predate the cash_flow field — normalize so
     // the frontend can rely on `cash_flow` being present (null = unavailable).
     return { ...mock, cash_flow: mock.cash_flow ?? null };
+  });
+}
+
+/**
+ * Consolidated (portfolio) statement of cash flows for the selected entities,
+ * read from FinanceOS Core's published cash_flow_statements via Neon. All
+ * summation is performed in getConsolidatedCashFlowFromNeon; this wrapper only
+ * tags the data source. There is deliberately NO mock/Drive fallback: when Neon
+ * is unreachable the consolidated statement reports available=false rather than
+ * fabricating cash flow figures.
+ */
+export async function getConsolidatedCashFlow(
+  slugs: EntitySlug[],
+): Promise<{ data: ConsolidatedCashFlow; source: DataSourceKind }> {
+  return trackSource(async () => {
+    try {
+      const data = await getConsolidatedCashFlowFromNeon(slugs);
+      reportSource("db");
+      return data;
+    } catch (err) {
+      console.warn("[dataSource] Neon consolidated cash flow unavailable:", err);
+      reportSource("mock");
+      return {
+        available: false,
+        partial: false,
+        as_of: null,
+        operating: 0,
+        investing: 0,
+        financing: 0,
+        net_change: 0,
+        beginning_cash: 0,
+        ending_cash: 0,
+        entities: [],
+        missing: slugs,
+        reason: "source_unavailable",
+      } satisfies ConsolidatedCashFlow;
+    }
   });
 }
 

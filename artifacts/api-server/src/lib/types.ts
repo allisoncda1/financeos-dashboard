@@ -244,6 +244,49 @@ export type CashFlowStatement = {
   cash_at_end: number | null;
 };
 
+/** One selected entity's contribution to the consolidated cash flow. */
+export type ConsolidatedCashFlowEntity = {
+  slug: EntitySlug;
+  entity: string;
+  as_of: string;
+  operating: number;
+  investing: number;
+  financing: number;
+  net_change: number;
+  beginning_cash: number;
+  ending_cash: number;
+};
+
+/**
+ * Portfolio-level statement of cash flows, consolidated across the selected
+ * entities from their published (validation_status='passed' AND
+ * publication_status='published') Neon rows. ALL summation is performed on the
+ * backend; the frontend only renders these totals.
+ *
+ * `available` is false when NONE of the selected entities has an eligible
+ * published statement. `partial` is true when SOME (but not all) selected
+ * entities are missing an eligible statement — the totals then cover only the
+ * entities in `entities`, and `missing` names the rest. Incompatible period
+ * end-dates across the contributing entities also collapse to unavailable
+ * rather than summing mismatched periods.
+ */
+export type ConsolidatedCashFlow = {
+  available: boolean;
+  partial: boolean;
+  as_of: string | null;
+  operating: number;
+  investing: number;
+  financing: number;
+  net_change: number;
+  beginning_cash: number;
+  ending_cash: number;
+  entities: ConsolidatedCashFlowEntity[];
+  missing: EntitySlug[];
+  /** Reason surfaced when available=false (e.g. "no_published_statements",
+   * "incompatible_periods"). null when available. */
+  reason: string | null;
+};
+
 export type FinancialsData = {
   entity_slug: string;
   as_of: string;
