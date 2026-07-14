@@ -1,4 +1,4 @@
-import type { DashboardData, FinancialsData, CustomersData, VendorsData, BankingData, EntitySlug, BriefingResponse, Alert, ValidationMatrixData, EntityHistoryData, MetricSnapshotsData, EntityBudget, BvsAData, PortfolioBudget, BudgetPeriodInput } from "./types";
+import type { DashboardData, FinancialsData, CustomersData, VendorsData, BankingData, EntitySlug, BriefingResponse, Alert, ValidationMatrixData, EntityHistoryData, MetricSnapshotsData, EntityBudget, BvsAData, PortfolioBudget, BudgetPeriodInput, ConsolidatedCashFlow } from "./types";
 import type { ReportTemplateSummary, ReportGenerateRequest, BuiltReport, ReportHistoryEntry } from "./reportTypes";
 import type { AIStatus } from "./aiTypes";
 import type { PipelineStatus } from "./pipelineTypes";
@@ -121,6 +121,10 @@ export const api = {
   entityVendors:    (s: string)  => getSourced<VendorsData>(`/model/${s}/vendors`),
   entityBanking:    (s: string)  => getSourced<BankingData>(`/model/${s}/banking`),
   entityHistory:    (s: string)  => getSourced<EntityHistoryData>(`/model/${s}/history`),
+  consolidatedCashFlow: (slugs: string[]) => {
+    const qs = slugs.length ? `?slugs=${encodeURIComponent(slugs.join(","))}` : "";
+    return getSourced<ConsolidatedCashFlow>(`/model/cashflow${qs}`);
+  },
   historySnapshots: ()           => getSourced<MetricSnapshotsData>("/model/history/snapshots"),
   briefing:         ()           => getSourced<BriefingResponse>("/briefing"),
   validationMatrix: ()           => getSourced<ValidationMatrixData>("/validation/matrix"),

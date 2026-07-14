@@ -233,6 +233,38 @@ export type FinancialsData = {
   cash_flow?: CashFlowStatement | null;
 };
 
+/** GET /api/model/cashflow — one entity's contribution to the consolidated
+ * portfolio statement of cash flows (summed server-side, never in React). */
+export type ConsolidatedCashFlowEntity = {
+  slug: EntitySlug;
+  entity: string;
+  as_of: string;
+  operating: number;
+  investing: number;
+  financing: number;
+  net_change: number;
+  beginning_cash: number;
+  ending_cash: number;
+};
+
+/** GET /api/model/cashflow — consolidated (portfolio) statement of cash flows
+ * across the selected entities. All totals are computed on the backend from
+ * published Neon rows; the frontend only renders them. */
+export type ConsolidatedCashFlow = {
+  available: boolean;
+  partial: boolean;
+  as_of: string | null;
+  operating: number;
+  investing: number;
+  financing: number;
+  net_change: number;
+  beginning_cash: number;
+  ending_cash: number;
+  entities: ConsolidatedCashFlowEntity[];
+  missing: EntitySlug[];
+  reason: string | null;
+};
+
 /** GET /api/model/:slug/history — real prior-fiscal-year financial history */
 export type PriorYearBalanceSheetSummary = {
   as_of: string;

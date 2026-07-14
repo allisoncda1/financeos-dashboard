@@ -48,6 +48,8 @@ import type {
   BankAccount,
   BankTransaction,
   CashFlowStatement,
+  ConsolidatedCashFlow,
+  ConsolidatedCashFlowEntity,
 } from "./types";
 import { computePipelineMetrics } from "./pipelineMetrics";
 
@@ -630,6 +632,164 @@ export async function getCashFlowFromNeon(entityId: string): Promise<CashFlowSta
   if (rows.length === 0) return null;
 
   return parseCashFlowSectionsJson(rows[0].sections);
+}
+
+/**
+ * Classify a published section name into one of the three GAAP activity
+ * buckets. Section names arrive title-cased ("Operating Activities", …); match
+ * on the leading keyword so minor label variations still bucket correctly.
+ * Unrecognized sections are ignored for the operating/investing/financing
+ * split (their effect is still reflected in the statement's own net_change).
+ */
+function classifyActivity(name: string): "operating" | "investing" | "financing" | null {
+  const n = name.toLowerCase();
+  if (n.includes("operating")) return "operating";
+  if (n.includes("investing")) return "investing";
+  if (n.includes("financing")) return "financing";
+  return null;
+}
+
+/**
+ * Consolidated (portfolio) statement of cash flows across the selected
+ * entities. Reuses getCashFlowFromNeon per entity — only rows that are
+ * validation_status='passed' AND publication_status='published' are eligible,
+ * and each entity contributes its single latest eligible statement.
+ *
+ * ALL summation happens here (never in the frontend). Rules:
+ *   - operating/investing/financing are summed from each statement's section
+ *     net_cash values, bucketed by activity.
+ *   - net_change sums each statement's net_cash_change; ending_cash sums
+ *     cash_at_end; beginning_cash is derived per entity as
+ *     (cash_at_end - net_cash_change) and summed — never fabricated.
+ *   - Negatives and legitimate zeros are preserved (Smile_More carries a
+ *     negative cash position).
+ *   - If NO selected entity has an eligible statement → available=false,
+ *     reason="no_published_statements".
+ *   - If the contributing statements report DIFFERENT period end-dates
+ *     (as_of), the periods are incompatible → available=false,
+ *     reason="incompatible_periods" (mismatched periods are never summed).
+ *   - If SOME selected entities are missing an eligible statement, the result
+ *     is partial=true and covers only the entities that had one; `missing`
+ *     lists the rest. Nothing is fabricated for the missing entities.
+ */
+/** One selected entity's raw published statement (or null when unpublished),
+ * paired with its display name. Input to the pure consolidateCashFlow reducer. */
+export type CashFlowEntry = {
+  slug: EntitySlug;
+  entity: string;
+  statement: CashFlowStatement | null;
+};
+
+/**
+ * Pure consolidation reducer — no I/O. Given each selected entity's latest
+ * eligible published statement (or null), produce the portfolio roll-up.
+ * Exported so the summation contract (negatives/zeros preserved, no
+ * fabrication, honest partial/unavailable states) is unit-testable without a
+ * database. See ConsolidatedCashFlow for the state semantics.
+ */
+export function consolidateCashFlow(
+  slugs: EntitySlug[],
+  entries: CashFlowEntry[],
+): ConsolidatedCashFlow {
+  const empty = (reason: string, missing: EntitySlug[]): ConsolidatedCashFlow => ({
+    available: false,
+    partial: false,
+    as_of: null,
+    operating: 0,
+    investing: 0,
+    financing: 0,
+    net_change: 0,
+    beginning_cash: 0,
+    ending_cash: 0,
+    entities: [],
+    missing,
+    reason,
+  });
+
+  if (slugs.length === 0) return empty("no_entities_selected", slugs);
+
+  const contributing = entries.filter(
+    (e): e is CashFlowEntry & { statement: CashFlowStatement } => e.statement !== null,
+  );
+  const missing = entries.filter((e) => e.statement === null).map((e) => e.slug);
+
+  if (contributing.length === 0) return empty("no_published_statements", missing);
+
+  // Incompatible periods: contributing statements must share the same period
+  // end-date (as_of). Mismatched periods are never summed.
+  const periods = new Set(contributing.map((e) => e.statement.as_of));
+  if (periods.size > 1) return empty("incompatible_periods", missing);
+
+  const entities: ConsolidatedCashFlowEntity[] = contributing.map((e) => {
+    let operating = 0;
+    let investing = 0;
+    let financing = 0;
+    for (const sec of e.statement.sections) {
+      const bucket = classifyActivity(sec.name);
+      if (bucket === "operating") operating += sec.net_cash;
+      else if (bucket === "investing") investing += sec.net_cash;
+      else if (bucket === "financing") financing += sec.net_cash;
+    }
+    // parseCashFlowSectionsJson guarantees finite net_cash_change / cash_at_end
+    // for published rows, so these are safe finite numbers here.
+    const net_change = e.statement.net_cash_change as number;
+    const ending_cash = e.statement.cash_at_end as number;
+    const beginning_cash = ending_cash - net_change;
+    return {
+      slug: e.slug,
+      entity: e.entity,
+      as_of: e.statement.as_of,
+      operating,
+      investing,
+      financing,
+      net_change,
+      beginning_cash,
+      ending_cash,
+    };
+  });
+
+  const sum = (pick: (x: ConsolidatedCashFlowEntity) => number) =>
+    entities.reduce((s, x) => s + pick(x), 0);
+
+  return {
+    available: true,
+    partial: missing.length > 0,
+    as_of: entities[0]!.as_of,
+    operating: sum((x) => x.operating),
+    investing: sum((x) => x.investing),
+    financing: sum((x) => x.financing),
+    net_change: sum((x) => x.net_change),
+    beginning_cash: sum((x) => x.beginning_cash),
+    ending_cash: sum((x) => x.ending_cash),
+    entities,
+    missing,
+    reason: null,
+  };
+}
+
+export async function getConsolidatedCashFlowFromNeon(
+  slugs: EntitySlug[],
+): Promise<ConsolidatedCashFlow> {
+  if (slugs.length === 0) return consolidateCashFlow(slugs, []);
+
+  // Resolve entity ids + display names for the requested dashboard slugs.
+  const idRows = await db
+    .select({ id: entitiesTable.id, slug: entitiesTable.slug, displayName: entitiesTable.displayName })
+    .from(entitiesTable);
+  const bySlug = new Map<string, { id: string; displayName: string }>();
+  for (const r of idRows) bySlug.set(r.slug.toLowerCase(), { id: r.id, displayName: r.displayName });
+
+  // One eligible statement per selected entity (or null when none published).
+  const entries: CashFlowEntry[] = await Promise.all(
+    slugs.map(async (slug) => {
+      const meta = bySlug.get(slug.toLowerCase());
+      if (!meta) return { slug, entity: slug, statement: null };
+      const statement = await getCashFlowFromNeon(meta.id);
+      return { slug, entity: meta.displayName, statement };
+    }),
+  );
+
+  return consolidateCashFlow(slugs, entries);
 }
 
 /**

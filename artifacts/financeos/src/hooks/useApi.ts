@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import { api } from '@/lib/api';
 import { getMockData, getFinancials, getCustomers, getVendors, getBanking } from '@/lib/mock';
 import { ENTITY_SLUGS } from '@/lib/entities';
-import type { DashboardData, FinancialsData, CustomersData, VendorsData, BankingData, EntitySlug, BriefingResponse, Alert, ValidationMatrixData, EntityHistoryData, MetricSnapshotsData, EntityBudget, BvsAData, PortfolioBudget, BudgetPeriodInput } from '@/lib/types';
+import type { DashboardData, FinancialsData, CustomersData, VendorsData, BankingData, EntitySlug, BriefingResponse, Alert, ValidationMatrixData, EntityHistoryData, MetricSnapshotsData, EntityBudget, BvsAData, PortfolioBudget, BudgetPeriodInput, ConsolidatedCashFlow } from '@/lib/types';
 import type { ReportTemplateSummary, ReportGenerateRequest, BuiltReport, ReportHistoryEntry } from '@/lib/reportTypes';
 import type { AIStatus } from '@/lib/aiTypes';
 import type { PipelineStatus } from '@/lib/pipelineTypes';
@@ -162,6 +162,24 @@ export function useAllEntityHistory(): FetchState<Record<EntitySlug, EntityHisto
  */
 export function useHealthSnapshots(): FetchState<MetricSnapshotsData> {
   return useTrackedFetch('healthSnapshots', () => api.historySnapshots(), null, []);
+}
+
+/**
+ * useConsolidatedCashFlow — fetches the portfolio statement of cash flows for
+ * the given selected entities from GET /api/model/cashflow. ALL summation is
+ * performed server-side from published Neon rows; this hook and its consumers
+ * only render the returned totals. Re-fetches when the selection changes. No
+ * mock fallback: when Core has published nothing the endpoint returns an honest
+ * unavailable/partial state.
+ */
+export function useConsolidatedCashFlow(slugs: EntitySlug[]): FetchState<ConsolidatedCashFlow> {
+  const key = slugs.join(',');
+  return useTrackedFetch(
+    `consolidatedCashFlow:${key}`,
+    () => api.consolidatedCashFlow(slugs),
+    null,
+    [key],
+  );
 }
 
 export function useEntityCustomers(slug: EntitySlug): FetchState<CustomersData> {
