@@ -25,6 +25,7 @@ import {
   transactionsTable,
   customersTable,
   alertsTable,
+  cashFlowStatementsTable,
 } from "@workspace/db";
 import type {
   PortfolioSummary,
@@ -46,6 +47,7 @@ import type {
   Vendor,
   BankAccount,
   BankTransaction,
+  CashFlowStatement,
 } from "./types";
 import { computePipelineMetrics } from "./pipelineMetrics";
 
@@ -532,23 +534,127 @@ function toMonthlyPl(r: PeriodRow): MonthlyPL {
 }
 
 /**
+ * Parse and validate raw JSONB from the `sections` column into a typed
+ * CashFlowStatement. Returns null if the shape is invalid or any field
+ * violates the published-data contract.
+ *
+ * This is the authoritative contract between the Python writer
+ * (financeos_core build_semantic_layer.py) and the TypeScript reader.
+ * Every field constraint here corresponds to a validation rule on the write side.
+ *
+ * Rules enforced (published-data reader — all totals must be finite):
+ * - as_of must be a string
+ * - sections must be a non-empty array (at least one section)
+ * - Each section: name=string, net_cash=finite number, lines=array
+ * - Each line: label=string, amount=finite number (null NOT accepted),
+ *   is_subtotal=boolean
+ * - Missing optional lines are acceptable (they are simply absent from the array)
+ * - net_cash_change must be a finite number (null/undefined/NaN/Inf all rejected:
+ *   a published row always has a reconciled net change)
+ * - cash_at_end must be a finite number (same reasoning as net_cash_change)
+ */
+export function parseCashFlowSectionsJson(raw: unknown): CashFlowStatement | null {
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return null;
+  const obj = raw as Record<string, unknown>;
+
+  if (typeof obj.as_of !== "string") return null;
+  if (!Array.isArray(obj.sections) || obj.sections.length === 0) return null;
+
+  // net_cash_change and cash_at_end must be finite numbers for published rows.
+  // null, undefined, NaN, and Infinity are all invalid here.
+  const netCashChange = obj.net_cash_change;
+  if (!Number.isFinite(netCashChange)) return null;
+
+  const cashAtEnd = obj.cash_at_end;
+  if (!Number.isFinite(cashAtEnd)) return null;
+
+  const sections: import("./types").CashFlowSection[] = [];
+  for (const s of obj.sections) {
+    if (!s || typeof s !== "object" || Array.isArray(s)) return null;
+    const sec = s as Record<string, unknown>;
+    if (typeof sec.name !== "string") return null;
+    if (!Number.isFinite(sec.net_cash)) return null;
+    if (!Array.isArray(sec.lines)) return null;
+
+    const lines: import("./types").CashFlowLine[] = [];
+    for (const l of sec.lines) {
+      if (!l || typeof l !== "object" || Array.isArray(l)) return null;
+      const line = l as Record<string, unknown>;
+      if (typeof line.label !== "string") return null;
+      // amount must be a finite number — null is not valid per TypeScript type
+      if (!Number.isFinite(line.amount)) return null;
+      if (typeof line.is_subtotal !== "boolean") return null;
+      lines.push({
+        label:       line.label,
+        amount:      line.amount as number,
+        is_subtotal: line.is_subtotal,
+      });
+    }
+    sections.push({ name: sec.name, lines, net_cash: sec.net_cash as number });
+  }
+
+  return {
+    as_of:           obj.as_of,
+    sections,
+    net_cash_change: netCashChange as number,
+    cash_at_end:     cashAtEnd as number,
+  };
+}
+
+/**
+ * Latest Cash Flow statement for an entity, read from cash_flow_statements.
+ * Returns null if no statement has been published for this entity yet,
+ * or if the stored JSONB does not pass contract validation.
+ *
+ * Eligible rows must have:
+ *   validation_status = 'passed'   — all 15 Python validation checks passed
+ *   publication_status = 'published' — publication gate cleared
+ * Invalid, blocked, skipped, or unpublished rows are never returned.
+ *
+ * The most recent eligible statement (by period_end DESC) is selected.
+ */
+export async function getCashFlowFromNeon(entityId: string): Promise<CashFlowStatement | null> {
+  const rows = await db
+    .select()
+    .from(cashFlowStatementsTable)
+    .where(
+      and(
+        eq(cashFlowStatementsTable.entityId, entityId),
+        eq(cashFlowStatementsTable.validationStatus, "passed"),
+        eq(cashFlowStatementsTable.publicationStatus, "published"),
+      ),
+    )
+    .orderBy(desc(cashFlowStatementsTable.periodEnd))
+    .limit(1);
+
+  if (rows.length === 0) return null;
+
+  return parseCashFlowSectionsJson(rows[0].sections);
+}
+
+/**
  * Current-year financials for an entity, read from financial_periods:
  *   - monthly_pl  : the current fiscal year's `monthly` rows (asc by period)
  *   - ytd_summary : the current `ytd` row (read directly, NOT re-summed)
  *   - balance_sheet: aggregate totals from the same `ytd` row
- * `financial_periods` stores only balance-sheet TOTALS (no line-item split) and
- * no cash-flow statement, so the detailed BalanceSheet sub-lines are 0 and
- * cash_flow is null — the exact same typed shape the Drive path produced.
+ *   - cash_flow   : latest published Cash Flow statement from cash_flow_statements
  */
 export async function getEntityFinancialsFromNeon(
   slug: EntitySlug,
   asOf: string,
 ): Promise<FinancialsData> {
   const coreSlug = slug.toLowerCase();
-  const rows = await fetchEntityPeriods(coreSlug);
+  const [rows, entityRows] = await Promise.all([
+    fetchEntityPeriods(coreSlug),
+    db.select({ id: entitiesTable.id })
+      .from(entitiesTable)
+      .where(eq(entitiesTable.slug, coreSlug))
+      .limit(1),
+  ]);
   if (rows.length === 0) {
     throw new Error(`Neon has no financial_periods for "${slug}" (core slug "${coreSlug}")`);
   }
+  const entityId = entityRows[0]?.id ?? null;
 
   // The authoritative current-period roll-up. Pick the latest ytd row by
   // period_end (Core may retain more than one over time).
@@ -601,14 +707,15 @@ export async function getEntityFinancialsFromNeon(
     },
   };
 
+  const cash_flow = entityId ? await getCashFlowFromNeon(entityId) : null;
+
   return {
     entity_slug: slug,
     as_of: asOf,
     monthly_pl,
     ytd_summary,
-    // financial_periods does not store a cash-flow statement.
     balance_sheet,
-    cash_flow: null,
+    cash_flow,
   };
 }
 
