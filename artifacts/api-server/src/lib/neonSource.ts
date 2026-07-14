@@ -659,8 +659,8 @@ function classifyActivity(name: string): "operating" | "investing" | "financing"
  *   - operating/investing/financing are summed from each statement's section
  *     net_cash values, bucketed by activity.
  *   - net_change sums each statement's net_cash_change; ending_cash sums
- *     cash_at_end; beginning_cash is derived per entity as
- *     (cash_at_end - net_cash_change) and summed — never fabricated.
+ *     cash_at_end; beginning_cash is the authoritative stored column value
+ *     (validated by CF-12) — never derived or fabricated.
  *   - Negatives and legitimate zeros are preserved (Smile_More carries a
  *     negative cash position).
  *   - If NO selected entity has an eligible statement → available=false,
@@ -672,20 +672,40 @@ function classifyActivity(name: string): "operating" | "investing" | "financing"
  *     is partial=true and covers only the entities that had one; `missing`
  *     lists the rest. Nothing is fabricated for the missing entities.
  */
-/** One selected entity's raw published statement (or null when unpublished),
- * paired with its display name. Input to the pure consolidateCashFlow reducer. */
+/**
+ * Authoritative per-entity figures for the consolidated cash flow reducer.
+ * All six financial values are read directly from cash_flow_statements
+ * dedicated columns (validated by Python Core's CF-12 check); nothing is
+ * derived or recomputed. When ANY value is null/non-finite for a given entity
+ * that entity is treated as having no eligible statement — it is excluded from
+ * the consolidation and listed in `missing`.
+ */
 export type CashFlowEntry = {
   slug: EntitySlug;
   entity: string;
-  statement: CashFlowStatement | null;
+  /** null means this entity has no passed+published statement (or a non-finite column). */
+  figures: {
+    as_of: string;
+    operating: number;
+    investing: number;
+    financing: number;
+    net_change: number;
+    beginning_cash: number;
+    ending_cash: number;
+  } | null;
 };
 
 /**
  * Pure consolidation reducer — no I/O. Given each selected entity's latest
- * eligible published statement (or null), produce the portfolio roll-up.
+ * eligible published statement figures (or null), produce the portfolio roll-up.
  * Exported so the summation contract (negatives/zeros preserved, no
  * fabrication, honest partial/unavailable states) is unit-testable without a
  * database. See ConsolidatedCashFlow for the state semantics.
+ *
+ * All six financial fields (beginning_cash, operating, investing, financing,
+ * net_change, ending_cash) come directly from cash_flow_statements dedicated
+ * columns. NO derivation formula is used — beginning_cash is the authoritative
+ * stored value validated by CF-12, not ending_cash minus net_change.
  */
 export function consolidateCashFlow(
   slugs: EntitySlug[],
@@ -709,44 +729,29 @@ export function consolidateCashFlow(
   if (slugs.length === 0) return empty("no_entities_selected", slugs);
 
   const contributing = entries.filter(
-    (e): e is CashFlowEntry & { statement: CashFlowStatement } => e.statement !== null,
+    (e): e is CashFlowEntry & { figures: NonNullable<CashFlowEntry["figures"]> } =>
+      e.figures !== null,
   );
-  const missing = entries.filter((e) => e.statement === null).map((e) => e.slug);
+  const missing = entries.filter((e) => e.figures === null).map((e) => e.slug);
 
   if (contributing.length === 0) return empty("no_published_statements", missing);
 
   // Incompatible periods: contributing statements must share the same period
   // end-date (as_of). Mismatched periods are never summed.
-  const periods = new Set(contributing.map((e) => e.statement.as_of));
+  const periods = new Set(contributing.map((e) => e.figures.as_of));
   if (periods.size > 1) return empty("incompatible_periods", missing);
 
-  const entities: ConsolidatedCashFlowEntity[] = contributing.map((e) => {
-    let operating = 0;
-    let investing = 0;
-    let financing = 0;
-    for (const sec of e.statement.sections) {
-      const bucket = classifyActivity(sec.name);
-      if (bucket === "operating") operating += sec.net_cash;
-      else if (bucket === "investing") investing += sec.net_cash;
-      else if (bucket === "financing") financing += sec.net_cash;
-    }
-    // parseCashFlowSectionsJson guarantees finite net_cash_change / cash_at_end
-    // for published rows, so these are safe finite numbers here.
-    const net_change = e.statement.net_cash_change as number;
-    const ending_cash = e.statement.cash_at_end as number;
-    const beginning_cash = ending_cash - net_change;
-    return {
-      slug: e.slug,
-      entity: e.entity,
-      as_of: e.statement.as_of,
-      operating,
-      investing,
-      financing,
-      net_change,
-      beginning_cash,
-      ending_cash,
-    };
-  });
+  const entities: ConsolidatedCashFlowEntity[] = contributing.map((e) => ({
+    slug: e.slug,
+    entity: e.entity,
+    as_of: e.figures.as_of,
+    operating: e.figures.operating,
+    investing: e.figures.investing,
+    financing: e.figures.financing,
+    net_change: e.figures.net_change,
+    beginning_cash: e.figures.beginning_cash,
+    ending_cash: e.figures.ending_cash,
+  }));
 
   const sum = (pick: (x: ConsolidatedCashFlowEntity) => number) =>
     entities.reduce((s, x) => s + pick(x), 0);
@@ -767,6 +772,19 @@ export function consolidateCashFlow(
   };
 }
 
+/**
+ * Consolidated (portfolio) statement of cash flows across the selected
+ * entities. Reads the six dedicated numeric columns from cash_flow_statements
+ * directly — these are the authoritative values written by FinanceOS Core and
+ * validated by CF-12. Nothing is derived or recomputed.
+ *
+ * Eligible rows: validation_status='passed' AND publication_status='published'.
+ * One query fetches all eligible rows for ALL selected entities; the latest
+ * row per entity (by period_end DESC) is kept in memory. An entity is excluded
+ * (added to `missing`) when:
+ *   - no eligible row exists for it, OR
+ *   - any of the six financial columns is null or non-finite.
+ */
 export async function getConsolidatedCashFlowFromNeon(
   slugs: EntitySlug[],
 ): Promise<ConsolidatedCashFlow> {
@@ -779,15 +797,88 @@ export async function getConsolidatedCashFlowFromNeon(
   const bySlug = new Map<string, { id: string; displayName: string }>();
   for (const r of idRows) bySlug.set(r.slug.toLowerCase(), { id: r.id, displayName: r.displayName });
 
-  // One eligible statement per selected entity (or null when none published).
-  const entries: CashFlowEntry[] = await Promise.all(
-    slugs.map(async (slug) => {
-      const meta = bySlug.get(slug.toLowerCase());
-      if (!meta) return { slug, entity: slug, statement: null };
-      const statement = await getCashFlowFromNeon(meta.id);
-      return { slug, entity: meta.displayName, statement };
-    }),
-  );
+  // Build the set of entity ids we care about.
+  const entityIdToSlug = new Map<string, EntitySlug>();
+  const entityIdToName = new Map<string, string>();
+  for (const slug of slugs) {
+    const meta = bySlug.get(slug.toLowerCase());
+    if (meta) {
+      entityIdToSlug.set(meta.id, slug);
+      entityIdToName.set(meta.id, meta.displayName);
+    }
+  }
+
+  // One query: all passed+published rows for the selected entities.
+  // Read the six dedicated numeric columns — NOT the sections JSONB.
+  const cfRows = await db
+    .select({
+      entityId:      cashFlowStatementsTable.entityId,
+      periodEnd:     cashFlowStatementsTable.periodEnd,
+      beginningCash: cashFlowStatementsTable.beginningCash,
+      netOperating:  cashFlowStatementsTable.netOperating,
+      netInvesting:  cashFlowStatementsTable.netInvesting,
+      netFinancing:  cashFlowStatementsTable.netFinancing,
+      netChange:     cashFlowStatementsTable.netChange,
+      endingCash:    cashFlowStatementsTable.endingCash,
+    })
+    .from(cashFlowStatementsTable)
+    .where(
+      and(
+        eq(cashFlowStatementsTable.validationStatus, "passed"),
+        eq(cashFlowStatementsTable.publicationStatus, "published"),
+      ),
+    )
+    .orderBy(desc(cashFlowStatementsTable.periodEnd));
+
+  // Keep only the most-recent eligible row per selected entity.
+  const latestByEntityId = new Map<string, (typeof cfRows)[number]>();
+  for (const row of cfRows) {
+    if (!entityIdToSlug.has(row.entityId)) continue;
+    if (!latestByEntityId.has(row.entityId)) latestByEntityId.set(row.entityId, row);
+  }
+
+  // Build CashFlowEntry list. Validate all six numeric columns are finite; if
+  // ANY is null or non-finite, the entity is treated as missing (no fallback).
+  const entries: CashFlowEntry[] = slugs.map((slug) => {
+    const meta = bySlug.get(slug.toLowerCase());
+    if (!meta) return { slug, entity: slug, figures: null };
+
+    const row = latestByEntityId.get(meta.id);
+    if (!row) return { slug, entity: meta.displayName, figures: null };
+
+    const beginning_cash = num(row.beginningCash);
+    const operating      = num(row.netOperating);
+    const investing      = num(row.netInvesting);
+    const financing      = num(row.netFinancing);
+    const net_change     = num(row.netChange);
+    const ending_cash    = num(row.endingCash);
+
+    // num() returns 0 for null/non-finite inputs. Re-check the raw values so
+    // a genuinely null column (missing data) excludes the entity rather than
+    // silently substituting 0. Legitimate zeros written by Core are non-null.
+    const rawValues = [
+      row.beginningCash,
+      row.netOperating,
+      row.netInvesting,
+      row.netFinancing,
+      row.netChange,
+      row.endingCash,
+    ];
+    if (rawValues.some((v) => v === null || v === undefined)) {
+      return { slug, entity: meta.displayName, figures: null };
+    }
+
+    // as_of: use period_end as the statement date (matches getCashFlowFromNeon
+    // behaviour which reads as_of from the sections JSONB; both reflect the
+    // same statement period).
+    const as_of = dateStr(row.periodEnd);
+
+    return {
+      slug,
+      entity: meta.displayName,
+      figures: { as_of, operating, investing, financing, net_change, beginning_cash, ending_cash },
+    };
+  });
 
   return consolidateCashFlow(slugs, entries);
 }
