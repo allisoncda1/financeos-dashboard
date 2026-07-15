@@ -257,6 +257,20 @@ export type ServerErrorResponse = ErrorResponse;
  */
 export type YearQueryParameter = number;
 
+export type GetModelHistoryParams = {
+/**
+ * Comma-separated entity slugs to include (defaults to all).
+ */
+slugs?: string;
+};
+
+export type GetModelCashflowParams = {
+/**
+ * Comma-separated entity slugs to include (defaults to all).
+ */
+slugs?: string;
+};
+
 export type ListReportHistoryParams = {
 /**
  * Entity slug to filter history by (e.g. `cardealer_ai`)

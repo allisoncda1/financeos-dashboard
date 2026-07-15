@@ -152,6 +152,37 @@ describe("buildHistoryResponse (pure reducer)", () => {
     expect(r.monthly[0].net_income).toBeNull();
   });
 
+  it("6c. per-period metadata: some entities missing → period.partial, sum of present", () => {
+    // 2 entities selected; T3 is missing Jan → Jan is period-partial and sums
+    // only CD; both present in Feb → Feb is a full (non-partial) sum.
+    const a: HistoryEntityInput = { slug: CD, entity: "CD", months: [month("2026-01", 100, 10), month("2026-02", 200, 20)] };
+    const b: HistoryEntityInput = { slug: T3, entity: "T3", months: [month("2026-02", 50, 5)] };
+    const r = buildHistoryResponse([a, b], []);
+
+    const jan = r.monthly.find(m => m.period === "2026-01")!;
+    expect(jan.partial).toBe(true);
+    expect(jan.contributing).toEqual([CD]);
+    expect(jan.missing).toEqual([T3]);
+    expect(jan.revenue).toBe(100); // sum of the 1 present entity, not 100+0
+
+    const feb = r.monthly.find(m => m.period === "2026-02")!;
+    expect(feb.partial).toBe(false);
+    expect(feb.contributing).toEqual([CD, T3]);
+    expect(feb.missing).toEqual([]);
+    expect(feb.revenue).toBe(250); // full sum
+  });
+
+  it("6d. per-period metadata: all contributing entities present → not partial", () => {
+    const a: HistoryEntityInput = { slug: CD, entity: "CD", months: [month("2026-01", 100, 10)] };
+    const b: HistoryEntityInput = { slug: T3, entity: "T3", months: [month("2026-01", 40, 4)] };
+    const r = buildHistoryResponse([a, b], []);
+    const jan = r.monthly[0];
+    expect(jan.partial).toBe(false);
+    expect(jan.contributing).toEqual([CD, T3]);
+    expect(jan.missing).toEqual([]);
+    expect(jan.revenue).toBe(140);
+  });
+
   it("7. duplicate (entity, period) rows are collapsed (last wins, no double count)", () => {
     const e: HistoryEntityInput = {
       slug: CD, entity: "CD",
@@ -258,6 +289,13 @@ describe("buildHistoryResponse (pure reducer)", () => {
       ].sort(),
     );
     expect(r.generated_at).toBe("2026-07-15T00:00:00.000Z");
+    // Each monthly point carries per-period provenance metadata (RC-017 item 4).
+    expect(Object.keys(r.monthly[0]).sort()).toEqual(
+      [
+        "by_entity", "contributing", "missing", "net_income", "partial",
+        "period", "period_end", "period_start", "revenue",
+      ].sort(),
+    );
   });
 
   it("8b. entity display order preserved in snapshots", () => {

@@ -354,6 +354,14 @@ export type HistoryMonthlyPoint = {
   revenue: number | null;
   net_income: number | null;
   by_entity: Record<string, { revenue: number | null; net_income: number | null }>;
+  /** true when at least one — but not all — selected contributing entities has
+   * an authoritative row for this period. The revenue/net_income totals then
+   * sum only the entities that reported; the rest are listed in `missing`. */
+  partial: boolean;
+  /** Slugs of contributing entities that reported a row for this period. */
+  contributing: string[];
+  /** Slugs of contributing entities that had NO row for this period. */
+  missing: string[];
 };
 
 /** Month-over-month change, computed server-side (never in the frontend). */

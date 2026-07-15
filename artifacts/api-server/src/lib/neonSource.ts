@@ -1155,6 +1155,13 @@ export function buildHistoryResponse(
     const by_entity: Pt["by_entity"] = {};
     const revenues: (number | null)[] = [];
     const netIncomes: (number | null)[] = [];
+    // Per-period provenance: which contributing entities actually had an
+    // authoritative row for this period vs. which were missing it. A period is
+    // period-level `partial` when some (but not all) contributing entities
+    // reported — the totals below still sum only the entities that did, never
+    // treating a missing entity as zero.
+    const periodContributing: string[] = [];
+    const periodMissing: string[] = [];
     for (const e of contributing) {
       const row = perEntity.get(e.slug)?.get(period);
       const revenue = row ? row.revenue : null;
@@ -1162,6 +1169,8 @@ export function buildHistoryResponse(
       by_entity[e.slug] = { revenue, net_income };
       revenues.push(revenue);
       netIncomes.push(net_income);
+      if (row) periodContributing.push(e.slug);
+      else periodMissing.push(e.slug);
     }
     return {
       period,
@@ -1170,6 +1179,9 @@ export function buildHistoryResponse(
       revenue: sumNullable(revenues),
       net_income: sumNullable(netIncomes),
       by_entity,
+      partial: periodContributing.length > 0 && periodMissing.length > 0,
+      contributing: periodContributing,
+      missing: periodMissing,
     };
   });
 

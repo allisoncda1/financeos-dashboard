@@ -163,6 +163,48 @@ export const GetModelHistorySnapshotsResponse = zod.object({
 
 
 /**
+ * Revenue / net-income monthly time series, month-over-month changes,
+ * entity-period snapshots, and the health-score trend, aggregated
+ * server-side from Neon's monthly `financial_periods` rows (Core) plus
+ * the `metric_snapshots` runtime table (Dashboard ops DB). Registered
+ * before `/model/{slug}` so the literal path segment `history` is never
+ * interpreted as an entity slug. Optional `?slugs=A,B,C` selects entities
+ * (defaults to all). Unknown slugs are ignored.
+ * @summary Consolidated monthly history across the selected entities
+ */
+export const GetModelHistoryQueryParams = zod.object({
+  "slugs": zod.coerce.string().optional().describe('Comma-separated entity slugs to include (defaults to all).')
+})
+
+export const GetModelHistoryResponse = zod.object({
+  "ok": zod.literal(true),
+  "data": zod.unknown().describe('Response payload (shape varies by endpoint)'),
+  "source": zod.enum(['live', 'mock', 'cache', 'db']).optional().describe('Where the data was sourced from'),
+  "ts": zod.coerce.date().describe('Server timestamp (ISO 8601)')
+}).describe('Standard JSON envelope returned by all successful responses')
+
+
+/**
+ * Portfolio statement of cash flows summed server-side from published
+ * Neon `cash_flow_statements` rows across the selected entities.
+ * Registered before `/model/{slug}` so `cashflow` is never interpreted
+ * as an entity slug. Optional `?slugs=A,B,C` selects entities (defaults
+ * to all).
+ * @summary Consolidated (portfolio) statement of cash flows
+ */
+export const GetModelCashflowQueryParams = zod.object({
+  "slugs": zod.coerce.string().optional().describe('Comma-separated entity slugs to include (defaults to all).')
+})
+
+export const GetModelCashflowResponse = zod.object({
+  "ok": zod.literal(true),
+  "data": zod.unknown().describe('Response payload (shape varies by endpoint)'),
+  "source": zod.enum(['live', 'mock', 'cache', 'db']).optional().describe('Where the data was sourced from'),
+  "ts": zod.coerce.date().describe('Server timestamp (ISO 8601)')
+}).describe('Standard JSON envelope returned by all successful responses')
+
+
+/**
  * @summary Single-entity metrics, anomalies, and freshness
  */
 export const GetEntityModelParams = zod.object({

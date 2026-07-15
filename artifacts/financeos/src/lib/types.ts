@@ -310,6 +310,12 @@ export type HistoryMonthlyPoint = {
   revenue: number | null;
   net_income: number | null;
   by_entity: Record<string, { revenue: number | null; net_income: number | null }>;
+  /** true when some — but not all — contributing entities reported this period. */
+  partial: boolean;
+  /** Contributing entity slugs that reported an authoritative row this period. */
+  contributing: string[];
+  /** Contributing entity slugs that had no row this period. */
+  missing: string[];
 };
 
 export type HistoryChange = {
