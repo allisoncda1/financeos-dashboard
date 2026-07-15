@@ -384,6 +384,15 @@ export type HistorySnapshotRow = {
 
 export type HistoryHealthPoint = { period: string; score: number | null };
 
+export type HealthScoreCoverage = {
+  /** "full" = every financial period has a score; "partial" = some do; "none" = none do. */
+  status: "full" | "partial" | "none";
+  available_periods: number;
+  total_periods: number;
+  missing_periods: number;
+  missing_months: string[];
+};
+
 export type HistoryResponse = {
   available: boolean;
   status: HistoryStatus;
@@ -396,6 +405,7 @@ export type HistoryResponse = {
   snapshots: HistorySnapshotRow[];
   health_score_history: HistoryHealthPoint[] | null;
   health_score_available: boolean;
+  health_score_coverage: HealthScoreCoverage;
   health_score_unavailable_reason?: string;
 };
 

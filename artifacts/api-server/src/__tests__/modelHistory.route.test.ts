@@ -81,6 +81,7 @@ const HISTORY: HistoryResponse = {
   snapshots: [],
   health_score_history: null,
   health_score_available: false,
+  health_score_coverage: { status: "none", available_periods: 0, total_periods: 2, missing_periods: 2, missing_months: ["2026-01", "2026-02"] },
   health_score_unavailable_reason: "no_historical_health_scores_persisted",
 };
 

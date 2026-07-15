@@ -1214,16 +1214,27 @@ export function buildHistoryResponse(
     }
   }
 
-  // Health-score trend: sum of per-entity scores per month across selected
-  // entities that have a score that month. A month with no score → null point.
-  const healthMonths = new Set<string>();
-  for (const h of health) for (const m of h.scoresByMonth.keys()) healthMonths.add(m);
-  const healthPeriods = [...healthMonths].sort();
-  const health_score_history = healthPeriods.map((period) => {
+  // Health-score trend: a point per financial period, null when no snapshot exists
+  // for that month. Coverage counts how many of the 19 financial periods have an
+  // authoritative score — only 1/19 having a score is "partial", not "available".
+  const health_score_history: import("./types").HistoryHealthPoint[] = periods.map((period) => {
     const scores = health.map((h) => h.scoresByMonth.get(period) ?? null);
     return { period, score: sumNullable(scores) };
   });
   const health_score_available = health_score_history.some((p) => p.score !== null);
+  const missingMonths = health_score_history
+    .filter((p) => p.score === null)
+    .map((p) => p.period);
+  const availablePeriods = periods.length - missingMonths.length;
+  const coverageStatus: import("./types").HealthScoreCoverage["status"] =
+    availablePeriods === 0 ? "none" : availablePeriods === periods.length ? "full" : "partial";
+  const health_score_coverage: import("./types").HealthScoreCoverage = {
+    status: coverageStatus,
+    available_periods: availablePeriods,
+    total_periods: periods.length,
+    missing_periods: missingMonths.length,
+    missing_months: missingMonths,
+  };
 
   return {
     available: status === "available" || status === "partial",
@@ -1237,6 +1248,7 @@ export function buildHistoryResponse(
     snapshots,
     health_score_history: health_score_available ? health_score_history : null,
     health_score_available,
+    health_score_coverage,
     ...(health_score_available
       ? {}
       : { health_score_unavailable_reason: "no_historical_health_scores_persisted" }),

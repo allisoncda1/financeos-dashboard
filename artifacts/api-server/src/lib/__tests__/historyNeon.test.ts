@@ -283,7 +283,7 @@ describe("buildHistoryResponse (pure reducer)", () => {
     expect(Object.keys(r).sort()).toEqual(
       [
         "available", "changes", "entities", "generated_at",
-        "health_score_available", "health_score_history",
+        "health_score_available", "health_score_coverage", "health_score_history",
         "health_score_unavailable_reason", "monthly", "period_end",
         "period_start", "snapshots", "status",
       ].sort(),
@@ -296,6 +296,93 @@ describe("buildHistoryResponse (pure reducer)", () => {
         "period", "period_end", "period_start", "revenue",
       ].sort(),
     );
+  });
+
+  // ── Health-score coverage regression tests (RC-017) ──────────────────────────
+
+  it("HC-1. no health scores → coverage.status=none, all months missing", () => {
+    const e: HistoryEntityInput = {
+      slug: CD, entity: "CD",
+      months: [month("2025-01", 100, 10), month("2025-02", 100, 10)],
+    };
+    const r = buildHistoryResponse([e], []);
+    expect(r.health_score_coverage.status).toBe("none");
+    expect(r.health_score_coverage.available_periods).toBe(0);
+    expect(r.health_score_coverage.total_periods).toBe(2);
+    expect(r.health_score_coverage.missing_periods).toBe(2);
+    expect(r.health_score_coverage.missing_months).toEqual(["2025-01", "2025-02"]);
+  });
+
+  it("HC-2. all months have scores → coverage.status=full, missing_months=[]", () => {
+    const e: HistoryEntityInput = {
+      slug: CD, entity: "CD",
+      months: [month("2025-01", 100, 10), month("2025-02", 100, 10)],
+    };
+    const health: HistoryHealthInput[] = [
+      { slug: CD, scoresByMonth: new Map([["2025-01", 80], ["2025-02", 90]]) },
+    ];
+    const r = buildHistoryResponse([e], health);
+    expect(r.health_score_coverage.status).toBe("full");
+    expect(r.health_score_coverage.available_periods).toBe(2);
+    expect(r.health_score_coverage.total_periods).toBe(2);
+    expect(r.health_score_coverage.missing_periods).toBe(0);
+    expect(r.health_score_coverage.missing_months).toEqual([]);
+  });
+
+  it("HC-3. 1-of-19 months has health score → coverage.status=partial, 18 missing months listed", () => {
+    // Mirrors the live Replit production state: metric_snapshots has 2026-07
+    // only; all prior 18 months have no health score row.
+    const financialMonths = [
+      "2025-01","2025-02","2025-03","2025-04","2025-05","2025-06",
+      "2025-07","2025-08","2025-09","2025-10","2025-11","2025-12",
+      "2026-01","2026-02","2026-03","2026-04","2026-05","2026-06","2026-07",
+    ];
+    const e: HistoryEntityInput = {
+      slug: CD, entity: "CD",
+      months: financialMonths.map((p) => month(p, 1000, 100)),
+    };
+    const health: HistoryHealthInput[] = [
+      { slug: CD, scoresByMonth: new Map([["2026-07", 73]]) },
+    ];
+    const r = buildHistoryResponse([e], health);
+    expect(r.health_score_coverage.status).toBe("partial");
+    expect(r.health_score_coverage.available_periods).toBe(1);
+    expect(r.health_score_coverage.total_periods).toBe(19);
+    expect(r.health_score_coverage.missing_periods).toBe(18);
+    expect(r.health_score_coverage.missing_months).toHaveLength(18);
+    expect(r.health_score_coverage.missing_months).not.toContain("2026-07");
+    expect(r.health_score_coverage.missing_months).toContain("2025-01");
+    // Financial history is still fully available — partial health score coverage
+    // must not block Revenue and Net Income history.
+    expect(r.status).toBe("available");
+    expect(r.monthly).toHaveLength(19);
+    expect(r.monthly.every((m) => m.revenue !== null)).toBe(true);
+    // health_score_history must contain ALL 19 periods; only 2026-07 is non-null.
+    expect(r.health_score_history).toHaveLength(19);
+    const scored = r.health_score_history!.filter((p) => p.score !== null);
+    expect(scored).toHaveLength(1);
+    expect(scored[0]).toEqual({ period: "2026-07", score: 73 });
+    // Null scores for prior months must not be silently converted to zero.
+    const nullPeriods = r.health_score_history!.filter((p) => p.score === null);
+    expect(nullPeriods).toHaveLength(18);
+  });
+
+  it("HC-4. health_score_available=true does NOT imply full coverage", () => {
+    // Regression: the old code set health_score_available=true whenever ANY
+    // month had a score, which was misleading. Confirm the two fields are
+    // independently meaningful.
+    const e: HistoryEntityInput = {
+      slug: CD, entity: "CD",
+      months: [month("2025-01", 100, 10), month("2025-02", 100, 10), month("2025-03", 100, 10)],
+    };
+    const health: HistoryHealthInput[] = [
+      { slug: CD, scoresByMonth: new Map([["2025-02", 75]]) }, // only middle month
+    ];
+    const r = buildHistoryResponse([e], health);
+    expect(r.health_score_available).toBe(true);                    // some score exists
+    expect(r.health_score_coverage.status).toBe("partial");          // but not full
+    expect(r.health_score_coverage.available_periods).toBe(1);
+    expect(r.health_score_coverage.missing_months).toEqual(["2025-01", "2025-03"]);
   });
 
   it("8b. entity display order preserved in snapshots", () => {

@@ -97,15 +97,17 @@ async function perEntityReport(): Promise<void> {
 function summarize(label: string, r: Awaited<ReturnType<typeof getHistoryFromNeon>>): void {
   const periods = r.monthly.map((m) => m.period);
   const ordered = periods.every((p, i) => i === 0 || p >= periods[i - 1]!);
-  const priorZeroNullPct = r.changes.every(
-    (c) => !(c.revenue_change_pct !== null && r.monthly.find((m) => m.period === c.period)),
-  );
+  const cov = r.health_score_coverage;
   console.log(
     `  [${label}] status=${r.status} available=${r.available} ` +
-      `entities=${r.entities.length} periods=${periods.join(",")} ` +
-      `chronological=${ordered} healthAvailable=${r.health_score_available}`,
+      `entities=${r.entities.length} periods=${periods.length} ` +
+      `chronological=${ordered} ` +
+      `healthCoverage=${cov.status}(${cov.available_periods}/${cov.total_periods}) ` +
+      `missingHealthMonths=${cov.missing_periods}`,
   );
-  void priorZeroNullPct;
+  if (cov.status === "partial" || cov.status === "none") {
+    console.log(`    missing health months: ${cov.missing_months.slice(0, 5).join(",")}${cov.missing_periods > 5 ? `…+${cov.missing_periods - 5}` : ""}`);
+  }
 }
 
 async function serviceCalls(): Promise<void> {

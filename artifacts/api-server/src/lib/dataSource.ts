@@ -469,6 +469,7 @@ export async function getHistory(
         snapshots: [],
         health_score_history: null,
         health_score_available: false,
+        health_score_coverage: { status: "none", available_periods: 0, total_periods: 0, missing_periods: 0, missing_months: [] },
         health_score_unavailable_reason: "source_unavailable",
       } satisfies HistoryResponse;
     }
