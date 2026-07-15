@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import { api } from '@/lib/api';
 import { getMockData, getFinancials, getCustomers, getVendors, getBanking } from '@/lib/mock';
 import { ENTITY_SLUGS } from '@/lib/entities';
-import type { DashboardData, FinancialsData, CustomersData, VendorsData, BankingData, EntitySlug, BriefingResponse, Alert, ValidationMatrixData, EntityHistoryData, MetricSnapshotsData, EntityBudget, BvsAData, PortfolioBudget, BudgetPeriodInput, ConsolidatedCashFlow } from '@/lib/types';
+import type { DashboardData, FinancialsData, CustomersData, VendorsData, BankingData, EntitySlug, BriefingResponse, Alert, ValidationMatrixData, EntityHistoryData, MetricSnapshotsData, EntityBudget, BvsAData, PortfolioBudget, BudgetPeriodInput, ConsolidatedCashFlow, HistoryResponse } from '@/lib/types';
 import type { ReportTemplateSummary, ReportGenerateRequest, BuiltReport, ReportHistoryEntry } from '@/lib/reportTypes';
 import type { AIStatus } from '@/lib/aiTypes';
 import type { PipelineStatus } from '@/lib/pipelineTypes';
@@ -177,6 +177,23 @@ export function useConsolidatedCashFlow(slugs: EntitySlug[]): FetchState<Consoli
   return useTrackedFetch(
     `consolidatedCashFlow:${key}`,
     () => api.consolidatedCashFlow(slugs),
+    null,
+    [key],
+  );
+}
+
+/**
+ * useHistory — fetches the consolidated monthly history for the selected
+ * entities from GET /api/model/history. ALL aggregation and month-over-month
+ * math is performed server-side; this hook and its consumers only render the
+ * returned values. Re-fetches when the selection changes. No mock fallback:
+ * when Neon has published nothing the endpoint returns status='unavailable'.
+ */
+export function useHistory(slugs: EntitySlug[]): FetchState<HistoryResponse> {
+  const key = slugs.join(',');
+  return useTrackedFetch(
+    `history:${key}`,
+    () => api.history(slugs),
     null,
     [key],
   );
