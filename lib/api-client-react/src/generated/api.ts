@@ -32,6 +32,8 @@ import type {
   GetEntityAnnualBudgetParams,
   GetEntityBudgetParams,
   GetEntityBudgetVsActualParams,
+  GetModelCashflowParams,
+  GetModelHistoryParams,
   HealthStatus,
   ListReportHistoryParams,
   LoginRequest,
@@ -913,6 +915,186 @@ export function useGetModelHistorySnapshots<TData = Awaited<ReturnType<typeof ge
  ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
 
   const queryOptions = getGetModelHistorySnapshotsQueryOptions(options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getGetModelHistoryUrl = (params?: GetModelHistoryParams,) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : String(value))
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0 ? `/api/model/history?${stringifiedParams}` : `/api/model/history`
+}
+
+/**
+ * Revenue / net-income monthly time series, month-over-month changes,
+ * entity-period snapshots, and the health-score trend, aggregated
+ * server-side from Neon's monthly `financial_periods` rows (Core) plus
+ * the `metric_snapshots` runtime table (Dashboard ops DB). Registered
+ * before `/model/{slug}` so the literal path segment `history` is never
+ * interpreted as an entity slug. Optional `?slugs=A,B,C` selects entities
+ * (defaults to all). Unknown slugs are ignored.
+ * @summary Consolidated monthly history across the selected entities
+ */
+export const getModelHistory = async (params?: GetModelHistoryParams, options?: RequestInit): Promise<ApiEnvelope> => {
+
+  return customFetch<ApiEnvelope>(getGetModelHistoryUrl(params),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetModelHistoryQueryKey = (params?: GetModelHistoryParams,) => {
+    return [
+    `/api/model/history`, ...(params ? [params] : [])
+    ] as const;
+    }
+
+
+export const getGetModelHistoryQueryOptions = <TData = Awaited<ReturnType<typeof getModelHistory>>, TError = ErrorType<UnauthorizedResponse | ServerErrorResponse>>(params?: GetModelHistoryParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getModelHistory>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetModelHistoryQueryKey(params);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getModelHistory>>> = ({ signal }) => getModelHistory(params, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getModelHistory>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetModelHistoryQueryResult = NonNullable<Awaited<ReturnType<typeof getModelHistory>>>
+export type GetModelHistoryQueryError = ErrorType<UnauthorizedResponse | ServerErrorResponse>
+
+
+/**
+ * @summary Consolidated monthly history across the selected entities
+ */
+
+export function useGetModelHistory<TData = Awaited<ReturnType<typeof getModelHistory>>, TError = ErrorType<UnauthorizedResponse | ServerErrorResponse>>(
+ params?: GetModelHistoryParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getModelHistory>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetModelHistoryQueryOptions(params,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getGetModelCashflowUrl = (params?: GetModelCashflowParams,) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : String(value))
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0 ? `/api/model/cashflow?${stringifiedParams}` : `/api/model/cashflow`
+}
+
+/**
+ * Portfolio statement of cash flows summed server-side from published
+ * Neon `cash_flow_statements` rows across the selected entities.
+ * Registered before `/model/{slug}` so `cashflow` is never interpreted
+ * as an entity slug. Optional `?slugs=A,B,C` selects entities (defaults
+ * to all).
+ * @summary Consolidated (portfolio) statement of cash flows
+ */
+export const getModelCashflow = async (params?: GetModelCashflowParams, options?: RequestInit): Promise<ApiEnvelope> => {
+
+  return customFetch<ApiEnvelope>(getGetModelCashflowUrl(params),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetModelCashflowQueryKey = (params?: GetModelCashflowParams,) => {
+    return [
+    `/api/model/cashflow`, ...(params ? [params] : [])
+    ] as const;
+    }
+
+
+export const getGetModelCashflowQueryOptions = <TData = Awaited<ReturnType<typeof getModelCashflow>>, TError = ErrorType<UnauthorizedResponse | ServerErrorResponse>>(params?: GetModelCashflowParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getModelCashflow>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetModelCashflowQueryKey(params);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getModelCashflow>>> = ({ signal }) => getModelCashflow(params, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getModelCashflow>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetModelCashflowQueryResult = NonNullable<Awaited<ReturnType<typeof getModelCashflow>>>
+export type GetModelCashflowQueryError = ErrorType<UnauthorizedResponse | ServerErrorResponse>
+
+
+/**
+ * @summary Consolidated (portfolio) statement of cash flows
+ */
+
+export function useGetModelCashflow<TData = Awaited<ReturnType<typeof getModelCashflow>>, TError = ErrorType<UnauthorizedResponse | ServerErrorResponse>>(
+ params?: GetModelCashflowParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getModelCashflow>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetModelCashflowQueryOptions(params,options)
 
   const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
 

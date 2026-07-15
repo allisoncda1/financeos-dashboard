@@ -1,4 +1,4 @@
-import type { DashboardData, FinancialsData, CustomersData, VendorsData, BankingData, EntitySlug, BriefingResponse, Alert, ValidationMatrixData, EntityHistoryData, MetricSnapshotsData, EntityBudget, BvsAData, PortfolioBudget, BudgetPeriodInput, ConsolidatedCashFlow } from "./types";
+import type { DashboardData, FinancialsData, CustomersData, VendorsData, BankingData, EntitySlug, BriefingResponse, Alert, ValidationMatrixData, EntityHistoryData, MetricSnapshotsData, EntityBudget, BvsAData, PortfolioBudget, BudgetPeriodInput, ConsolidatedCashFlow, HistoryResponse } from "./types";
 import type { ReportTemplateSummary, ReportGenerateRequest, BuiltReport, ReportHistoryEntry } from "./reportTypes";
 import type { AIStatus } from "./aiTypes";
 import type { PipelineStatus } from "./pipelineTypes";
@@ -124,6 +124,10 @@ export const api = {
   consolidatedCashFlow: (slugs: string[]) => {
     const qs = slugs.length ? `?slugs=${encodeURIComponent(slugs.join(","))}` : "";
     return getSourced<ConsolidatedCashFlow>(`/model/cashflow${qs}`);
+  },
+  history: (slugs: string[]) => {
+    const qs = slugs.length ? `?slugs=${encodeURIComponent(slugs.join(","))}` : "";
+    return getSourced<HistoryResponse>(`/model/history${qs}`);
   },
   historySnapshots: ()           => getSourced<MetricSnapshotsData>("/model/history/snapshots"),
   briefing:         ()           => getSourced<BriefingResponse>("/briefing"),

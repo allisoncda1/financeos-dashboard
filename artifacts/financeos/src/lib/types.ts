@@ -295,6 +295,62 @@ export type MetricSnapshot = {
 
 export type MetricSnapshotsData = Record<EntitySlug, MetricSnapshot[]>;
 
+/** GET /api/model/history — consolidated monthly history. All aggregation and
+ * month-over-month math is computed server-side; the frontend renders verbatim. */
+export type HistoryStatus =
+  | "available"
+  | "partial"
+  | "unavailable"
+  | "incompatible_periods";
+
+export type HistoryMonthlyPoint = {
+  period: string;
+  period_start: string;
+  period_end: string;
+  revenue: number | null;
+  net_income: number | null;
+  by_entity: Record<string, { revenue: number | null; net_income: number | null }>;
+  /** true when some — but not all — contributing entities reported this period. */
+  partial: boolean;
+  /** Contributing entity slugs that reported an authoritative row this period. */
+  contributing: string[];
+  /** Contributing entity slugs that had no row this period. */
+  missing: string[];
+};
+
+export type HistoryChange = {
+  period: string;
+  revenue_change: number | null;
+  revenue_change_pct: number | null;
+  net_income_change: number | null;
+  net_income_change_pct: number | null;
+};
+
+export type HistorySnapshotRow = {
+  entity: string;
+  slug: string;
+  period: string;
+  revenue: number | null;
+  net_income: number | null;
+};
+
+export type HistoryHealthPoint = { period: string; score: number | null };
+
+export type HistoryResponse = {
+  available: boolean;
+  status: HistoryStatus;
+  entities: string[];
+  period_start: string | null;
+  period_end: string | null;
+  generated_at: string;
+  monthly: HistoryMonthlyPoint[];
+  changes: HistoryChange[];
+  snapshots: HistorySnapshotRow[];
+  health_score_history: HistoryHealthPoint[] | null;
+  health_score_available: boolean;
+  health_score_unavailable_reason?: string;
+};
+
 export type BankAccount = {
   id: string;
   name: string;

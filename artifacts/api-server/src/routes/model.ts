@@ -12,6 +12,7 @@ import {
   getEntityVendors,
   getEntityBanking,
   getConsolidatedCashFlow,
+  getHistory,
 } from "../lib/dataSource";
 import { archiveMetricSnapshot, getMetricSnapshots } from "../lib/snapshotStore";
 import { combineSources, type DataSourceKind } from "../lib/sourceTracker";
@@ -89,6 +90,44 @@ router.get("/model/history/snapshots", async (req, res) => {
     res.status(500).json({
       ok: false,
       error: "Failed to load metric snapshots",
+      ts: new Date().toISOString(),
+    });
+  }
+});
+
+// GET /api/model/history — consolidated monthly history (revenue/net-income
+// time series, month-over-month changes, entity-period snapshots, health-score
+// trend) across the selected entities, aggregated server-side from Neon's
+// monthly financial_periods rows. Registered before the /model/:slug routes so
+// "history" is never treated as an entity slug. Optional ?slugs=A,B,C selects
+// entities (defaults to all). Unknown slugs are ignored.
+router.get("/model/history", async (req, res) => {
+  const raw = typeof req.query["slugs"] === "string" ? (req.query["slugs"] as string) : "";
+  const requested = raw
+    .split(",")
+    .map((s) => s.trim())
+    .filter(Boolean);
+  // Case-insensitive match so callers may pass lower-cased core slugs.
+  const bySlug = new Map((ENTITY_SLUGS as readonly string[]).map((s) => [s.toLowerCase(), s]));
+  const slugs =
+    requested.length > 0
+      ? (requested
+          .map((s) => bySlug.get(s.toLowerCase()))
+          .filter((s): s is EntitySlug => Boolean(s)) as EntitySlug[])
+      : (ENTITY_SLUGS as readonly EntitySlug[]).slice();
+  try {
+    const result = await getHistory(slugs);
+    res.json({
+      ok: true,
+      data: result.data,
+      source: result.source,
+      ts: new Date().toISOString(),
+    });
+  } catch (err) {
+    req.log.error({ err }, "Failed to load consolidated history");
+    res.status(500).json({
+      ok: false,
+      error: "Failed to load consolidated history",
       ts: new Date().toISOString(),
     });
   }

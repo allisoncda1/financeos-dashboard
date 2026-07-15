@@ -9,8 +9,9 @@
  * DataFreshness) so nothing downstream (routes, AI, rules, reports, frontend)
  * needs to change. All reads are read-only; this module never writes.
  */
-import { and, desc, eq, sql } from "drizzle-orm";
+import { and, desc, eq, inArray, sql } from "drizzle-orm";
 import { ENTITY_SLUGS } from "./types";
+import { getMetricSnapshots } from "./snapshotStore";
 import {
   db,
   entitiesTable,
@@ -1018,6 +1019,328 @@ export async function getEntityHistoryFromNeon(slug: EntitySlug): Promise<Entity
     });
 
   return { entity_slug: slug, prior_years };
+}
+
+// ---------------------------------------------------------------------------
+// RC-017: consolidated monthly history for /analyze/history.
+//
+// Serves the History page's revenue/net-income time series, month-over-month
+// changes, entity-period snapshots, and health-score trend from authoritative
+// data. Monthly P&L comes from financial_periods (period_type='monthly'); the
+// health-score trend comes from the metric_snapshots runtime table (one row per
+// entity per month, archived server-side from live pipeline metrics).
+//
+// ALL aggregation and MoM arithmetic happens in the pure buildHistoryResponse
+// reducer below (unit-testable, no I/O). Missing values are null, never 0;
+// negatives and legitimate zeros are preserved.
+// ---------------------------------------------------------------------------
+
+/** One entity's monthly P&L rows for the history reducer. `revenue`/`net_income`
+ * are null only when the underlying financial_periods column was null. */
+export type HistoryEntityMonth = {
+  period: string; // YYYY-MM
+  period_start: string; // ISO date
+  period_end: string; // ISO date
+  revenue: number | null;
+  net_income: number | null;
+};
+
+/** Per-entity input to the reducer: the entity's display name and its monthly
+ * rows (already filtered to period_type='monthly'). An entity with an empty
+ * `months` array contributes nothing and is reported as missing. */
+export type HistoryEntityInput = {
+  slug: EntitySlug;
+  entity: string;
+  months: HistoryEntityMonth[];
+};
+
+/** Per-entity monthly health scores (from metric_snapshots), keyed by YYYY-MM. */
+export type HistoryHealthInput = {
+  slug: EntitySlug;
+  scoresByMonth: Map<string, number | null>;
+};
+
+/** NUMERIC-or-null → number|null. Preserves negatives and zero; only a genuinely
+ * null/non-finite column collapses to null (never silently to 0). */
+function numOrNull(v: string | number | null | undefined): number | null {
+  if (v === null || v === undefined) return null;
+  const n = typeof v === "number" ? v : Number(v);
+  return Number.isFinite(n) ? n : null;
+}
+
+/** Sum a set of nullable values. Returns null only when EVERY contributor is
+ * null (i.e. no entity reported the value for that month); otherwise nulls are
+ * treated as "no contribution" and the finite values are summed. */
+function sumNullable(values: (number | null)[]): number | null {
+  let acc = 0;
+  let any = false;
+  for (const v of values) {
+    if (v !== null) {
+      acc += v;
+      any = true;
+    }
+  }
+  return any ? acc : null;
+}
+
+/** MoM percentage change per the contract: (current - prior) / |prior| * 100.
+ * Returns null when prior is null or zero, or when current is null. */
+function pctChange(current: number | null, prior: number | null): number | null {
+  if (current === null || prior === null || prior === 0) return null;
+  return ((current - prior) / Math.abs(prior)) * 100;
+}
+
+/** Dollar change per the contract: current - prior. Null if either is null. */
+function dollarChange(current: number | null, prior: number | null): number | null {
+  if (current === null || prior === null) return null;
+  return current - prior;
+}
+
+/**
+ * Pure consolidation reducer for the History page — no I/O. Given each selected
+ * entity's monthly P&L rows (revenue/net_income, already scoped to monthly
+ * periods) and optional health-score series, produce the full HistoryResponse.
+ *
+ * Rules:
+ *   - Aggregate across entities per period (sum revenue, sum net_income),
+ *     preserving negatives and zeros; a period nobody reported is null.
+ *   - MoM dollar change = current - prior; pct = (current-prior)/|prior|*100,
+ *     null when prior is null or zero.
+ *   - Duplicate (entity, period) rows are collapsed to the LAST one seen so a
+ *     month is never double-counted.
+ *   - status: 'unavailable' when no entity has any monthly data;
+ *     'partial' when some selected entities have none; else 'available'.
+ *   - Health score is available iff at least one health point is present.
+ */
+export function buildHistoryResponse(
+  entities: HistoryEntityInput[],
+  health: HistoryHealthInput[],
+  generatedAt: string = new Date().toISOString(),
+): import("./types").HistoryResponse {
+  type Pt = import("./types").HistoryMonthlyPoint;
+
+  // De-duplicate (entity, period) rows: last row wins. Collect all periods.
+  const periodMeta = new Map<string, { start: string; end: string }>();
+  const perEntity = new Map<EntitySlug, Map<string, HistoryEntityMonth>>();
+  const contributing: HistoryEntityInput[] = [];
+  const missing: EntitySlug[] = [];
+
+  for (const e of entities) {
+    if (e.months.length === 0) {
+      missing.push(e.slug);
+      continue;
+    }
+    contributing.push(e);
+    const byPeriod = new Map<string, HistoryEntityMonth>();
+    for (const m of e.months) {
+      byPeriod.set(m.period, m); // last write wins → dedupe
+      const meta = periodMeta.get(m.period);
+      if (!meta) periodMeta.set(m.period, { start: m.period_start, end: m.period_end });
+    }
+    perEntity.set(e.slug, byPeriod);
+  }
+
+  const periods = [...periodMeta.keys()].sort();
+  const entityNames = entities.map((e) => e.entity);
+
+  const status: import("./types").HistoryStatus =
+    contributing.length === 0
+      ? "unavailable"
+      : missing.length > 0
+        ? "partial"
+        : "available";
+
+  const monthly: Pt[] = periods.map((period) => {
+    const meta = periodMeta.get(period)!;
+    const by_entity: Pt["by_entity"] = {};
+    const revenues: (number | null)[] = [];
+    const netIncomes: (number | null)[] = [];
+    // Per-period provenance: which contributing entities actually had an
+    // authoritative row for this period vs. which were missing it. A period is
+    // period-level `partial` when some (but not all) contributing entities
+    // reported — the totals below still sum only the entities that did, never
+    // treating a missing entity as zero.
+    const periodContributing: string[] = [];
+    const periodMissing: string[] = [];
+    for (const e of contributing) {
+      const row = perEntity.get(e.slug)?.get(period);
+      const revenue = row ? row.revenue : null;
+      const net_income = row ? row.net_income : null;
+      by_entity[e.slug] = { revenue, net_income };
+      revenues.push(revenue);
+      netIncomes.push(net_income);
+      if (row) periodContributing.push(e.slug);
+      else periodMissing.push(e.slug);
+    }
+    return {
+      period,
+      period_start: meta.start,
+      period_end: meta.end,
+      revenue: sumNullable(revenues),
+      net_income: sumNullable(netIncomes),
+      by_entity,
+      partial: periodContributing.length > 0 && periodMissing.length > 0,
+      contributing: periodContributing,
+      missing: periodMissing,
+    };
+  });
+
+  const changes: import("./types").HistoryChange[] = monthly.slice(1).map((curr, i) => {
+    const prev = monthly[i]!;
+    return {
+      period: curr.period,
+      revenue_change: dollarChange(curr.revenue, prev.revenue),
+      revenue_change_pct: pctChange(curr.revenue, prev.revenue),
+      net_income_change: dollarChange(curr.net_income, prev.net_income),
+      net_income_change_pct: pctChange(curr.net_income, prev.net_income),
+    };
+  });
+
+  // Entity-period snapshot rows: one per (contributing entity, period), sorted
+  // by entity display order then chronologically.
+  const snapshots: import("./types").HistorySnapshotRow[] = [];
+  for (const e of contributing) {
+    const byPeriod = perEntity.get(e.slug)!;
+    for (const period of periods) {
+      const row = byPeriod.get(period);
+      if (!row) continue;
+      snapshots.push({
+        entity: e.entity,
+        slug: e.slug,
+        period,
+        revenue: row.revenue,
+        net_income: row.net_income,
+      });
+    }
+  }
+
+  // Health-score trend: a point per financial period, null when no snapshot exists
+  // for that month. Coverage counts how many of the 19 financial periods have an
+  // authoritative score — only 1/19 having a score is "partial", not "available".
+  const health_score_history: import("./types").HistoryHealthPoint[] = periods.map((period) => {
+    const scores = health.map((h) => h.scoresByMonth.get(period) ?? null);
+    return { period, score: sumNullable(scores) };
+  });
+  const health_score_available = health_score_history.some((p) => p.score !== null);
+  const missingMonths = health_score_history
+    .filter((p) => p.score === null)
+    .map((p) => p.period);
+  const availablePeriods = periods.length - missingMonths.length;
+  const coverageStatus: import("./types").HealthScoreCoverage["status"] =
+    availablePeriods === 0 ? "none" : availablePeriods === periods.length ? "full" : "partial";
+  const health_score_coverage: import("./types").HealthScoreCoverage = {
+    status: coverageStatus,
+    available_periods: availablePeriods,
+    total_periods: periods.length,
+    missing_periods: missingMonths.length,
+    missing_months: missingMonths,
+  };
+
+  return {
+    available: status === "available" || status === "partial",
+    status,
+    entities: entityNames,
+    period_start: periods[0] ?? null,
+    period_end: periods.at(-1) ?? null,
+    generated_at: generatedAt,
+    monthly,
+    changes,
+    snapshots,
+    health_score_history: health_score_available ? health_score_history : null,
+    health_score_available,
+    health_score_coverage,
+    ...(health_score_available
+      ? {}
+      : { health_score_unavailable_reason: "no_historical_health_scores_persisted" }),
+  };
+}
+
+/**
+ * Consolidated monthly history for the selected entities, read from Neon.
+ *   - Monthly revenue/net_income come from financial_periods (period_type =
+ *     'monthly') for the requested entities — ONE query for all of them.
+ *   - Health scores come from the metric_snapshots runtime table via the shared
+ *     snapshotStore reader; each snapshot's health_score is recomputed by
+ *     withHealth() from its stored metrics (never fabricated).
+ * All aggregation/MoM is delegated to buildHistoryResponse. Read-only.
+ */
+export async function getHistoryFromNeon(
+  slugs: EntitySlug[],
+): Promise<import("./types").HistoryResponse> {
+  if (slugs.length === 0) return buildHistoryResponse([], []);
+
+  // Resolve display names + core (lower-cased) slugs for the requested entities.
+  const idRows = await db
+    .select({ slug: entitiesTable.slug, displayName: entitiesTable.displayName })
+    .from(entitiesTable);
+  const metaBySlug = new Map<string, { displayName: string }>();
+  for (const r of idRows) metaBySlug.set(r.slug.toLowerCase(), { displayName: r.displayName });
+
+  const coreSlugs = slugs.map((s) => s.toLowerCase());
+
+  // ONE query: all monthly financial_periods rows for the selected entities.
+  const monthlyRows = await db
+    .select({
+      slug: entitiesTable.slug,
+      periodStart: financialPeriodsTable.periodStart,
+      periodEnd: financialPeriodsTable.periodEnd,
+      revenue: financialPeriodsTable.revenue,
+      netIncome: financialPeriodsTable.netIncome,
+    })
+    .from(financialPeriodsTable)
+    .innerJoin(entitiesTable, eq(entitiesTable.id, financialPeriodsTable.entityId))
+    .where(
+      and(
+        eq(financialPeriodsTable.periodType, "monthly"),
+        inArray(sql`lower(${entitiesTable.slug})`, coreSlugs),
+      ),
+    );
+
+  const rowsByCoreSlug = new Map<string, HistoryEntityMonth[]>();
+  for (const r of monthlyRows) {
+    const key = r.slug.toLowerCase();
+    const list = rowsByCoreSlug.get(key) ?? [];
+    list.push({
+      period: monthLabel(r.periodStart),
+      period_start: dateStr(r.periodStart),
+      period_end: dateStr(r.periodEnd),
+      revenue: numOrNull(r.revenue),
+      net_income: numOrNull(r.netIncome),
+    });
+    rowsByCoreSlug.set(key, list);
+  }
+
+  const entities: HistoryEntityInput[] = slugs.map((slug) => {
+    const core = slug.toLowerCase();
+    const meta = metaBySlug.get(core);
+    const months = (rowsByCoreSlug.get(core) ?? []).sort((a, b) =>
+      a.period.localeCompare(b.period),
+    );
+    return { slug, entity: meta?.displayName ?? slug, months };
+  });
+
+  // Health-score history from the metric_snapshots runtime table. A snapshot
+  // read failure (e.g. table not yet created) must not fail the whole history
+  // response — it degrades to "health score unavailable".
+  let snapshots: import("./types").MetricSnapshotsData | null = null;
+  try {
+    snapshots = await getMetricSnapshots();
+  } catch (err) {
+    console.warn("[neonSource] metric_snapshots unavailable for history health trend:", err);
+  }
+  const requested = new Set<EntitySlug>(slugs);
+  const health: HistoryHealthInput[] = slugs.map((slug) => {
+    const scoresByMonth = new Map<string, number | null>();
+    if (requested.has(slug) && snapshots) {
+      for (const s of snapshots[slug] ?? []) {
+        const score = s.metrics.health_score;
+        scoresByMonth.set(s.month, typeof score === "number" ? score : null);
+      }
+    }
+    return { slug, scoresByMonth };
+  });
+
+  return buildHistoryResponse(entities, health);
 }
 
 // ---------------------------------------------------------------------------

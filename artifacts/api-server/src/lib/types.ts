@@ -336,6 +336,79 @@ export type MetricSnapshot = {
 
 export type MetricSnapshotsData = Record<EntitySlug, MetricSnapshot[]>;
 
+// ─── RC-017: consolidated monthly history (/analyze/history) ─────────────────
+// All aggregation and month-over-month math is performed on the backend from
+// financial_periods monthly rows. The frontend renders these values verbatim.
+
+export type HistoryStatus =
+  | "available"
+  | "partial"
+  | "unavailable"
+  | "incompatible_periods";
+
+/** One consolidated month across the selected entities. */
+export type HistoryMonthlyPoint = {
+  period: string; // YYYY-MM
+  period_start: string; // ISO date
+  period_end: string; // ISO date
+  revenue: number | null;
+  net_income: number | null;
+  by_entity: Record<string, { revenue: number | null; net_income: number | null }>;
+  /** true when at least one — but not all — selected contributing entities has
+   * an authoritative row for this period. The revenue/net_income totals then
+   * sum only the entities that reported; the rest are listed in `missing`. */
+  partial: boolean;
+  /** Slugs of contributing entities that reported a row for this period. */
+  contributing: string[];
+  /** Slugs of contributing entities that had NO row for this period. */
+  missing: string[];
+};
+
+/** Month-over-month change, computed server-side (never in the frontend). */
+export type HistoryChange = {
+  period: string;
+  revenue_change: number | null;
+  revenue_change_pct: number | null;
+  net_income_change: number | null;
+  net_income_change_pct: number | null;
+};
+
+/** One entity-period snapshot row. */
+export type HistorySnapshotRow = {
+  entity: string;
+  slug: string;
+  period: string;
+  revenue: number | null;
+  net_income: number | null;
+};
+
+export type HistoryHealthPoint = { period: string; score: number | null };
+
+export type HealthScoreCoverage = {
+  /** "full" = every financial period has a score; "partial" = some do; "none" = none do. */
+  status: "full" | "partial" | "none";
+  available_periods: number;
+  total_periods: number;
+  missing_periods: number;
+  missing_months: string[];
+};
+
+export type HistoryResponse = {
+  available: boolean;
+  status: HistoryStatus;
+  entities: string[];
+  period_start: string | null;
+  period_end: string | null;
+  generated_at: string;
+  monthly: HistoryMonthlyPoint[];
+  changes: HistoryChange[];
+  snapshots: HistorySnapshotRow[];
+  health_score_history: HistoryHealthPoint[] | null;
+  health_score_available: boolean;
+  health_score_coverage: HealthScoreCoverage;
+  health_score_unavailable_reason?: string;
+};
+
 export type BankAccount = {
   id: string;
   name: string;
