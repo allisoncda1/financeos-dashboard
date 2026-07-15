@@ -21,7 +21,7 @@
  * Never prints credentials. Runs only SELECTs. No writes.
  */
 import { db, entitiesTable, financialPeriodsTable } from "@workspace/db";
-import { asc, eq } from "drizzle-orm";
+import { asc, and, eq } from "drizzle-orm";
 import { ENTITY_SLUGS } from "../lib/types";
 import { getHistoryFromNeon } from "../lib/neonSource";
 import type { EntitySlug } from "../lib/types";
@@ -56,7 +56,7 @@ async function perEntityReport(): Promise<void> {
     const [entity] = await db
       .select({ id: entitiesTable.id, displayName: entitiesTable.displayName })
       .from(entitiesTable)
-      .where(eq(entitiesTable.slug, slug));
+      .where(eq(entitiesTable.slug, slug.toLowerCase()));
 
     if (!entity) {
       console.log(`  ${slug}: no entities row found`);
@@ -70,11 +70,10 @@ async function perEntityReport(): Promise<void> {
         netIncome: financialPeriodsTable.netIncome,
       })
       .from(financialPeriodsTable)
-      .where(eq(financialPeriodsTable.entityId, entity.id))
+      .where(and(eq(financialPeriodsTable.entityId, entity.id), eq(financialPeriodsTable.periodType, "monthly")))
       .orderBy(asc(financialPeriodsTable.periodStart));
 
-    const monthly = rows.filter((r) => r.periodStart);
-    const months = monthly.map((r) => String(r.periodStart).slice(0, 7));
+    const months = rows.map((r) => String(r.periodStart).slice(0, 7));
     const uniqueMonths = [...new Set(months)];
     const duplicates = months.length - uniqueMonths.length;
     const earliest = uniqueMonths[0] ?? null;
@@ -83,11 +82,11 @@ async function perEntityReport(): Promise<void> {
       earliest && latest
         ? monthsBetween(earliest, latest).filter((m) => !uniqueMonths.includes(m))
         : [];
-    const last = monthly.at(-1);
+    const last = rows.at(-1);
 
     console.log(
       `  ${slug} (${entity.displayName}): ` +
-        `earliest=${earliest} latest=${latest} rows=${monthly.length} ` +
+        `earliest=${earliest} latest=${latest} rows=${rows.length} ` +
         `missing=[${missing.join(",")}] duplicates=${duplicates} ` +
         `latestRevenue=${last?.revenue ?? "null"} latestNetIncome=${last?.netIncome ?? "null"}`,
     );
