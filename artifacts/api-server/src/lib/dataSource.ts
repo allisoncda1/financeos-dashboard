@@ -173,13 +173,14 @@ export async function getPortfolioSummary(): Promise<{ data: PortfolioSummary; s
           portfolio_open_ap: openAp,
           portfolio_cash_on_hand: cashOnHand,
           cash_runway_months: cashRunwayMonths,
+          portfolio_health_score_avg: null,
         };
       } catch {
         // fall through to mock
       }
     }
     reportSource("mock");
-    return { ...loadMockData().portfolio, cash_runway_months: null };
+    return { ...loadMockData().portfolio, cash_runway_months: null, portfolio_health_score_avg: null };
   });
 }
 
@@ -275,6 +276,8 @@ async function enrichMetricsFromFinancials(slug: EntitySlug, raw: RawDriveMetric
     open_ar: openAr,
     open_ap: openAp,
     dso_days: raw.dso_days ?? 0,
+    dso_days_standard: null,
+    weighted_average_days_overdue: null,
     dpo_days: raw.dpo_days ?? 0,
     cash_on_hand: raw.cash_on_hand ?? bs?.assets.cash ?? 0,
     // metrics.json exposes 90+ day buckets, not a full overdue split — use

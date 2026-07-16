@@ -5,74 +5,72 @@ import {
 import { KpiCard, type KpiCardData } from "@/components/dashboard/KpiCard";
 import { StaggerContainer, StaggerItem, MotionCard } from "@/components/motion";
 import type { DashboardData } from "@/lib/types";
-import { ENTITY_SLUGS } from "@/lib/entities";
-import { formatCurrency } from "@/lib/format";
+import { formatCurrency, DASH } from "@/lib/format";
 
 const fmt = (n: number | null | undefined) => formatCurrency(n);
 
 export function PortfolioKpiStrip({ data }: { data: DashboardData }) {
   const p = data.portfolio;
 
-  const opexYtd = typeof p.portfolio_opex_ytd === "number" ? p.portfolio_opex_ytd : 0;
-  const cashOnHand = typeof p.portfolio_cash_on_hand === "number" ? p.portfolio_cash_on_hand : 0;
-  const monthlyBurn = opexYtd / 6;
-  const runway = monthlyBurn > 0 ? cashOnHand / monthlyBurn : 0;
+  // Cash runway comes from the server (computed date-aware in neonSource.ts /
+  // services/kpi.ts). Null means no valid data; show "—" rather than a
+  // fabricated number.
+  const runway = p.cash_runway_months;
+  const runwayLabel = runway !== null ? `${runway.toFixed(1)} mo` : DASH;
 
-  // Portfolio average of the single-source, server-computed entity scores.
-  const scores = ENTITY_SLUGS.map((s) => data.metrics[s].health_score);
-  const avgHealth = Math.round(scores.reduce((a, b) => a + b, 0) / scores.length);
+  // Portfolio health avg is computed server-side from the same penalty formula
+  // used per entity. Null when insufficient data is available from any entity.
+  const avgHealth = p.portfolio_health_score_avg;
+  const healthLabel = avgHealth !== null
+    ? `${avgHealth}/100`
+    : DASH;
+  const healthStatus = avgHealth !== null
+    ? (avgHealth >= 85 ? "Excellent" : avgHealth >= 70 ? "Good" : "Needs Attention")
+    : null;
 
   const cards: KpiCardData[] = [
     {
       label: "Revenue YTD",
       value: fmt(p.portfolio_revenue_ytd),
-      delta: "+8.2%",
-      positive: true,
       icon: TrendingUp,
       iconBg: "#10B981",
-      compare: "vs prior period",
+      compare: "portfolio total",
     },
     {
       label: "Net Income",
       value: fmt(p.portfolio_net_income_ytd),
-      delta: "+12.4%",
-      positive: true,
       icon: DollarSign,
       iconBg: "#3B82F6",
-      compare: "vs prior period",
+      compare: "portfolio total",
     },
     {
       label: "Cash on Hand",
       value: fmt(p.portfolio_cash_on_hand),
-      delta: "+3.1%",
-      positive: true,
       icon: Landmark,
       iconBg: "#6366F1",
-      compare: "vs last month",
+      compare: "portfolio total",
     },
     {
       label: "Open AR",
       value: fmt(p.portfolio_open_ar),
-      delta: "+5.8%",
-      positive: false,
       icon: Receipt,
       iconBg: "#F59E0B",
-      compare: "vs last month",
+      compare: "portfolio total",
     },
     {
       label: "Cash Runway",
-      value: `${runway.toFixed(1)} mo`,
-      delta: runway >= 6 ? "Healthy" : "Watch",
-      positive: runway >= 6,
+      value: runwayLabel,
+      delta: runway !== null ? (runway >= 6 ? "Healthy" : "Watch") : undefined,
+      positive: runway !== null ? runway >= 6 : undefined,
       icon: Clock,
       iconBg: "#8B5CF6",
       compare: "at current burn rate",
     },
     {
       label: "Health Score",
-      value: `${avgHealth}/100`,
-      delta: avgHealth >= 85 ? "Excellent" : avgHealth >= 70 ? "Good" : "Needs Attention",
-      positive: avgHealth >= 70,
+      value: healthLabel,
+      delta: healthStatus ?? undefined,
+      positive: avgHealth !== null ? avgHealth >= 70 : undefined,
       icon: Activity,
       iconBg: "#059669",
       compare: "portfolio avg",

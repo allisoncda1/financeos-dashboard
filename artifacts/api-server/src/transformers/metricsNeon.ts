@@ -52,6 +52,8 @@ export async function transformMetricsNeon(slug: EntitySlug): Promise<EntityMetr
     open_ar:          openAr,
     open_ap:          openAp,
     dso_days:         ytdRow.dsoDays,
+    dso_days_standard: null,
+    weighted_average_days_overdue: null,
     dpo_days:         ytdRow.dpoDays,
     cash_on_hand:     ytdRow.cashOnHand,
     ar_overdue_pct:   ytdRow.arOverduePct,

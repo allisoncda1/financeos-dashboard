@@ -1,15 +1,3 @@
-import {
-  pgTable,
-  uuid,
-  text,
-  date,
-  numeric,
-  jsonb,
-  timestamp,
-  check,
-} from "drizzle-orm/pg-core";
-import { sql } from "drizzle-orm";
-
 /**
  * Parsed QBO Cash Flow statements, written by financeos_core build_semantic_layer.py.
  * Read-only from the Dashboard's perspective (CORE_DATABASE_URL).
@@ -22,6 +10,18 @@ import { sql } from "drizzle-orm";
  *   validation_status = 'passed' AND publication_status = 'published'
  * Invalid or unverified rows must never reach the UI.
  */
+import {
+  pgTable,
+  uuid,
+  text,
+  date,
+  numeric,
+  jsonb,
+  timestamp,
+  check,
+} from "drizzle-orm/pg-core";
+import { sql } from "drizzle-orm";
+
 export const cashFlowStatementsTable = pgTable(
   "cash_flow_statements",
   {

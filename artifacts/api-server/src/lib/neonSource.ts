@@ -52,7 +52,10 @@ import type {
   ConsolidatedCashFlow,
   ConsolidatedCashFlowEntity,
 } from "./types";
+import { computeEntityHealthScore } from "./health";
 import { computePipelineMetrics } from "./pipelineMetrics";
+import { getCachedEntityId } from "../services/entityCache";
+import { computeStandardDso } from "../services/kpi";
 
 /** Canonical display order, mirroring the Drive/mock `entities` array. */
 const SLUG_ORDER = ["cardealer_ai", "t3_marketing", "topmrktr", "smile_more"];
@@ -97,6 +100,9 @@ export async function getPortfolioSummaryFromNeon(): Promise<PortfolioSummary> {
       cashOnHand: financialPeriodsTable.cashOnHand,
       openAr: financialPeriodsTable.openAr,
       openAp: financialPeriodsTable.openAp,
+      dsoDays: financialPeriodsTable.dsoDays,
+      arOverduePct: financialPeriodsTable.arOverduePct,
+      netMarginPct: financialPeriodsTable.netMarginPct,
     })
     .from(financialPeriodsTable)
     .innerJoin(entitiesTable, eq(entitiesTable.id, financialPeriodsTable.entityId))
@@ -146,9 +152,42 @@ export async function getPortfolioSummaryFromNeon(): Promise<PortfolioSummary> {
     .sort((a, b) => slugRank(a.slug) - slugRank(b.slug))
     .map((r) => r.displayName);
 
+  // Most recent financial_periods row by generated_at — used as the pipeline_run
+  // timestamp when no portfolio_snapshot is present. Better than new Date() which
+  // would fabricate a "live" timestamp for data that may be days old.
+  const latestGeneratedAt = ytdRows.reduce<Date | null>((best, r) => {
+    const t = r.generatedAt instanceof Date ? r.generatedAt : null;
+    if (t === null) return best;
+    return best === null || t > best ? t : best;
+  }, null);
+
+  // Compute server-side health scores from each entity's YTD metrics so the
+  // portfolio average uses the same penalty formula as individual entity pages.
+  const healthScores: number[] = [];
+  for (const r of ytdRows) {
+    const dso = num(r.dsoDays);
+    const arPct = num(r.arOverduePct);
+    const margin = num(r.netMarginPct);
+    const score = computeEntityHealthScore({
+      entity: r.slug, slug: r.slug as EntitySlug, basis: "Accrual", as_of: r.periodEnd,
+      pipeline_run: r.periodEnd,
+      revenue_ytd: num(r.revenue), cogs_ytd: num(r.cogs), gross_profit_ytd: num(r.grossProfit),
+      gross_margin_pct: 0, opex_ytd: num(r.opex), net_income_ytd: num(r.netIncome),
+      net_margin_pct: margin, total_assets: 0, total_liabilities: 0, total_equity: 0,
+      open_ar: num(r.openAr), open_ap: num(r.openAp),
+      dso_days: dso, dpo_days: 0, cash_on_hand: num(r.cashOnHand),
+      ar_overdue_pct: arPct, ap_overdue_pct: 0,
+      dso_days_standard: null, weighted_average_days_overdue: null,
+    });
+    healthScores.push(score);
+  }
+  const portfolioHealthScoreAvg = healthScores.length > 0
+    ? Math.round(healthScores.reduce((s, v) => s + v, 0) / healthScores.length)
+    : null;
+
   return {
-    as_of: snapshot ? snapshot.asOf : new Date().toISOString().slice(0, 10),
-    pipeline_run: snapshot ? snapshot.pipelineRun.toISOString() : new Date().toISOString(),
+    as_of: snapshot ? snapshot.asOf : (latestGeneratedAt?.toISOString().slice(0, 10) ?? "unknown"),
+    pipeline_run: snapshot ? snapshot.pipelineRun.toISOString() : (latestGeneratedAt?.toISOString() ?? "unknown"),
     entities,
     entity_count: ytdRows.length,
     portfolio_revenue_ytd: revenue,
@@ -161,6 +200,7 @@ export async function getPortfolioSummaryFromNeon(): Promise<PortfolioSummary> {
     portfolio_open_ap: openAp,
     portfolio_cash_on_hand: cashOnHand,
     cash_runway_months: cashRunwayMonths,
+    portfolio_health_score_avg: portfolioHealthScoreAvg,
   };
 }
 
@@ -306,15 +346,24 @@ export async function getDataFreshnessFromNeon(): Promise<DataFreshness> {
     throw new Error("Neon has no sync_runs or portfolio_snapshots for freshness");
   }
 
-  const pipelineRun =
+  // Resolve the pipeline run timestamp from authoritative sources only — never
+  // fabricate a timestamp with new Date(). If latestSync has neither completedAt
+  // nor startedAt (a half-initialised row), surface "unknown" so the UI can show
+  // an honest stale/error state rather than a misleadingly fresh timestamp.
+  const pipelineRunDate =
     snapshot?.pipelineRun ??
     latestSync?.completedAt ??
-    latestSync?.startedAt ??
-    new Date();
+    latestSync?.startedAt;
+  const pipeline_run = pipelineRunDate ? pipelineRunDate.toISOString() : "unknown";
+
+  // data_as_of = the date the pipeline's model snapshot was published. Falls back
+  // to the sync completion date (not today) when no portfolio snapshot exists.
+  const syncDate = latestSync?.completedAt ?? latestSync?.startedAt;
+  const data_as_of = snapshot?.asOf ?? syncDate?.toISOString().slice(0, 10) ?? "unknown";
 
   return {
-    pipeline_run: pipelineRun.toISOString(),
-    data_as_of: snapshot ? snapshot.asOf : new Date().toISOString().slice(0, 10),
+    pipeline_run,
+    data_as_of,
     entities_built: entitiesBuilt,
     qbo_connection: latestSync?.status === "success" ? "healthy" : (latestSync?.status ?? "unknown"),
     phase2_extraction: latestSync?.status === "success" ? "complete" : (latestSync?.status ?? "unknown"),
@@ -394,19 +443,38 @@ export async function getEntityMetricsFromNeon(slug: EntitySlug): Promise<Entity
   // Dashboard slugs (CarDealer_ai) are the lower-cased Core slugs (cardealer_ai).
   const coreSlug = slug.toLowerCase();
 
-  const [row] = await db
-    .select({
-      metrics: entitySnapshotsTable.metrics,
-      pipelineRun: entitySnapshotsTable.pipelineRun,
-      displayName: entitiesTable.displayName,
-      accountingBasis: entitiesTable.accountingBasis,
-    })
-    .from(entitySnapshotsTable)
-    .innerJoin(entitiesTable, eq(entitiesTable.id, entitySnapshotsTable.entityId))
-    .where(and(eq(entitiesTable.slug, coreSlug), eq(entitySnapshotsTable.isCurrent, true)))
-    .orderBy(desc(entitySnapshotsTable.generatedAt))
-    .limit(1);
+  // Run in parallel: entity snapshot + latest YTD financial_period (for periodDays).
+  const [snapshotRows, ytdPeriodRows] = await Promise.all([
+    db
+      .select({
+        metrics: entitySnapshotsTable.metrics,
+        pipelineRun: entitySnapshotsTable.pipelineRun,
+        displayName: entitiesTable.displayName,
+        accountingBasis: entitiesTable.accountingBasis,
+      })
+      .from(entitySnapshotsTable)
+      .innerJoin(entitiesTable, eq(entitiesTable.id, entitySnapshotsTable.entityId))
+      .where(and(eq(entitiesTable.slug, coreSlug), eq(entitySnapshotsTable.isCurrent, true)))
+      .orderBy(desc(entitySnapshotsTable.generatedAt))
+      .limit(1),
+    db
+      .select({
+        periodStart: financialPeriodsTable.periodStart,
+        periodEnd: financialPeriodsTable.periodEnd,
+      })
+      .from(financialPeriodsTable)
+      .innerJoin(entitiesTable, eq(entitiesTable.id, financialPeriodsTable.entityId))
+      .where(
+        and(
+          eq(entitiesTable.slug, coreSlug),
+          eq(financialPeriodsTable.periodType, "ytd"),
+        ),
+      )
+      .orderBy(desc(financialPeriodsTable.periodEnd))
+      .limit(1),
+  ]);
 
+  const [row] = snapshotRows;
   if (!row) {
     throw new Error(
       `Neon has no current entity_snapshot for "${slug}" (core slug "${coreSlug}")`,
@@ -427,6 +495,26 @@ export async function getEntityMetricsFromNeon(slug: EntitySlug): Promise<Entity
   const bs = m.balance_sheet?.current ?? {};
   const arap = m.ar_ap_metrics ?? {};
   const cash = m.cash_metrics ?? {};
+
+  // Standard DSO = (openAr / revenue) × periodDays.
+  // periodDays comes from the financial_periods YTD row boundaries (authoritative).
+  // weighted_average_days_overdue is the pipeline's per-customer weighted metric
+  // (entity_snapshots.arap.dso_days) — a DIFFERENT metric, labelled clearly.
+  const [ytdPeriod] = ytdPeriodRows;
+  let dso_days_standard: number | null = null;
+  if (ytdPeriod?.periodStart && ytdPeriod?.periodEnd) {
+    const start = new Date(dateStr(ytdPeriod.periodStart)).getTime();
+    const end = new Date(dateStr(ytdPeriod.periodEnd)).getTime();
+    const periodDays = Math.round((end - start) / 86_400_000) + 1;
+    dso_days_standard = computeStandardDso(
+      toNum(arap.open_ar),
+      toNum(ytd.revenue),
+      periodDays,
+    );
+  }
+  const weighted_average_days_overdue: number | null = arap.dso_days != null
+    ? toNum(arap.dso_days)
+    : null;
 
   return {
     entity: m.entity_name ?? row.displayName,
@@ -449,6 +537,8 @@ export async function getEntityMetricsFromNeon(slug: EntitySlug): Promise<Entity
     open_ar: toNum(arap.open_ar),
     open_ap: toNum(arap.open_ap),
     dso_days: toNum(arap.dso_days),
+    dso_days_standard,
+    weighted_average_days_overdue,
     dpo_days: toNum(arap.dpo_days),
     cash_on_hand: toNum(cash.cash_current ?? bs.cash_on_hand),
     ar_overdue_pct: toNum(arap.ar_overdue_pct),
