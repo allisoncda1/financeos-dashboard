@@ -1,5 +1,5 @@
 /**
- * FinanceOS Report Design System — v2
+ * FinanceOS Report Design System — v3
  *
  * Premium design system for print-ready financial reports.
  * Outputs are pure HTML/CSS/SVG strings; no runtime dependencies.
@@ -12,6 +12,10 @@
  *   SVG charts      – inline SVG generators for line, bar, waterfall, donut
  *   Components      – cover, pageHeader, sectionBanner, kpiCard, table helpers,
  *                     insight, badge, emptyState, dataFooter
+ *                   – NEW: refPageHeader, refSectionHeader, refKpiRow,
+ *                     refInsightPanel, refRecommendationCallout, refNarrative,
+ *                     refSmallNote, refSubHeading
+ *                   – NEW SVGs: svgSimpleBars, svgGroupedBars, svgHBarRef, svgLineRef
  */
 
 import { readFileSync } from "fs";
@@ -34,14 +38,14 @@ export const BRAND = {
   info:           "#1d4ed8",
 
   // Section accent colors
-  sectionExec:    "#0f2e1f",   // Executive — forest green
-  sectionPerf:    "#1e3a5f",   // Performance — deep blue
-  sectionPnL:     "#1e293b",   // P&L — slate navy
-  sectionBS:      "#1e3a5f",   // Balance Sheet — deep blue
-  sectionCF:      "#134e4a",   // Cash Flow — dark teal
-  sectionARAP:    "#3b0764",   // AR/AP — deep purple
-  sectionAlerts:  "#7c2d12",   // Alerts — deep orange/red
-  sectionInteg:   "#1e293b",   // Data Integrity — slate
+  sectionExec:    "#0f2e1f",
+  sectionPerf:    "#1e3a5f",
+  sectionPnL:     "#1e293b",
+  sectionBS:      "#1e3a5f",
+  sectionCF:      "#134e4a",
+  sectionARAP:    "#3b0764",
+  sectionAlerts:  "#7c2d12",
+  sectionInteg:   "#1e293b",
 
   // Text
   textPrimary:    "#0f172a",
@@ -57,6 +61,10 @@ export const BRAND = {
   borderLight:    "#e2e8f0",
   borderMid:      "#cbd5e1",
   borderDark:     "#94a3b8",
+
+  // v3 additions
+  accent:         "#2563eb",
+  coverBg:        "#0f172a",
 } as const;
 
 // ─── Logo embed (path-safe, cached) ──────────────────────────────────────────
@@ -139,7 +147,6 @@ export function fmtCurrency(
 
 export function fmtPercent(value: number | null | undefined, decimals = 1): string {
   if (value === null || value === undefined || !Number.isFinite(value)) return "—";
-  const sign = value >= 0 ? "" : "";
   return `${value.toFixed(decimals)}%`;
 }
 
@@ -181,7 +188,7 @@ export function amountCell(
   }
   const formatted = fmtCurrency(value, { showParens: true });
   const isNeg = value < 0;
-  const cssClass = isNeg ? "amount--negative" : "amount--positive";
+  const cssClass = isNeg !== invertColor ? "amount--negative" : "amount--positive";
   return { html: `<span class="${cssClass}">${formatted}</span>`, cssClass };
 }
 
@@ -224,7 +231,7 @@ export function variancePill(
 
 // ─── SVG Chart generators ─────────────────────────────────────────────────────
 
-/** SVG line/area chart for trend data. Returns self-contained SVG element. */
+/** SVG line/area chart for trend data. Improved with data labels and $K Y-axis grid. */
 export function svgLineChart(
   data: (number | null)[],
   opts: {
@@ -239,16 +246,16 @@ export function svgLineChart(
     compact?: boolean;
   } = {},
 ): string {
-  const W = opts.width ?? 280;
-  const H = opts.height ?? 70;
-  const color = opts.color ?? BRAND.darkGreen;
+  const W = opts.width ?? 380;
+  const H = opts.height ?? 120;
+  const color = opts.color ?? BRAND.accent;
   const valid = data.filter((v): v is number => v !== null && Number.isFinite(v));
-  if (valid.length < 2) return `<svg width="${W}" height="${H}" viewBox="0 0 ${W} ${H}"><text x="${W/2}" y="${H/2}" text-anchor="middle" font-size="9" fill="${BRAND.textFaint}">No trend data</text></svg>`;
+  if (valid.length < 2) return `<svg width="${W}" height="${H}" viewBox="0 0 ${W} ${H}"><text x="${W / 2}" y="${H / 2}" text-anchor="middle" font-size="9" fill="${BRAND.textFaint}">No trend data</text></svg>`;
 
-  const PAD_L = opts.labels ? 8 : 8;
-  const PAD_R = 8;
-  const PAD_T = 8;
-  const PAD_B = opts.labels ? 18 : 8;
+  const PAD_L = 42;
+  const PAD_R = 12;
+  const PAD_T = 18;
+  const PAD_B = opts.labels ? 22 : 10;
   const chartW = W - PAD_L - PAD_R;
   const chartH = H - PAD_T - PAD_B;
 
@@ -256,15 +263,25 @@ export function svgLineChart(
   const max = Math.max(...valid);
   const range = max - min || 1;
 
-  const indices: number[] = [];
-  const pts: { x: number; y: number }[] = [];
+  // Nice Y axis ticks
+  const gridLevels = 4;
+  const gridLines: string[] = [];
+  const gridLabels: string[] = [];
+  for (let i = 0; i <= gridLevels; i++) {
+    const frac = i / gridLevels;
+    const val = min + frac * range;
+    const y = PAD_T + chartH - frac * chartH;
+    gridLines.push(`<line x1="${PAD_L}" y1="${y.toFixed(1)}" x2="${(W - PAD_R).toFixed(1)}" y2="${y.toFixed(1)}" stroke="#f3f4f6" stroke-width="0.75" />`);
+    const labelTxt = Math.abs(val) >= 1000 ? `$${(val / 1000).toFixed(0)}K` : `$${val.toFixed(0)}`;
+    gridLabels.push(`<text x="${(PAD_L - 4).toFixed(1)}" y="${(y + 3).toFixed(1)}" text-anchor="end" font-size="6.5" fill="${BRAND.textFaint}">${escHtml(labelTxt)}</text>`);
+  }
 
+  const pts: { x: number; y: number; v: number }[] = [];
   data.forEach((v, i) => {
     if (v !== null && Number.isFinite(v)) {
       const x = PAD_L + (i / (data.length - 1)) * chartW;
       const y = PAD_T + chartH - ((v - min) / range) * chartH;
-      indices.push(i);
-      pts.push({ x, y });
+      pts.push({ x, y, v });
     }
   });
 
@@ -275,36 +292,37 @@ export function svgLineChart(
     `${pts[pts.length - 1]!.x.toFixed(1)},${(PAD_T + chartH).toFixed(1)}`,
   ].join(" ");
 
-  const fillOpacity = opts.fillOpacity ?? 0.12;
+  const fillOpacity = opts.fillOpacity ?? 0.10;
 
-  let dots = "";
-  if (opts.showDots !== false && pts.length <= 12) {
-    dots = pts.map((p) => `<circle cx="${p.x.toFixed(1)}" cy="${p.y.toFixed(1)}" r="2.5" fill="${color}" />`).join("");
-  }
+  const dotEls = (opts.showDots !== false && pts.length <= 14)
+    ? pts.map((p) => `<circle cx="${p.x.toFixed(1)}" cy="${p.y.toFixed(1)}" r="3" fill="${color}" />`).join("")
+    : "";
 
-  let grid = "";
-  if (opts.showGrid) {
-    const gridY1 = PAD_T + chartH * 0.33;
-    const gridY2 = PAD_T + chartH * 0.67;
-    grid = `
-      <line x1="${PAD_L}" y1="${gridY1.toFixed(1)}" x2="${W - PAD_R}" y2="${gridY1.toFixed(1)}" stroke="${BRAND.borderLight}" stroke-width="0.5" />
-      <line x1="${PAD_L}" y1="${gridY2.toFixed(1)}" x2="${W - PAD_R}" y2="${gridY2.toFixed(1)}" stroke="${BRAND.borderLight}" stroke-width="0.5" />`;
-  }
+  // Data labels above dots
+  const dataLabels = (opts.showDots !== false && pts.length <= 14)
+    ? pts.map((p) => {
+        const lbl = Math.abs(p.v) >= 1000 ? `$${(p.v / 1000).toFixed(0)}K` : `$${p.v.toFixed(0)}`;
+        return `<text x="${p.x.toFixed(1)}" y="${(p.y - 6).toFixed(1)}" text-anchor="middle" font-size="6.5" font-weight="600" fill="${color}">${escHtml(lbl)}</text>`;
+      }).join("")
+    : "";
 
   let labelHtml = "";
-  if (opts.labels && opts.labels.length >= 2) {
-    const first = opts.labels[0]!;
-    const last = opts.labels[opts.labels.length - 1]!;
-    labelHtml = `
-      <text x="${PAD_L}" y="${H - 2}" font-size="7" fill="${BRAND.textFaint}">${escHtml(first)}</text>
-      <text x="${W - PAD_R}" y="${H - 2}" text-anchor="end" font-size="7" fill="${BRAND.textFaint}">${escHtml(last)}</text>`;
+  if (opts.labels && opts.labels.length > 0) {
+    const step = data.length > 1 ? chartW / (data.length - 1) : chartW;
+    labelHtml = opts.labels.map((lbl, i) => {
+      const x = PAD_L + i * step;
+      return `<text x="${x.toFixed(1)}" y="${(H - 3).toFixed(1)}" text-anchor="middle" font-size="6.5" fill="${BRAND.textFaint}">${escHtml(lbl)}</text>`;
+    }).join("");
   }
 
   return `<svg width="${W}" height="${H}" viewBox="0 0 ${W} ${H}" xmlns="http://www.w3.org/2000/svg">
-    ${grid}
+    <rect x="${PAD_L}" y="${PAD_T}" width="${chartW}" height="${chartH}" fill="#f9fafb" />
+    ${gridLines.join("")}
+    ${gridLabels.join("")}
     <polygon points="${areaPoly}" fill="${color}" opacity="${fillOpacity}" />
-    <polyline points="${polyline}" fill="none" stroke="${color}" stroke-width="2" stroke-linejoin="round" stroke-linecap="round" />
-    ${dots}
+    <polyline points="${polyline}" fill="none" stroke="${color}" stroke-width="1.75" stroke-linejoin="round" stroke-linecap="round" />
+    ${dotEls}
+    ${dataLabels}
     ${labelHtml}
   </svg>`;
 }
@@ -323,12 +341,11 @@ export function svgWaterfallChart(
   const chartW = W - PAD_L - PAD_R;
   const chartH = H - PAD_T - PAD_B;
 
-  // Compute running totals
   const points: { start: number; end: number; label: string; color: string; isTotal: boolean }[] = [];
   let running = 0;
   for (const bar of bars) {
     if (bar.isTotal) {
-      points.push({ start: 0, end: bar.value, label: bar.label, color: bar.color ?? BRAND.darkGreen, isTotal: true });
+      points.push({ start: 0, end: bar.value, label: bar.label, color: bar.color ?? BRAND.accent, isTotal: true });
     } else {
       const start = running;
       running += bar.value;
@@ -358,17 +375,14 @@ export function svgWaterfallChart(
     const bh = Math.max(y2 - y1, 2);
     barsHtml += `<rect x="${x.toFixed(1)}" y="${y1.toFixed(1)}" width="${barW.toFixed(1)}" height="${bh.toFixed(1)}" fill="${p.color}" rx="1.5" />`;
 
-    // Label below
     const labelY = H - PAD_B + 12;
     labelsHtml += `<text x="${(x + barW / 2).toFixed(1)}" y="${labelY}" text-anchor="middle" font-size="6.5" fill="${BRAND.textSecondary}">${escHtml(p.label)}</text>`;
 
-    // Value above bar
     const valY = y1 - 3;
     const valText = fmtCurrency(p.isTotal ? p.end : p.end - p.start, { compact: true });
     const valColor = p.isTotal ? BRAND.textPrimary : p.color;
     labelsHtml += `<text x="${(x + barW / 2).toFixed(1)}" y="${valY.toFixed(1)}" text-anchor="middle" font-size="6.5" font-weight="600" fill="${valColor}">${escHtml(valText)}</text>`;
 
-    // Connector to next bar
     if (i < points.length - 1 && !p.isTotal) {
       const nextX = PAD_L + ((i + 1) / points.length) * chartW + gap / 2;
       connectors += `<line x1="${(x + barW).toFixed(1)}" y1="${toY(p.end).toFixed(1)}" x2="${nextX.toFixed(1)}" y2="${toY(p.end).toFixed(1)}" stroke="${BRAND.borderMid}" stroke-width="0.75" stroke-dasharray="2,2" />`;
@@ -404,7 +418,7 @@ export function svgHBars(
     const barH = 10;
     const barY = y + (rowH - barH) / 2;
     const bw = Math.max((Math.abs(bar.value) / Math.max(maxVal, 1)) * chartW, 0);
-    const color = bar.color ?? BRAND.darkGreen;
+    const color = bar.color ?? BRAND.accent;
     const labelText = fmtCurrency(bar.value, { compact: true });
     const negative = bar.value < 0;
 
@@ -466,27 +480,300 @@ export function svgDonut(
   </svg>`;
 }
 
+// ─── NEW SVG charts ───────────────────────────────────────────────────────────
+
+/** Simple vertical bar chart matching reference style. */
+export function svgSimpleBars(
+  data: { label: string; value: number }[],
+  opts: {
+    width?: number;
+    height?: number;
+    color?: string;
+    unit?: string;
+    title?: string;
+  } = {},
+): string {
+  const W = opts.width ?? 380;
+  const H = opts.height ?? 160;
+  const color = opts.color ?? BRAND.accent;
+  const PAD_L = 42;
+  const PAD_R = 10;
+  const PAD_T = opts.title ? 22 : 16;
+  const PAD_B = 22;
+  const chartW = W - PAD_L - PAD_R;
+  const chartH = H - PAD_T - PAD_B;
+
+  if (data.length === 0) {
+    return `<svg width="${W}" height="${H}" viewBox="0 0 ${W} ${H}"><text x="${W / 2}" y="${H / 2}" text-anchor="middle" font-size="9" fill="${BRAND.textFaint}">No data</text></svg>`;
+  }
+
+  const maxVal = Math.max(...data.map((d) => Math.abs(d.value)), 1);
+  const gridLevels = 4;
+  const gridLines: string[] = [];
+  const gridLabels: string[] = [];
+  for (let i = 0; i <= gridLevels; i++) {
+    const frac = i / gridLevels;
+    const val = frac * maxVal;
+    const y = PAD_T + chartH - frac * chartH;
+    gridLines.push(`<line x1="${PAD_L}" y1="${y.toFixed(1)}" x2="${(W - PAD_R).toFixed(1)}" y2="${y.toFixed(1)}" stroke="#e5e7eb" stroke-width="0.5" />`);
+    const labelTxt = val >= 1000 ? `$${(val / 1000).toFixed(0)}K` : `$${val.toFixed(0)}`;
+    gridLabels.push(`<text x="${(PAD_L - 4).toFixed(1)}" y="${(y + 3).toFixed(1)}" text-anchor="end" font-size="6.5" fill="#9ca3af">${escHtml(labelTxt)}</text>`);
+  }
+
+  const barW = Math.max((chartW / data.length) * 0.6, 4);
+  const slot = chartW / data.length;
+
+  let bars = "";
+  let labels = "";
+  let dataLabels = "";
+  data.forEach((d, i) => {
+    const x = PAD_L + i * slot + (slot - barW) / 2;
+    const barH = Math.max((Math.abs(d.value) / maxVal) * chartH, 1);
+    const y = PAD_T + chartH - barH;
+    bars += `<rect x="${x.toFixed(1)}" y="${y.toFixed(1)}" width="${barW.toFixed(1)}" height="${barH.toFixed(1)}" fill="${color}" rx="2" />`;
+    // Label above bar
+    const lbl = Math.abs(d.value) >= 1000 ? `$${(d.value / 1000).toFixed(0)}K` : `$${d.value.toFixed(0)}`;
+    dataLabels += `<text x="${(x + barW / 2).toFixed(1)}" y="${(y - 3).toFixed(1)}" text-anchor="middle" font-size="6.5" font-weight="600" fill="${color}">${escHtml(lbl)}</text>`;
+    // X label
+    labels += `<text x="${(x + barW / 2).toFixed(1)}" y="${(H - 4).toFixed(1)}" text-anchor="middle" font-size="6.5" fill="#6b7280">${escHtml(d.label)}</text>`;
+  });
+
+  const titleEl = opts.title ? `<text x="${PAD_L}" y="12" font-size="8" font-weight="600" fill="#374151">${escHtml(opts.title)}</text>` : "";
+
+  return `<svg width="${W}" height="${H}" viewBox="0 0 ${W} ${H}" xmlns="http://www.w3.org/2000/svg">
+    <rect x="${PAD_L}" y="${PAD_T}" width="${chartW}" height="${chartH}" fill="#f3f4f6" />
+    ${titleEl}
+    ${gridLines.join("")}
+    ${gridLabels.join("")}
+    ${bars}
+    ${dataLabels}
+    ${labels}
+  </svg>`;
+}
+
+/** Grouped vertical bar chart (e.g. prior vs current). */
+export function svgGroupedBars(
+  groups: string[],
+  series: { label: string; color: string; values: number[] }[],
+  opts: {
+    width?: number;
+    height?: number;
+    unit?: string;
+    title?: string;
+  } = {},
+): string {
+  const W = opts.width ?? 380;
+  const H = opts.height ?? 160;
+  const PAD_L = 42;
+  const PAD_R = 10;
+  const PAD_T = opts.title ? 22 : 16;
+  const PAD_B = 26;
+  const chartW = W - PAD_L - PAD_R;
+  const chartH = H - PAD_T - PAD_B;
+
+  if (groups.length === 0 || series.length === 0) {
+    return `<svg width="${W}" height="${H}" viewBox="0 0 ${W} ${H}"><text x="${W / 2}" y="${H / 2}" text-anchor="middle" font-size="9" fill="${BRAND.textFaint}">No data</text></svg>`;
+  }
+
+  const allVals = series.flatMap((s) => s.values.map(Math.abs));
+  const maxVal = Math.max(...allVals, 1);
+
+  const gridLevels = 4;
+  const gridLines: string[] = [];
+  const gridLabels: string[] = [];
+  for (let i = 0; i <= gridLevels; i++) {
+    const frac = i / gridLevels;
+    const val = frac * maxVal;
+    const y = PAD_T + chartH - frac * chartH;
+    gridLines.push(`<line x1="${PAD_L}" y1="${y.toFixed(1)}" x2="${(W - PAD_R).toFixed(1)}" y2="${y.toFixed(1)}" stroke="#e5e7eb" stroke-width="0.5" />`);
+    const labelTxt = val >= 1000 ? `$${(val / 1000).toFixed(0)}K` : `$${val.toFixed(0)}`;
+    gridLabels.push(`<text x="${(PAD_L - 4).toFixed(1)}" y="${(y + 3).toFixed(1)}" text-anchor="end" font-size="6.5" fill="#9ca3af">${escHtml(labelTxt)}</text>`);
+  }
+
+  const slot = chartW / groups.length;
+  const groupPad = slot * 0.12;
+  const barW = Math.max((slot - groupPad * 2) / series.length, 3);
+
+  let bars = "";
+  let xlabels = "";
+  let dataLabels = "";
+
+  groups.forEach((grp, gi) => {
+    const groupX = PAD_L + gi * slot + groupPad;
+    series.forEach((s, si) => {
+      const val = s.values[gi] ?? 0;
+      const x = groupX + si * barW;
+      const barH = Math.max((Math.abs(val) / maxVal) * chartH, 1);
+      const y = PAD_T + chartH - barH;
+      bars += `<rect x="${x.toFixed(1)}" y="${y.toFixed(1)}" width="${(barW - 1).toFixed(1)}" height="${barH.toFixed(1)}" fill="${s.color}" rx="1.5" />`;
+      const lbl = Math.abs(val) >= 1000 ? `$${(val / 1000).toFixed(0)}K` : `$${val.toFixed(0)}`;
+      dataLabels += `<text x="${(x + (barW - 1) / 2).toFixed(1)}" y="${(y - 3).toFixed(1)}" text-anchor="middle" font-size="5.5" fill="${s.color}">${escHtml(lbl)}</text>`;
+    });
+    const midX = groupX + (series.length * barW) / 2;
+    xlabels += `<text x="${midX.toFixed(1)}" y="${(H - 10).toFixed(1)}" text-anchor="middle" font-size="6.5" fill="#6b7280">${escHtml(grp)}</text>`;
+  });
+
+  // Legend
+  const legendY = H - 2;
+  const legendItems = series.map((s, i) => {
+    const lx = PAD_L + i * 70;
+    return `<rect x="${lx}" y="${(legendY - 7).toFixed(1)}" width="8" height="6" fill="${s.color}" rx="1" /><text x="${(lx + 11).toFixed(1)}" y="${legendY.toFixed(1)}" font-size="6.5" fill="#6b7280">${escHtml(s.label)}</text>`;
+  }).join("");
+
+  const titleEl = opts.title ? `<text x="${PAD_L}" y="12" font-size="8" font-weight="600" fill="#374151">${escHtml(opts.title)}</text>` : "";
+
+  return `<svg width="${W}" height="${H}" viewBox="0 0 ${W} ${H}" xmlns="http://www.w3.org/2000/svg">
+    <rect x="${PAD_L}" y="${PAD_T}" width="${chartW}" height="${chartH}" fill="#f3f4f6" />
+    ${titleEl}
+    ${gridLines.join("")}
+    ${gridLabels.join("")}
+    ${bars}
+    ${dataLabels}
+    ${xlabels}
+    ${legendItems}
+  </svg>`;
+}
+
+/** Horizontal bar chart matching reference "Top 5 Customers" style. */
+export function svgHBarRef(
+  items: { label: string; value: number; color?: string }[],
+  opts: {
+    width?: number;
+    height?: number;
+    unit?: string;
+    maxValue?: number;
+  } = {},
+): string {
+  const W = opts.width ?? 380;
+  const rowH = 22;
+  const PAD_L = 100;
+  const PAD_R = 60;
+  const H = items.length * rowH + 8;
+  const chartW = W - PAD_L - PAD_R;
+  const maxVal = opts.maxValue ?? Math.max(...items.map((d) => Math.abs(d.value)), 1);
+
+  let rows = "";
+  items.forEach((item, i) => {
+    const y = i * rowH + 4;
+    const barH = 11;
+    const barY = y + (rowH - barH) / 2;
+    const bw = Math.max((Math.abs(item.value) / maxVal) * chartW, 1);
+    const color = item.color ?? BRAND.accent;
+    const valLbl = Math.abs(item.value) >= 1000 ? `$${(item.value / 1000).toFixed(0)}K` : `$${item.value.toFixed(0)}`;
+
+    rows += `
+      <text x="${(PAD_L - 6).toFixed(1)}" y="${(barY + barH * 0.75).toFixed(1)}" text-anchor="end" font-size="7.5" fill="#374151">${escHtml(item.label)}</text>
+      <rect x="${PAD_L}" y="${barY.toFixed(1)}" width="${bw.toFixed(1)}" height="${barH}" fill="${color}" rx="2" />
+      <text x="${(PAD_L + bw + 5).toFixed(1)}" y="${(barY + barH * 0.75).toFixed(1)}" font-size="7.5" font-weight="600" fill="#374151">${escHtml(valLbl)}</text>`;
+  });
+
+  return `<svg width="${W}" height="${H}" viewBox="0 0 ${W} ${H}" xmlns="http://www.w3.org/2000/svg">
+    ${rows}
+  </svg>`;
+}
+
+/** Line chart with shaded area, data labels, and grid — reference "Cash Balance" style. */
+export function svgLineRef(
+  data: { label: string; value: number }[],
+  opts: {
+    width?: number;
+    height?: number;
+    color?: string;
+    title?: string;
+    yFormat?: "currency" | "percent" | "number";
+  } = {},
+): string {
+  const W = opts.width ?? 380;
+  const H = opts.height ?? 160;
+  const color = opts.color ?? BRAND.accent;
+  const PAD_L = 48;
+  const PAD_R = 12;
+  const PAD_T = opts.title ? 22 : 18;
+  const PAD_B = 22;
+  const chartW = W - PAD_L - PAD_R;
+  const chartH = H - PAD_T - PAD_B;
+  const yFmt = opts.yFormat ?? "currency";
+
+  if (data.length < 2) {
+    return `<svg width="${W}" height="${H}" viewBox="0 0 ${W} ${H}"><text x="${W / 2}" y="${H / 2}" text-anchor="middle" font-size="9" fill="${BRAND.textFaint}">No data</text></svg>`;
+  }
+
+  const vals = data.map((d) => d.value);
+  const minV = Math.min(...vals);
+  const maxV = Math.max(...vals);
+  const range = maxV - minV || 1;
+
+  const formatY = (v: number): string => {
+    if (yFmt === "currency") return Math.abs(v) >= 1000 ? `$${(v / 1000).toFixed(0)}K` : `$${v.toFixed(0)}`;
+    if (yFmt === "percent") return `${v.toFixed(1)}%`;
+    return v.toFixed(0);
+  };
+
+  const gridLevels = 4;
+  const gridLines: string[] = [];
+  const gridLabels: string[] = [];
+  for (let i = 0; i <= gridLevels; i++) {
+    const frac = i / gridLevels;
+    const val = minV + frac * range;
+    const y = PAD_T + chartH - frac * chartH;
+    gridLines.push(`<line x1="${PAD_L}" y1="${y.toFixed(1)}" x2="${(W - PAD_R).toFixed(1)}" y2="${y.toFixed(1)}" stroke="#e5e7eb" stroke-width="0.5" />`);
+    gridLabels.push(`<text x="${(PAD_L - 4).toFixed(1)}" y="${(y + 3).toFixed(1)}" text-anchor="end" font-size="6.5" fill="#9ca3af">${escHtml(formatY(val))}</text>`);
+  }
+
+  const pts = data.map((d, i) => ({
+    x: PAD_L + (i / (data.length - 1)) * chartW,
+    y: PAD_T + chartH - ((d.value - minV) / range) * chartH,
+    v: d.value,
+    lbl: d.label,
+  }));
+
+  const polyline = pts.map((p) => `${p.x.toFixed(1)},${p.y.toFixed(1)}`).join(" ");
+  const areaPoly = [
+    `${pts[0]!.x.toFixed(1)},${(PAD_T + chartH).toFixed(1)}`,
+    ...pts.map((p) => `${p.x.toFixed(1)},${p.y.toFixed(1)}`),
+    `${pts[pts.length - 1]!.x.toFixed(1)},${(PAD_T + chartH).toFixed(1)}`,
+  ].join(" ");
+
+  const dots = pts.map((p) => `<circle cx="${p.x.toFixed(1)}" cy="${p.y.toFixed(1)}" r="3" fill="${color}" />`).join("");
+  const dataLabels = pts.map((p) => `<text x="${p.x.toFixed(1)}" y="${(p.y - 7).toFixed(1)}" text-anchor="middle" font-size="6.5" font-weight="600" fill="${color}">${escHtml(formatY(p.v))}</text>`).join("");
+  const xLabels = pts.map((p) => `<text x="${p.x.toFixed(1)}" y="${(H - 4).toFixed(1)}" text-anchor="middle" font-size="6.5" fill="#6b7280">${escHtml(p.lbl)}</text>`).join("");
+
+  const titleEl = opts.title ? `<text x="${PAD_L}" y="12" font-size="8" font-weight="600" fill="#374151">${escHtml(opts.title)}</text>` : "";
+
+  return `<svg width="${W}" height="${H}" viewBox="0 0 ${W} ${H}" xmlns="http://www.w3.org/2000/svg">
+    <rect x="${PAD_L}" y="${PAD_T}" width="${chartW}" height="${chartH}" fill="#f9fafb" />
+    ${titleEl}
+    ${gridLines.join("")}
+    ${gridLabels.join("")}
+    <polygon points="${areaPoly}" fill="${color}" opacity="0.08" />
+    <polyline points="${polyline}" fill="none" stroke="${color}" stroke-width="1.75" stroke-linejoin="round" stroke-linecap="round" />
+    ${dots}
+    ${dataLabels}
+    ${xLabels}
+  </svg>`;
+}
+
 // ─── CSS Design System ────────────────────────────────────────────────────────
 
-export function buildBaseStyles(primaryColor: string): string {
+export function buildBaseStyles(accentColor: string): string {
   return `<style>
 /* ── Reset & print ───────────────────────────────────── */
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
-@page {
-  size: A4;
-  margin: 18mm 14mm 20mm 14mm;
-  background: #ffffff;
-}
+@page { size: A4; background: #fff; }
 
 html, body {
-  background: #ffffff;
-  color: ${BRAND.textPrimary};
-  font-family: Arial, Helvetica, 'Liberation Sans', sans-serif;
-  font-size: 9pt;
-  line-height: 1.5;
+  background: #fff;
+  color: #111827;
+  font-family: Arial, Helvetica, sans-serif;
+  font-size: 10pt;
+  line-height: 1.55;
   print-color-adjust: exact;
   -webkit-print-color-adjust: exact;
+}
+
+@media print {
+  body { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
 }
 
 /* ── Page break utilities ────────────────────────────── */
@@ -494,403 +781,161 @@ html, body {
 .page-break-after  { page-break-after:  always; break-after:  page; }
 .no-break          { page-break-inside: avoid; break-inside: avoid; }
 
-/* ── Page header (all pages after cover) ─────────────── */
-.page-hdr {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding-bottom: 6pt;
-  margin-bottom: 12pt;
-  border-bottom: 1.5pt solid ${primaryColor};
-}
-.page-hdr__logo { height: 22pt; width: auto; object-fit: contain; }
-.page-hdr__logo--fallback {
-  height: 22pt; width: 22pt; border-radius: 4pt;
-  display: inline-flex; align-items: center; justify-content: center;
-  background: ${primaryColor}; color: #fff; font-weight: 700; font-size: 8pt;
-}
-.page-hdr__center { font-size: 7.5pt; color: ${BRAND.textMuted}; letter-spacing: 0.06em; text-transform: uppercase; font-weight: 600; }
-.page-hdr__right  { font-size: 7.5pt; color: ${BRAND.textMuted}; text-align: right; }
+/* ── Page section ────────────────────────────────────── */
+.page-section { page-break-before: always; }
+.page-section:first-of-type { page-break-before: auto; }
 
-/* ── Cover page ──────────────────────────────────────── */
-.cover {
-  page-break-after: always;
-  position: relative;
-  min-height: 257mm;
-  display: flex;
-  flex-direction: column;
-}
-.cover__hero {
-  background: ${BRAND.forestGreen};
-  padding: 28pt 28pt 24pt;
-  display: flex;
-  flex-direction: column;
-  min-height: 112pt;
-  position: relative;
-  overflow: hidden;
-}
-.cover__hero-pattern {
-  position: absolute;
-  top: 0; right: 0; bottom: 0; width: 50%;
-  background: repeating-linear-gradient(
-    -45deg,
-    transparent,
-    transparent 10pt,
-    rgba(255,255,255,0.025) 10pt,
-    rgba(255,255,255,0.025) 20pt
-  );
-  pointer-events: none;
-}
-.cover__fin-logo { height: 28pt; width: auto; object-fit: contain; }
-.cover__fin-logo--text {
-  font-size: 18pt; font-weight: 700; color: #fff;
-  letter-spacing: 0.02em; font-family: Georgia, 'Times New Roman', serif;
-}
-.cover__tagline { font-size: 7.5pt; color: rgba(255,255,255,0.6); letter-spacing: 0.12em; text-transform: uppercase; margin-top: 3pt; }
-.cover__report-type {
-  margin-top: auto;
-  font-size: 13pt;
-  font-weight: 600;
-  color: rgba(255,255,255,0.85);
-  letter-spacing: 0.04em;
-}
-.cover__accent-bar {
-  height: 4pt;
-  background: ${primaryColor};
-}
-.cover__body {
-  background: #fff;
-  padding: 22pt 28pt;
-  flex: 1;
-  display: flex;
-  flex-direction: column;
-}
-.cover__entity-row {
-  display: flex;
-  align-items: center;
-  gap: 12pt;
-  padding-bottom: 14pt;
-  margin-bottom: 14pt;
-  border-bottom: 1pt solid ${BRAND.borderLight};
-}
-.cover__entity-name {
-  font-size: 22pt;
-  font-weight: 700;
-  color: ${BRAND.forestGreen};
-  line-height: 1.1;
-  font-family: Georgia, 'Times New Roman', serif;
-}
-.cover__entity-sub {
-  font-size: 9pt;
-  color: ${BRAND.textMuted};
-  margin-top: 2pt;
-}
-.cover__period {
-  font-size: 13pt;
-  font-weight: 600;
-  color: ${BRAND.textSecondary};
-  margin-bottom: 16pt;
-}
-.cover__meta-grid {
-  display: grid;
-  grid-template-columns: 1fr 1fr 1fr;
-  gap: 10pt;
-  margin-bottom: 16pt;
-}
-.cover__meta-cell {
-  padding: 9pt 10pt;
-  background: ${BRAND.bgLight};
-  border: 1pt solid ${BRAND.borderLight};
-  border-radius: 4pt;
-  border-left: 3pt solid ${primaryColor};
-}
-.cover__meta-label {
-  font-size: 7pt;
-  text-transform: uppercase;
-  letter-spacing: 0.08em;
-  color: ${BRAND.textFaint};
-  margin-bottom: 3pt;
-}
-.cover__meta-value {
-  font-size: 9pt;
-  font-weight: 600;
-  color: ${BRAND.textPrimary};
-}
-.cover__entity-chips { display: flex; flex-wrap: wrap; gap: 5pt; margin-bottom: 10pt; }
-.cover__entity-chip {
-  display: inline-flex; align-items: center; gap: 5pt;
-  padding: 4pt 8pt;
-  background: ${BRAND.bgMid};
-  border: 1pt solid ${BRAND.borderLight};
-  border-radius: 3pt;
-  font-size: 8pt;
-  font-weight: 600;
-  color: ${BRAND.textSecondary};
-}
-.cover__footer {
-  margin-top: auto;
-  padding-top: 10pt;
-  border-top: 1pt solid ${BRAND.borderLight};
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  font-size: 7.5pt;
-  color: ${BRAND.textFaint};
-}
-.cover__confidential {
-  font-size: 7pt;
-  font-weight: 700;
-  letter-spacing: 0.12em;
-  text-transform: uppercase;
-  color: ${BRAND.textMuted};
-  padding: 3pt 8pt;
-  border: 1pt solid ${BRAND.borderMid};
-  border-radius: 2pt;
-}
+/* ── Cover page (full dark page) ─────────────────────── */
+.cover { background: #0f172a; min-height: 100vh; padding: 0; display: flex; flex-direction: column; color: #fff; page-break-after: always; }
+.cover__top-strip { height: 4pt; background: ${accentColor}; }
+.cover__inner { padding: 28pt 36pt; flex: 1; display: flex; flex-direction: column; }
+.cover__logo-row { margin-bottom: 32pt; }
+.cover__report-label { font-size: 7.5pt; letter-spacing: 0.12em; text-transform: uppercase; color: #94a3b8; margin-bottom: 10pt; }
+.cover__title { font-size: 32pt; font-weight: 300; line-height: 1.15; color: #fff; margin-bottom: 10pt; }
+.cover__subtitle { font-size: 13pt; color: #cbd5e1; margin-bottom: 28pt; }
+.cover__divider { border: none; border-top: 1pt solid #334155; margin: 0 0 22pt; }
+.cover__meta { display: flex; flex-direction: column; gap: 12pt; }
+.cover__meta-row { display: grid; grid-template-columns: 90pt 1fr; }
+.cover__meta-label { font-size: 7.5pt; color: #2563eb; font-weight: 700; letter-spacing: 0.1em; text-transform: uppercase; padding-top: 1pt; }
+.cover__meta-value { font-size: 9.5pt; color: #e2e8f0; }
+.cover__footer-bar { padding: 14pt 36pt; font-size: 8pt; color: #64748b; border-top: 0.5pt solid #334155; margin-top: auto; }
 
-/* ── Section banner ──────────────────────────────────── */
-.sect-banner {
-  page-break-after: avoid;
-  break-after: avoid;
-  margin-bottom: 14pt;
-  display: flex;
-  align-items: stretch;
-  gap: 0;
-}
-.sect-banner__num {
-  width: 30pt;
-  background: transparent;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 24pt;
-  font-weight: 900;
-  color: rgba(255,255,255,0.25);
-  font-family: Georgia, serif;
-  flex-shrink: 0;
-}
-.sect-banner__bar {
-  width: 5pt;
-  border-radius: 2pt 0 0 2pt;
-  flex-shrink: 0;
-}
-.sect-banner__content {
-  flex: 1;
-  padding: 8pt 12pt 7pt;
-  display: flex;
-  flex-direction: column;
-  justify-content: center;
-}
-.sect-banner__title {
-  font-size: 11.5pt;
-  font-weight: 700;
-  font-family: Georgia, 'Times New Roman', serif;
-  line-height: 1.1;
-}
-.sect-banner__subtitle {
-  font-size: 7.5pt;
-  opacity: 0.75;
-  margin-top: 2pt;
-}
+/* ── Page header — logo left, report name right, rule below ── */
+.page-hdr { display: flex; align-items: center; justify-content: space-between; padding: 14pt 0 10pt; border-bottom: 0.75pt solid #e5e7eb; margin-bottom: 22pt; }
+.page-hdr__logo img, .page-hdr__logo-img { height: 18pt; width: auto; object-fit: contain; display: block; }
+.page-hdr__logo-text { font-size: 11pt; font-weight: 700; color: #111827; }
+.page-hdr__right { font-size: 8pt; color: #9ca3af; }
+/* legacy compat */
+.page-hdr__logo { height: 20pt; width: auto; object-fit: contain; }
+.page-hdr__logo--fallback { height: 20pt; width: 20pt; border-radius: 4pt; display: inline-flex; align-items: center; justify-content: center; background: ${accentColor}; color: #fff; font-weight: 700; font-size: 8pt; }
+.page-hdr__center { font-size: 7.5pt; color: #6b7280; letter-spacing: 0.06em; text-transform: uppercase; font-weight: 600; }
 
-/* ── KPI cards ───────────────────────────────────────── */
+/* ── Section header — number label, big H1, thin rule ── */
+.sec-label { font-size: 7.5pt; font-weight: 700; color: #2563eb; letter-spacing: 0.1em; text-transform: uppercase; margin-bottom: 6pt; }
+.sec-title { font-size: 22pt; font-weight: 400; color: #111827; line-height: 1.2; }
+.sec-rule { border: none; border-top: 0.75pt solid #e5e7eb; margin: 10pt 0 18pt; }
+
+/* ── Body narrative ──────────────────────────────────── */
+.narrative p { font-size: 10pt; color: #111827; line-height: 1.6; margin-bottom: 10pt; }
+.narrative p:last-child { margin-bottom: 0; }
+p.note { font-size: 8pt; color: #6b7280; font-style: italic; margin-top: 8pt; line-height: 1.5; }
+
+/* ── KPI stat row (inline, no boxes) ─────────────────── */
+.kpi-row { display: flex; margin: 16pt 0; }
+.kpi-stat { flex: 1; padding-right: 12pt; }
+.kpi-stat:last-child { padding-right: 0; }
+.kpi-stat__label { font-size: 7.5pt; color: #6b7280; text-transform: uppercase; letter-spacing: 0.06em; margin-bottom: 3pt; }
+.kpi-stat__value { font-size: 20pt; font-weight: 700; color: #111827; line-height: 1; }
+.kpi-stat__change { font-size: 8pt; margin-top: 4pt; }
+.change--pos { color: #2563eb; }
+.change--neg { color: #dc2626; }
+.change--neu { color: #6b7280; }
+.change--green { color: #16a34a; }
+
+/* ── Insight panels (left-border callouts) ───────────── */
+.ins-panel { border-left: 3pt solid #2563eb; background: #f8fafc; padding: 11pt 14pt; margin: 10pt 0; position: relative; page-break-inside: avoid; }
+.ins-panel--amber { border-color: #d97706; background: #fffbeb; }
+.ins-panel--green { border-color: #16a34a; background: #f0fdf4; }
+.ins-panel--red { border-color: #dc2626; background: #fef2f2; }
+.ins-panel--gray { border-color: #94a3b8; background: #f8fafc; }
+.ins-panel__header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 5pt; }
+.ins-panel__title { font-weight: 700; font-size: 10pt; color: #111827; }
+.ins-panel__body { font-size: 9.5pt; color: #374151; line-height: 1.55; }
+.ins-panel__badge { font-size: 7.5pt; font-weight: 600; padding: 2pt 8pt; border-radius: 3pt; white-space: nowrap; background: #e5e7eb; color: #374151; }
+.ins-panel__badge--green { background: #dcfce7; color: #15803d; }
+.ins-panel__badge--amber { background: #fef3c7; color: #b45309; }
+.ins-panel__badge--blue { background: #dbeafe; color: #1d4ed8; }
+.ins-panel__badge--gray { background: #f3f4f6; color: #6b7280; }
+
+/* ── Recommendation callout ──────────────────────────── */
+.rec-callout { border-left: 3pt solid #2563eb; background: #f8fafc; padding: 12pt 14pt; margin: 14pt 0; page-break-inside: avoid; }
+.rec-callout__label { font-size: 9pt; font-weight: 700; color: #111827; margin-bottom: 5pt; }
+.rec-callout__body { font-size: 9.5pt; color: #374151; line-height: 1.55; }
+
+/* ── Reference-style table (horizontal rules only) ───── */
+.ref-table { width: 100%; border-collapse: collapse; font-size: 9.5pt; margin: 8pt 0; }
+.ref-table th { font-size: 8pt; color: #6b7280; font-weight: 400; text-align: left; padding: 7pt 8pt; border-top: 0.75pt solid #e5e7eb; border-bottom: 0.75pt solid #e5e7eb; }
+.ref-table th.num { text-align: right; }
+.ref-table td { padding: 7pt 8pt; border-bottom: 0.5pt solid #f3f4f6; color: #111827; vertical-align: top; }
+.ref-table tr:last-child td { border-bottom: none; }
+.ref-table tr.row-total td { font-weight: 700; border-top: 0.75pt solid #e5e7eb; border-bottom: 0.75pt solid #e5e7eb; }
+.ref-table tr.row-subtotal td { font-weight: 600; }
+.ref-table tr.row-section td { font-size: 8pt; text-transform: uppercase; letter-spacing: 0.05em; color: #6b7280; padding-top: 12pt; padding-bottom: 2pt; border-bottom: none; }
+.ref-table tr.row-alt td { background: #fafafa; }
+.ref-table td.num { text-align: right; }
+.ref-table td.neg { color: #dc2626; }
+.ref-table td.pos { color: #16a34a; }
+.ref-table td.var-pos { color: #2563eb; }
+.ref-table td.var-neg { color: #dc2626; }
+.ref-table td.var-neu { color: #6b7280; }
+.ref-table tfoot td { font-size: 8pt; color: #6b7280; font-style: italic; padding-top: 8pt; border-top: 0.5pt solid #e5e7eb; }
+
+/* ── Legacy financial table ──────────────────────────── */
+.fin-table { width: 100%; border-collapse: collapse; font-size: 8pt; font-variant-numeric: tabular-nums; margin-bottom: 10pt; }
+.fin-table thead tr { background: ${BRAND.forestGreen}; }
+.fin-table thead tr th { padding: 6pt 9pt; color: #fff; font-size: 7pt; font-weight: 700; letter-spacing: 0.05em; text-transform: uppercase; text-align: left; border: none; white-space: nowrap; }
+.fin-table thead tr th.num { text-align: right; }
+.fin-table thead tr.fin-table__subhead th { background: #1a3d2b; font-size: 6.5pt; padding: 4pt 9pt; }
+.fin-table tbody tr td { padding: 4.5pt 9pt; border-bottom: 0.5pt solid ${BRAND.borderLight}; color: ${BRAND.textPrimary}; vertical-align: middle; }
+.fin-table tbody tr td.num { text-align: right; font-family: 'Courier New', 'Lucida Console', monospace; font-size: 7.5pt; letter-spacing: 0; }
+.fin-table tbody tr.row--section { background: ${BRAND.bgMid}; }
+.fin-table tbody tr.row--section td { font-weight: 700; font-size: 7pt; letter-spacing: 0.06em; text-transform: uppercase; color: ${BRAND.forestGreen}; padding: 5pt 9pt; border-bottom: none; border-top: 1pt solid ${BRAND.borderMid}; }
+.fin-table tbody tr.row--indent td:first-child { padding-left: 18pt; }
+.fin-table tbody tr.row--indent2 td:first-child { padding-left: 30pt; }
+.fin-table tbody tr.row--subtotal { background: ${BRAND.bgLight}; }
+.fin-table tbody tr.row--subtotal td { font-weight: 700; border-top: 1pt solid ${BRAND.borderMid}; border-bottom: 1pt solid ${BRAND.borderMid}; padding: 5pt 9pt; }
+.fin-table tbody tr.row--total { background: ${BRAND.bgMid}; }
+.fin-table tbody tr.row--total td { font-weight: 700; font-size: 8.5pt; border-top: 1.5pt solid ${BRAND.forestGreen}; border-bottom: 3pt double ${BRAND.forestGreen}; padding: 5.5pt 9pt; }
+.fin-table tbody tr.row--spacer td { border-bottom: none; padding: 3pt 9pt; }
+
+/* ── Chart containers ────────────────────────────────── */
+.chart-wrap { margin: 12pt 0; page-break-inside: avoid; }
+.chart-title { font-size: 8.5pt; color: #374151; margin-bottom: 5pt; }
+.chart-legend { display: flex; gap: 14pt; font-size: 7.5pt; color: #6b7280; margin-bottom: 6pt; flex-wrap: wrap; }
+.legend-swatch { width: 9pt; height: 9pt; border-radius: 1.5pt; display: inline-block; margin-right: 4pt; vertical-align: middle; }
+/* legacy chart-box */
+.chart-box { background: ${BRAND.bgLight}; border: 1pt solid ${BRAND.borderLight}; border-radius: 4pt; padding: 10pt 12pt; margin-bottom: 10pt; page-break-inside: avoid; }
+.chart-box__title { font-size: 8pt; font-weight: 700; color: ${BRAND.textSecondary}; margin-bottom: 8pt; letter-spacing: 0.03em; text-transform: uppercase; }
+.chart-box__subtitle { font-size: 7pt; color: ${BRAND.textFaint}; margin-top: -6pt; margin-bottom: 8pt; }
+
+/* ── KPI grid (legacy card style) ───────────────────── */
 .kpi-grid { display: grid; gap: 8pt; }
 .kpi-grid--2 { grid-template-columns: repeat(2, 1fr); }
 .kpi-grid--3 { grid-template-columns: repeat(3, 1fr); }
 .kpi-grid--4 { grid-template-columns: repeat(4, 1fr); }
 .kpi-grid--5 { grid-template-columns: repeat(5, 1fr); }
 .kpi-grid--6 { grid-template-columns: repeat(6, 1fr); }
-
-.kpi-card {
-  background: #fff;
-  border: 1pt solid ${BRAND.borderLight};
-  border-radius: 4pt;
-  padding: 9pt 10pt 7pt;
-  display: flex;
-  flex-direction: column;
-  gap: 2pt;
-  page-break-inside: avoid;
-  break-inside: avoid;
-}
-.kpi-card--primary {
-  border-top: 3pt solid ${primaryColor};
-}
-.kpi-card--accent {
-  background: ${BRAND.bgLight};
-  border-top: 3pt solid ${primaryColor};
-}
-.kpi-card--positive {
-  border-top: 3pt solid ${BRAND.positive};
-}
-.kpi-card--negative {
-  border-top: 3pt solid ${BRAND.negative};
-  background: #fef2f2;
-}
-.kpi-card--warning {
-  border-top: 3pt solid ${BRAND.warning};
-  background: #fffbeb;
-}
-.kpi-card__label {
-  font-size: 6.5pt;
-  text-transform: uppercase;
-  letter-spacing: 0.07em;
-  color: ${BRAND.textFaint};
-  font-weight: 600;
-  line-height: 1;
-}
-.kpi-card__value {
-  font-size: 16pt;
-  font-weight: 700;
-  color: ${BRAND.textPrimary};
-  line-height: 1.1;
-  font-variant-numeric: tabular-nums;
-}
-.kpi-card__value--lg {
-  font-size: 20pt;
-}
-.kpi-card__sub {
-  font-size: 7pt;
-  color: ${BRAND.textMuted};
-  margin-top: 1pt;
-}
-.kpi-card__change {
-  display: flex;
-  align-items: center;
-  gap: 4pt;
-  margin-top: 2pt;
-}
+.kpi-card { background: #fff; border: 1pt solid ${BRAND.borderLight}; border-radius: 4pt; padding: 9pt 10pt 7pt; display: flex; flex-direction: column; gap: 2pt; page-break-inside: avoid; break-inside: avoid; }
+.kpi-card--primary { border-top: 3pt solid ${accentColor}; }
+.kpi-card--accent { background: ${BRAND.bgLight}; border-top: 3pt solid ${accentColor}; }
+.kpi-card--positive { border-top: 3pt solid ${BRAND.positive}; }
+.kpi-card--negative { border-top: 3pt solid ${BRAND.negative}; background: #fef2f2; }
+.kpi-card--warning { border-top: 3pt solid ${BRAND.warning}; background: #fffbeb; }
+.kpi-card__label { font-size: 6.5pt; text-transform: uppercase; letter-spacing: 0.07em; color: ${BRAND.textFaint}; font-weight: 600; line-height: 1; }
+.kpi-card__value { font-size: 16pt; font-weight: 700; color: ${BRAND.textPrimary}; line-height: 1.1; font-variant-numeric: tabular-nums; }
+.kpi-card__value--lg { font-size: 20pt; }
+.kpi-card__sub { font-size: 7pt; color: ${BRAND.textMuted}; margin-top: 1pt; }
+.kpi-card__change { display: flex; align-items: center; gap: 4pt; margin-top: 2pt; }
 
 /* ── Variance pills ──────────────────────────────────── */
-.vpill {
-  display: inline-block;
-  padding: 1.5pt 5pt;
-  border-radius: 10pt;
-  font-size: 7pt;
-  font-weight: 700;
-  letter-spacing: 0.03em;
-}
+.vpill { display: inline-block; padding: 1.5pt 5pt; border-radius: 10pt; font-size: 7pt; font-weight: 700; letter-spacing: 0.03em; }
 .vpill--pos { background: #dcfce7; color: #166534; }
 .vpill--neg { background: #fee2e2; color: #b91c1c; }
 .vpill--na  { background: ${BRAND.bgMid}; color: ${BRAND.textFaint}; }
 
-/* ── Financial table ─────────────────────────────────── */
-.fin-table {
-  width: 100%;
-  border-collapse: collapse;
-  font-size: 8pt;
-  font-variant-numeric: tabular-nums;
-  margin-bottom: 10pt;
-}
-.fin-table thead tr {
-  background: ${BRAND.forestGreen};
-}
-.fin-table thead tr th {
-  padding: 6pt 9pt;
-  color: #fff;
-  font-size: 7pt;
-  font-weight: 700;
-  letter-spacing: 0.05em;
-  text-transform: uppercase;
-  text-align: left;
-  border: none;
-  white-space: nowrap;
-}
-.fin-table thead tr th.num {
-  text-align: right;
-}
-.fin-table thead tr.fin-table__subhead th {
-  background: #1a3d2b;
-  font-size: 6.5pt;
-  padding: 4pt 9pt;
-}
+/* ── Amount coloring ─────────────────────────────────── */
+.amount--negative { color: #dc2626; }
+.amount--positive { color: #111827; }
+.amount--unavailable { color: #9ca3af; }
 
-/* Statement row types */
-.fin-table tbody tr td {
-  padding: 4.5pt 9pt;
-  border-bottom: 0.5pt solid ${BRAND.borderLight};
-  color: ${BRAND.textPrimary};
-  vertical-align: middle;
-}
-.fin-table tbody tr td.num {
-  text-align: right;
-  font-family: 'Courier New', 'Lucida Console', monospace;
-  font-size: 7.5pt;
-  letter-spacing: 0;
-}
-.fin-table tbody tr.row--section {
-  background: ${BRAND.bgMid};
-}
-.fin-table tbody tr.row--section td {
-  font-weight: 700;
-  font-size: 7pt;
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
-  color: ${BRAND.forestGreen};
-  padding: 5pt 9pt;
-  border-bottom: none;
-  border-top: 1pt solid ${BRAND.borderMid};
-}
-.fin-table tbody tr.row--section td::before {
-  content: "";
-  display: inline-block;
-  width: 3pt;
-  height: 9pt;
-  background: ${primaryColor};
-  margin-right: 6pt;
-  border-radius: 1pt;
-  vertical-align: middle;
-}
-.fin-table tbody tr.row--indent td:first-child { padding-left: 18pt; }
-.fin-table tbody tr.row--indent2 td:first-child { padding-left: 30pt; }
-.fin-table tbody tr.row--indent td.no-pad,
-.fin-table tbody tr.row--indent2 td.no-pad { padding-left: 9pt; }
-
-.fin-table tbody tr.row--subtotal {
-  background: ${BRAND.bgLight};
-}
-.fin-table tbody tr.row--subtotal td {
-  font-weight: 700;
-  border-top: 1pt solid ${BRAND.borderMid};
-  border-bottom: 1pt solid ${BRAND.borderMid};
-  padding: 5pt 9pt;
-}
-.fin-table tbody tr.row--total {
-  background: ${BRAND.bgMid};
-}
-.fin-table tbody tr.row--total td {
-  font-weight: 700;
-  font-size: 8.5pt;
-  border-top: 1.5pt solid ${BRAND.forestGreen};
-  border-bottom: 3pt double ${BRAND.forestGreen};
-  padding: 5.5pt 9pt;
-}
-.fin-table tbody tr.row--spacer td {
-  border-bottom: none;
-  padding: 3pt 9pt;
-}
-
-/* Amount coloring */
-.amount--negative { color: ${BRAND.negative}; }
-.amount--positive { color: inherit; }
-.amount--unavailable { color: ${BRAND.textFaint}; }
-
-/* Variance coloring */
+/* ── Variance coloring ───────────────────────────────── */
 .variance--fav     { color: ${BRAND.positive}; font-weight: 600; }
 .variance--unfav   { color: ${BRAND.negative}; font-weight: 600; }
 .variance--neutral { color: ${BRAND.textMuted}; }
 .variance--na      { color: ${BRAND.textFaint}; }
 
 /* ── Badges ──────────────────────────────────────────── */
-.badge {
-  display: inline-block;
-  padding: 2pt 7pt;
-  border-radius: 10pt;
-  font-size: 7pt;
-  font-weight: 700;
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
-  white-space: nowrap;
-}
+.badge { display: inline-block; padding: 2pt 7pt; border-radius: 10pt; font-size: 7pt; font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase; white-space: nowrap; }
 .badge--green  { background: #dcfce7; color: #166534; }
 .badge--red    { background: #fee2e2; color: #b91c1c; }
 .badge--amber  { background: #fef3c7; color: #92400e; }
@@ -899,16 +944,8 @@ html, body {
 .badge--gray   { background: #f1f5f9; color: #475569; }
 .badge--teal   { background: #ccfbf1; color: #0f766e; }
 
-/* ── Insight / callout blocks ────────────────────────── */
-.insight {
-  display: flex;
-  gap: 10pt;
-  padding: 10pt 12pt;
-  border-radius: 4pt;
-  border-left: 4pt solid;
-  margin-bottom: 8pt;
-  page-break-inside: avoid;
-}
+/* ── Legacy insight blocks ───────────────────────────── */
+.insight { display: flex; gap: 10pt; padding: 10pt 12pt; border-radius: 4pt; border-left: 4pt solid; margin-bottom: 8pt; page-break-inside: avoid; }
 .insight--positive { background: #f0fdf4; border-color: ${BRAND.positive}; }
 .insight--warning  { background: #fffbeb; border-color: ${BRAND.warning}; }
 .insight--critical { background: #fef2f2; border-color: ${BRAND.negative}; }
@@ -918,106 +955,35 @@ html, body {
 .insight__title    { font-weight: 700; font-size: 8.5pt; margin-bottom: 2pt; }
 .insight__text     { font-size: 8pt; color: ${BRAND.textSecondary}; line-height: 1.45; }
 
-/* ── Alert severity cards ────────────────────────────── */
-.alert-card {
-  display: flex;
-  gap: 10pt;
-  padding: 9pt 12pt;
-  border-radius: 4pt;
-  border-left: 4pt solid;
-  margin-bottom: 7pt;
-  page-break-inside: avoid;
-  break-inside: avoid;
-  background: #fff;
-  border: 1pt solid ${BRAND.borderLight};
-}
-.alert-card--critical { border-left-color: ${BRAND.negative}; background: #fff8f8; }
-.alert-card--high     { border-left-color: #ea580c; background: #fff7f0; }
-.alert-card--medium   { border-left-color: ${BRAND.warning}; background: #fffdf0; }
-.alert-card--low      { border-left-color: #64748b; background: ${BRAND.bgLight}; }
-.alert-card__severity { flex-shrink: 0; padding-top: 1pt; }
-.alert-card__body     { flex: 1; }
-.alert-card__entity   { font-size: 7pt; color: ${BRAND.textMuted}; font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 2pt; }
-.alert-card__title    { font-size: 9pt; font-weight: 700; color: ${BRAND.textPrimary}; margin-bottom: 3pt; }
-.alert-card__desc     { font-size: 8pt; color: ${BRAND.textSecondary}; margin-bottom: 4pt; line-height: 1.4; }
-.alert-card__meta     { font-size: 7.5pt; color: ${BRAND.textMuted}; }
-.alert-card__action   { font-size: 8pt; color: ${BRAND.info}; font-weight: 600; margin-top: 4pt; }
+/* ── Checklist (close status) ────────────────────────── */
+.check-row { display: flex; align-items: flex-start; gap: 12pt; padding: 9pt 0; border-bottom: 0.5pt solid #f3f4f6; page-break-inside: avoid; }
+.check-icon { width: 12pt; flex-shrink: 0; font-size: 10pt; }
+.check-icon--pass { color: #16a34a; }
+.check-icon--prog { color: #d97706; }
+.check-icon--pend { color: #94a3b8; }
+.check-text { flex: 1; font-size: 9.5pt; color: #111827; line-height: 1.45; }
+.check-badge { font-size: 7.5pt; font-weight: 600; padding: 2pt 8pt; border-radius: 3pt; white-space: nowrap; }
+.check-badge--green { background: #dcfce7; color: #15803d; }
+.check-badge--amber { background: #fef3c7; color: #b45309; }
+.check-badge--gray { background: #f3f4f6; color: #6b7280; }
 
-/* ── Entity comparison table ─────────────────────────── */
-.entity-table thead th { font-size: 7pt; }
-.entity-table td.entity-name-cell { font-weight: 700; }
-.entity-logo-cell img { height: 18pt; width: auto; max-width: 40pt; object-fit: contain; }
-
-/* ── Status / progress blocks ────────────────────────── */
-.status-block {
-  display: flex;
-  gap: 8pt;
-  align-items: center;
-  padding: 8pt 10pt;
-  border-radius: 4pt;
-  border: 1pt solid;
-  margin-bottom: 6pt;
-  page-break-inside: avoid;
-}
-.status-block--pass { background: #f0fdf4; border-color: #86efac; }
-.status-block--fail { background: #fef2f2; border-color: #fca5a5; }
-.status-block--warn { background: #fffbeb; border-color: #fcd34d; }
-.status-block--gray { background: ${BRAND.bgLight}; border-color: ${BRAND.borderLight}; }
-.status-block__icon { font-size: 12pt; flex-shrink: 0; }
-.status-block__title { font-weight: 700; font-size: 8.5pt; }
-.status-block__sub   { font-size: 7.5pt; color: ${BRAND.textMuted}; margin-top: 1pt; }
-
-/* ── Chart containers ────────────────────────────────── */
-.chart-box {
-  background: ${BRAND.bgLight};
-  border: 1pt solid ${BRAND.borderLight};
-  border-radius: 4pt;
-  padding: 10pt 12pt;
-  margin-bottom: 10pt;
-  page-break-inside: avoid;
-}
-.chart-box__title {
-  font-size: 8pt;
-  font-weight: 700;
-  color: ${BRAND.textSecondary};
-  margin-bottom: 8pt;
-  letter-spacing: 0.03em;
-  text-transform: uppercase;
-}
-.chart-box__subtitle {
-  font-size: 7pt;
-  color: ${BRAND.textFaint};
-  margin-top: -6pt;
-  margin-bottom: 8pt;
-}
+/* ── TOC ─────────────────────────────────────────────── */
+.toc-entry { display: flex; justify-content: space-between; align-items: baseline; padding: 7pt 0; border-bottom: 0.5pt solid #f3f4f6; font-size: 9.5pt; }
+.toc-pg { color: #6b7280; flex-shrink: 0; padding-left: 8pt; }
 
 /* ── Two/three column layouts ────────────────────────── */
-.two-col { display: grid; grid-template-columns: 1fr 1fr; gap: 12pt; }
+.two-col { display: grid; grid-template-columns: 1fr 1fr; gap: 20pt; }
 .three-col { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 10pt; }
-.col-60-40 { display: grid; grid-template-columns: 60fr 40fr; gap: 12pt; }
+.col-60-40 { display: grid; grid-template-columns: 60% 38%; gap: 2%; }
 .col-55-45 { display: grid; grid-template-columns: 55fr 45fr; gap: 12pt; }
 .col-40-60 { display: grid; grid-template-columns: 40fr 60fr; gap: 12pt; }
 
 /* ── Divider ─────────────────────────────────────────── */
-.divider {
-  border: none;
-  border-top: 1pt solid ${BRAND.borderLight};
-  margin: 10pt 0;
-}
-.divider--heavy {
-  border-top: 2pt solid ${BRAND.borderMid};
-}
+.divider { border: none; border-top: 1pt solid ${BRAND.borderLight}; margin: 10pt 0; }
+.divider--heavy { border-top: 2pt solid ${BRAND.borderMid}; }
 
 /* ── Data footer ─────────────────────────────────────── */
-.data-footer {
-  font-size: 6.5pt;
-  color: ${BRAND.textFaint};
-  text-align: right;
-  padding-top: 6pt;
-  border-top: 0.5pt solid ${BRAND.borderLight};
-  margin-top: 10pt;
-  letter-spacing: 0.02em;
-}
+.data-footer { font-size: 6.5pt; color: ${BRAND.textFaint}; text-align: right; padding-top: 6pt; border-top: 0.5pt solid ${BRAND.borderLight}; margin-top: 10pt; letter-spacing: 0.02em; }
 
 /* ── Legend ──────────────────────────────────────────── */
 .legend { display: flex; flex-wrap: wrap; gap: 8pt; margin-top: 6pt; }
@@ -1025,7 +991,15 @@ html, body {
 .legend__dot  { width: 8pt; height: 8pt; border-radius: 50%; flex-shrink: 0; }
 .legend__line { width: 14pt; height: 2pt; border-radius: 1pt; flex-shrink: 0; }
 
-/* ── Utility spacing ─────────────────────────────────── */
+/* ── Aging bar ───────────────────────────────────────── */
+.aging-bar { display: flex; height: 8pt; border-radius: 4pt; overflow: hidden; margin: 3pt 0; }
+.aging-bar__seg { height: 100%; }
+
+/* ── Section wrapper ─────────────────────────────────── */
+.section { margin-bottom: 0; }
+.section--break { page-break-before: always; break-before: page; }
+
+/* ── Utility ─────────────────────────────────────────── */
 .mb-4  { margin-bottom: 4pt; }
 .mb-8  { margin-bottom: 8pt; }
 .mb-12 { margin-bottom: 12pt; }
@@ -1037,45 +1011,12 @@ html, body {
 .font-mono { font-family: 'Courier New', 'Lucida Console', monospace; }
 .nowrap { white-space: nowrap; }
 .small { font-size: 7pt; color: ${BRAND.textMuted}; }
-
-/* ── Aging bar ────────────────────────────────────────── */
-.aging-bar { display: flex; height: 8pt; border-radius: 4pt; overflow: hidden; margin: 3pt 0; }
-.aging-bar__seg { height: 100%; }
-
-/* ── Scorecard ───────────────────────────────────────── */
-.scorecard {
-  border: 1.5pt solid ${BRAND.borderMid};
-  border-radius: 6pt;
-  overflow: hidden;
-  margin-bottom: 12pt;
-  page-break-inside: avoid;
-}
-.scorecard__header {
-  padding: 10pt 14pt 9pt;
-  display: flex;
-  align-items: center;
-  gap: 12pt;
-}
-.scorecard__name {
-  font-size: 14pt;
-  font-weight: 700;
-  font-family: Georgia, serif;
-  color: #fff;
-}
-.scorecard__sub {
-  font-size: 7.5pt;
-  color: rgba(255,255,255,0.75);
-  margin-top: 1pt;
-}
-.scorecard__body { padding: 12pt 14pt; }
-
-/* ── Section wrapper ─────────────────────────────────── */
-.section { margin-bottom: 0; }
-.section--break { page-break-before: always; break-before: page; }
+.sub-heading { font-size: 12pt; font-weight: 600; color: #111827; margin: 16pt 0 6pt; }
+.small-note { font-size: 7.5pt; color: #6b7280; font-style: italic; margin-top: 6pt; line-height: 1.5; }
 </style>`;
 }
 
-// ─── Component builders ───────────────────────────────────────────────────────
+// ─── Component builders (legacy API) ─────────────────────────────────────────
 
 export function pageHeader(
   opts: {
@@ -1087,18 +1028,7 @@ export function pageHeader(
     primaryColor?: string;
   },
 ): string {
-  const color = opts.primaryColor ?? BRAND.forestGreen;
-  const src = embedLogoPath(opts.logoPath ?? null);
-  const logoHtml = src
-    ? `<img class="page-hdr__logo" src="${src}" alt="${escHtml(opts.entityName)}" style="height:20pt;width:auto;object-fit:contain;display:block" />`
-    : `<span class="page-hdr__logo--fallback" style="background:${escHtml(color)}">${escHtml((opts.logoFallback ?? opts.entityName).slice(0, 2).toUpperCase())}</span>`;
-
-  return `
-<div class="page-hdr no-break">
-  ${logoHtml}
-  <div class="page-hdr__center">${escHtml(opts.reportTitle)}</div>
-  <div class="page-hdr__right">${escHtml(opts.entityName)} &middot; ${escHtml(opts.period)}</div>
-</div>`;
+  return refPageHeader(opts.logoPath ?? null, opts.entityName, opts.reportTitle, opts.primaryColor);
 }
 
 export function sectionBanner(
@@ -1111,22 +1041,11 @@ export function sectionBanner(
     textColor?: string;
   } = {},
 ): string {
-  const bg = opts.bgColor ?? BRAND.forestGreen;
-  const accent = opts.accentColor ?? BRAND.darkGreen;
-  const text = opts.textColor ?? "#fff";
-  const numHtml = opts.number != null
-    ? `<div class="sect-banner__num" style="color:rgba(255,255,255,0.18);background:rgba(0,0,0,0.15)">${opts.number}</div>`
-    : "";
-
-  return `
-<div class="sect-banner no-break" style="background:${escHtml(bg)};border-radius:4pt;margin-bottom:14pt;overflow:hidden">
-  ${numHtml}
-  <div class="sect-banner__bar" style="background:${escHtml(accent)}"></div>
-  <div class="sect-banner__content">
-    <div class="sect-banner__title" style="color:${escHtml(text)}">${escHtml(title)}</div>
-    ${opts.subtitle ? `<div class="sect-banner__subtitle" style="color:rgba(255,255,255,0.7)">${escHtml(opts.subtitle)}</div>` : ""}
-  </div>
-</div>`;
+  // Delegate to new reference-style section header
+  const numStr = opts.number != null ? String(opts.number).padStart(2, "0") : null;
+  const label = opts.subtitle ?? title;
+  const heading = opts.subtitle ? title : title;
+  return refSectionHeader(numStr, label, heading);
 }
 
 export function kpiCard(
@@ -1199,7 +1118,7 @@ export function barRow(
   value: number | null | undefined,
   maxValue: number,
   displayValue: string,
-  color: string = BRAND.darkGreen,
+  color: string = BRAND.accent,
 ): string {
   const pct = value != null && maxValue > 0 ? Math.min(Math.abs(value) / Math.max(Math.abs(maxValue), 1) * 100, 100) : 0;
   const isNeg = (value ?? 0) < 0;
@@ -1226,7 +1145,6 @@ export function agingBars(
   </div>`;
 }
 
-/** Legend row for charts */
 export function legendItems(
   items: { label: string; color: string; type?: "dot" | "line" }[],
 ): string {
@@ -1236,4 +1154,108 @@ export function legendItems(
       <span>${escHtml(item.label)}</span>
     </div>`
   ).join("")}</div>`;
+}
+
+// ─── New reference component builders ────────────────────────────────────────
+
+/** Repeating page header: logo left, report title right, thin rule below. */
+export function refPageHeader(
+  logoPath: string | null,
+  entityName: string,
+  reportTitle: string,
+  primaryColor?: string,
+): string {
+  const src = embedLogoPath(logoPath);
+  let logoHtml: string;
+  if (src) {
+    logoHtml = `<div class="page-hdr__logo"><img class="page-hdr__logo-img" src="${src}" alt="${escHtml(entityName)}" /></div>`;
+  } else {
+    // Initials fallback
+    const initials = entityName.slice(0, 2).toUpperCase();
+    const bg = primaryColor ?? BRAND.accent;
+    logoHtml = `<div class="page-hdr__logo"><span style="display:inline-flex;align-items:center;justify-content:center;width:18pt;height:18pt;border-radius:4pt;background:${escHtml(bg)};color:#fff;font-weight:700;font-size:8pt;font-family:Arial,sans-serif">${escHtml(initials)}</span></div>`;
+  }
+
+  return `<div class="page-hdr no-break">
+  ${logoHtml}
+  <div class="page-hdr__right">${escHtml(reportTitle)}</div>
+</div>`;
+}
+
+/** Section header: small blue uppercase label + large normal-weight H1 + horizontal rule. */
+export function refSectionHeader(
+  sectionNum: string | number | null,
+  sectionLabel: string,
+  title: string,
+): string {
+  const numPrefix = sectionNum != null ? `${String(sectionNum).padStart(2, "0")} ` : "";
+  return `<div class="sec-label no-break">${escHtml(numPrefix + sectionLabel)}</div>
+<h1 class="sec-title">${escHtml(title)}</h1>
+<hr class="sec-rule" />`;
+}
+
+/** Flat inline KPI stat row — no card boxes. */
+export function refKpiRow(
+  stats: {
+    label: string;
+    value: string;
+    change?: string;
+    changeClass?: string;
+    sub?: string;
+  }[],
+): string {
+  const items = stats.map((s) => {
+    const cls = s.changeClass ? `change--${s.changeClass}` : "change--neu";
+    return `<div class="kpi-stat">
+  <div class="kpi-stat__label">${escHtml(s.label)}</div>
+  <div class="kpi-stat__value">${escHtml(s.value)}</div>
+  ${s.change ? `<div class="kpi-stat__change ${cls}">${escHtml(s.change)}</div>` : ""}
+  ${s.sub ? `<div class="kpi-stat__change change--neu">${escHtml(s.sub)}</div>` : ""}
+</div>`;
+  }).join("");
+  return `<div class="kpi-row no-break">${items}</div>`;
+}
+
+/** Left-border insight callout panel. */
+export function refInsightPanel(
+  title: string,
+  body: string,
+  variant: "blue" | "amber" | "green" | "red" | "gray" = "blue",
+  badge?: string,
+  badgeVariant: "green" | "amber" | "blue" | "gray" = "gray",
+): string {
+  const variantClass = variant === "blue" ? "" : ` ins-panel--${variant}`;
+  const badgeHtml = badge
+    ? `<span class="ins-panel__badge ins-panel__badge--${badgeVariant}">${escHtml(badge)}</span>`
+    : "";
+  return `<div class="ins-panel${variantClass}">
+  <div class="ins-panel__header">
+    <div class="ins-panel__title">${escHtml(title)}</div>
+    ${badgeHtml}
+  </div>
+  <div class="ins-panel__body">${escHtml(body)}</div>
+</div>`;
+}
+
+/** Blue-left-border recommendation block. */
+export function refRecommendationCallout(label: string, body: string): string {
+  return `<div class="rec-callout no-break">
+  <div class="rec-callout__label">${escHtml(label)}</div>
+  <div class="rec-callout__body">${escHtml(body)}</div>
+</div>`;
+}
+
+/** Wrap paragraphs in a narrative div. */
+export function refNarrative(...paragraphs: string[]): string {
+  return `<div class="narrative">${paragraphs.map((p) => `<p>${escHtml(p)}</p>`).join("")}</div>`;
+}
+
+/** Small italic note paragraph. */
+export function refSmallNote(text: string): string {
+  return `<p class="note">${escHtml(text)}</p>`;
+}
+
+/** Bold sub-heading. */
+export function refSubHeading(text: string): string {
+  return `<div class="sub-heading">${escHtml(text)}</div>`;
 }
