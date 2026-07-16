@@ -880,6 +880,8 @@ p.note { font-size: 8pt; color: #6b7280; font-style: italic; margin-top: 8pt; li
 /* ── Reference-style table (horizontal rules only) ───── */
 .ref-table { width: 100%; border-collapse: collapse; font-size: 9.5pt; margin: 8pt 0; }
 .ref-table th { font-size: 8pt; color: #6b7280; font-weight: 400; text-align: left; padding: 7pt 8pt; border-top: 0.75pt solid #e5e7eb; border-bottom: 0.75pt solid #e5e7eb; }
+/* Prevent individual table rows from splitting mid-row; the table itself may span pages */
+.ref-table tr { page-break-inside: avoid; break-inside: avoid; }
 .ref-table th.num { text-align: right; }
 .ref-table td { padding: 7pt 8pt; border-bottom: 0.5pt solid #f3f4f6; color: #111827; vertical-align: top; }
 .ref-table tr:last-child td { border-bottom: none; }

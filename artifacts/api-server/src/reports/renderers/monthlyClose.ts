@@ -483,8 +483,10 @@ function buildExecSummaryPage(report: BuiltReport, entities: { slug: string; m: 
     ${refNarrative(...narrativeExecSummary(first.m, first.fin, report.period))}
     ${kpis}
     <div style="margin:16pt 0 8pt;">${chartHtml}</div>
+    <div class="no-break">
     ${refSubHeading("Period-over-Period Summary")}
     ${refTable(tr(th("Metric"), th("Current Period", "right"), th("vs. Prior Month", "right")), summaryRows)}
+    </div>
   `);
 }
 
@@ -755,7 +757,6 @@ function buildBSPage(report: BuiltReport, entities: { slug: string; m: EntityMet
     ${refSectionHeader(4, "BALANCE SHEET", "Balance Sheet")}
     ${refTable(head, tableRows)}
     ${refNarrative(...narrativeBS(bs))}
-    ${refSmallNote(`Balance sheet prepared from QuickBooks Online records on a ${first.m.basis}-basis. Not an audited financial statement.`)}
   `);
 }
 
@@ -987,7 +988,7 @@ function buildExceptionsPage(report: BuiltReport, alerts: Alert[], headerFn: Hea
     ? alerts.map((a) => {
         const variant: "red" | "amber" | "blue" | "gray" = a.severity === "critical" ? "red" : a.severity === "high" ? "amber" : a.severity === "medium" ? "amber" : "blue";
         const badgeLabel = a.severity === "critical" ? "CRITICAL" : a.severity === "high" ? "HIGH" : a.severity === "medium" ? "MEDIUM" : "LOW";
-        const body = `${a.description} Entity: ${a.entity}. Recommended Action: ${a.recommended_action} Financial Impact: ${a.financial_impact}`;
+        const body = `${a.description} Entity: ${a.entity}. Financial Impact: ${a.financial_impact}. See Management Recommendations for resolution actions.`;
         return refInsightPanel(a.title, body, variant, badgeLabel, "amber");
       })
     : [refInsightPanel("All Clear — No Exceptions", "All validation checks passed. No material exceptions were identified in the monthly close review.", "green", "PASSED", "green")];
@@ -1127,9 +1128,8 @@ function buildAppendixPage(report: BuiltReport, headerFn: HeaderFn): string {
     { term: "Days Sales Outstanding (DSO)", def: "Average days to collect payment after a sale. Formula: (AR / Revenue) × 30." },
     { term: "Accounts Payable (AP)", def: "Money the business owes to vendors and suppliers." },
     { term: "Cash on Hand", def: "Liquid cash available in bank accounts. Negative values indicate an overdraft or deficit." },
-    { term: "YTD", def: "Year to Date — cumulative from January 1 through the reporting date." },
-    { term: "MoM", def: "Month over Month — comparison of the current period to the immediately prior month." },
-    { term: "Close Status", def: "Completion status of the monthly accounting close process, including reconciliation and validation checks." },
+    { term: "YTD / MoM", def: "Year to Date (Jan 1 through reporting date) and Month over Month (current vs. prior period)." },
+    { term: "Close Status", def: "Completion status of the monthly accounting close — reconciliation, validation, and exception review." },
   ];
 
   const tableRows = defs.map(({ term, def }) => tr(td(term, "left", true), td(def))).join("");
@@ -1137,8 +1137,7 @@ function buildAppendixPage(report: BuiltReport, headerFn: HeaderFn): string {
   return wrapPage(`
     ${headerFn(`${report.period} Monthly Close Report`)}
     ${refSectionHeader("A", "APPENDIX: KEY METRICS AND DEFINITIONS", "Appendix: Key Metrics and Definitions")}
-    ${refTable(tr(th("Term"), th("Definition")), tableRows)}
-    ${refSmallNote("This report was prepared from QuickBooks Online records. It is an internal management document and has not been audited.")}
+    <div class="no-break">${refTable(tr(th("Term"), th("Definition")), tableRows)}</div>
   `);
 }
 
@@ -1211,15 +1210,15 @@ export function renderMonthlyClose(report: BuiltReport): string {
     .toc-entry__page { font-size: 9pt; color: #6b7280; min-width: 20pt; text-align: right; }
   `;
 
+  // buildBaseStyles() already wraps its output in <style>…</style>.
+  // extraStyles goes in a separate <style> block — never nest style tags.
   return `<!DOCTYPE html>
 <html lang="en">
 <head>
 <meta charset="utf-8" />
 <title>${escHtml(isPortfolio ? "FinanceOS Portfolio" : primaryName)} — ${escHtml(report.period)} Monthly Close Report</title>
-<style>
 ${buildBaseStyles(accent)}
-${extraStyles}
-</style>
+<style>${extraStyles}</style>
 </head>
 <body>
 ${pages.join("\n")}

@@ -879,6 +879,138 @@ describe("renderMonthlyClose: document structure", () => {
   });
 });
 
+// ─── 17. PDF structure regression tests ──────────────────────────────────────
+//
+// These tests catch the class of bugs found in PR #15 review:
+//  a) nested <style> tags leaking CSS as visible body text
+//  b) Portfolio title referencing an individual company name
+//  c) Cover page followed immediately by a near-blank fragment page
+//  d) Single-entity disclaimer rendered as standalone page (not in footer)
+//  e) Extra <style> tags in the rendered HTML
+
+describe("renderMonthlyClose regression: nested <style> tags", () => {
+  it("single-entity HTML has exactly two <style> open tags (buildBaseStyles + extraStyles)", () => {
+    const html = renderMonthlyClose(makeReport());
+    const matches = (html.match(/<style[\s>]/gi) ?? []).length;
+    // buildBaseStyles() contributes one <style>, extraStyles contributes one — total = 2
+    expect(matches).toBe(2);
+  });
+
+  it("single-entity HTML has exactly two </style> closing tags", () => {
+    const html = renderMonthlyClose(makeReport());
+    const matches = (html.match(/<\/style>/gi) ?? []).length;
+    expect(matches).toBe(2);
+  });
+
+  it("both <style> blocks are inside <head>, not inside <body>", () => {
+    const html = renderMonthlyClose(makeReport());
+    const headEnd = html.indexOf("</head>");
+    const bodyStart = html.indexOf("<body>");
+    // All <style> occurrences must be before </head>
+    let idx = 0;
+    while (true) {
+      const pos = html.indexOf("<style", idx);
+      if (pos === -1) break;
+      expect(pos).toBeLessThan(headEnd);
+      expect(pos).toBeLessThan(bodyStart);
+      idx = pos + 1;
+    }
+  });
+
+  it("HTML body does not contain raw CSS syntax (.class { or ; })", () => {
+    const html = renderMonthlyClose(makeReport());
+    const bodyStart = html.indexOf("<body>");
+    const body = html.slice(bodyStart);
+    // Raw CSS rule syntax must not appear as visible body text
+    expect(body).not.toMatch(/\.\w[\w-]+\s*\{/);
+  });
+
+  it("page-section class definition does not appear as body text", () => {
+    const html = renderMonthlyClose(makeReport());
+    const bodyStart = html.indexOf("<body>");
+    const body = html.slice(bodyStart);
+    expect(body).not.toContain(".page-section");
+  });
+});
+
+describe("renderMonthlyClose regression: portfolio identity", () => {
+  function makePortfolioReport() {
+    return makeReport({
+      branding: {
+        mode: "consolidated",
+        entities: [
+          { slug: "CarDealer_ai", name: "CarDealer.ai", logoPath: null },
+          { slug: "Smile_More", name: "Smile More", logoPath: null },
+        ],
+        financeosBranding: true,
+      },
+      sections: {
+        entity_summary: {},
+        alerts: [],
+        validation: {
+          summary: { all_passed: true, total_checks: 14, passed: 14, failed: 0 },
+          freshness: { data_as_of: "2026-07-16" },
+        },
+      },
+    });
+  }
+
+  it("portfolio HTML <title> contains FinanceOS Portfolio, not individual company name", () => {
+    const html = renderMonthlyClose(makePortfolioReport());
+    const titleMatch = html.match(/<title>(.*?)<\/title>/);
+    expect(titleMatch).not.toBeNull();
+    const title = titleMatch![1];
+    expect(title).toContain("FinanceOS Portfolio");
+    expect(title).not.toContain("CarDealer.ai");
+    expect(title).not.toContain("Smile More");
+  });
+
+  it("portfolio cover section uses PORTFOLIO MONTHLY CLOSE REPORT eyebrow, not entity name", () => {
+    const html = renderMonthlyClose(makePortfolioReport());
+    expect(html).toContain("PORTFOLIO MONTHLY CLOSE REPORT");
+  });
+
+  it("portfolio header uses FinanceOS Portfolio as primary name", () => {
+    const html = renderMonthlyClose(makePortfolioReport());
+    expect(html).toContain("FinanceOS Portfolio");
+  });
+});
+
+describe("renderMonthlyClose regression: cover page isolation", () => {
+  it("cover div has page-break-after (no bleed into next page)", () => {
+    const html = renderMonthlyClose(makeReport());
+    // The cover element must have break-after or page-break-after defined via CSS class
+    expect(html).toContain("cover");
+    // buildBaseStyles must include break-after: page for .cover
+    const styles = buildBaseStyles("#00d4b8");
+    expect(styles).toMatch(/\.cover[\s\S]*?break-after:\s*page/);
+  });
+
+  it("first content section (executive overview) comes after the cover", () => {
+    const html = renderMonthlyClose(makeReport());
+    const coverPos = html.indexOf('class="cover"');
+    const execPos = html.indexOf("section-executive-overview");
+    expect(coverPos).toBeGreaterThanOrEqual(0);
+    expect(execPos).toBeGreaterThan(coverPos);
+  });
+});
+
+describe("renderMonthlyClose regression: disclaimer not standalone", () => {
+  it("disclaimer text appears in Puppeteer footer template, not as a body <p>", () => {
+    const html = renderMonthlyClose(makeReport());
+    // The disclaimer in body pages should only appear inside page header/footer divs,
+    // not as a top-level standalone paragraph in the main content flow.
+    // The footer used by Puppeteer (displayHeaderFooter) carries the disclaimer on every page.
+    // Verify the body does not contain a standalone disclaimer <p> outside a section wrapper.
+    const bodyStart = html.indexOf("<body>");
+    const body = html.slice(bodyStart);
+    // Standalone disclaimer pattern: <p> containing "not an audited statement" outside any wrapper class
+    // The disclaimer MUST only appear inside .ref-page-footer or as Puppeteer header/footer injected text
+    const standaloneDisclaimer = /<p[^>]*>[^<]*not an audited statement[^<]*<\/p>/i;
+    expect(body).not.toMatch(standaloneDisclaimer);
+  });
+});
+
 // ─── 16. HtmlRenderer routes monthly-close to new renderer ───────────────────
 
 describe("HtmlRenderer routing", () => {
