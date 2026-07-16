@@ -31,7 +31,12 @@ export type EntityMetrics = {
   total_equity: number;
   open_ar: number;
   open_ap: number;
+  /** Pipeline's weighted-days-overdue metric per customer (entity_snapshots.arap.dso_days). */
   dso_days: number;
+  /** Standard DSO = (openAr / revenue) × periodDays. Null when revenue ≤ 0 or inputs invalid. */
+  dso_days_standard: number | null;
+  /** Same as dso_days — explicit alias so UI can label it correctly. */
+  weighted_average_days_overdue: number | null;
   dpo_days: number;
   cash_on_hand: number;
   ar_overdue_pct: number;

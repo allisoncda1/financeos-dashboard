@@ -32,3 +32,4 @@ export * from "./customers";
 export * from "./vendors";
 export * from "./alerts";
 export * from "./budget";
+export * from "./cashFlowStatements";

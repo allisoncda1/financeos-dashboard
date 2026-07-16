@@ -35,6 +35,8 @@ function makeMetrics(overrides: Partial<EntityMetrics> = {}): EntityMetrics {
     open_ar: 20_000,
     open_ap: 8_000,
     dso_days: 40,
+    dso_days_standard: null,
+    weighted_average_days_overdue: null,
     dpo_days: 30,
     cash_on_hand: 50_000,
     ar_overdue_pct: 5,
