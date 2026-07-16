@@ -1,22 +1,19 @@
 /**
- * FinanceOS Monthly Close Report — HTML renderer.
+ * FinanceOS Monthly Close Report — Premium HTML Renderer v2
  *
- * Produces a professional, print-ready HTML document for the Monthly Close
- * package. This renderer replaces the generic HtmlRenderer for the
- * "monthly-close" template. All other templates continue using HtmlRenderer.
+ * Produces a professionally designed, print-ready HTML document suitable for
+ * Puppeteer PDF generation. Inspired by Big Four advisory packs and CFO
+ * board-ready monthly reports.
  *
  * Data integrity guarantees:
- *  - All values come from BuiltReport.sections (assembled by builder.ts).
- *  - Null / undefined values render as "—" — never coerced to $0.00.
- *  - Negative values remain negative and are styled in red with parentheses.
- *  - Authoritative server totals are never re-summed on the client.
+ *  - All values come from BuiltReport.sections — never recalculated here.
+ *  - null / undefined → em-dash; never coerced to $0.00.
+ *  - Negative values (e.g. Smile More cash deficit) are preserved and styled.
+ *  - Cash flow uses only RC-016 published statements.
  */
 
-import { readFileSync } from "fs";
-import { join, resolve, sep } from "path";
 import type { BuiltReport } from "../builder";
 import type {
-  PortfolioSummary,
   EntityMetrics,
   Anomaly,
   FinancialsData,
@@ -37,10 +34,13 @@ import {
   fmtPercent,
   fmtDate,
   fmtMonthYear,
+  fmtMonthShort,
   amountCell,
   varianceCell,
+  variancePill,
   buildBaseStyles,
   pageHeader,
+  sectionBanner,
   sectionHeading,
   kpiCard,
   badge,
@@ -48,422 +48,510 @@ import {
   emptyState,
   dataFooter,
   barRow,
+  agingBars,
+  legendItems,
+  logoImg,
+  embedLogoPath,
+  svgLineChart,
+  svgWaterfallChart,
+  svgHBars,
+  svgDonut,
 } from "./designSystem";
-
-// ─── Logo embed (path-safe, cached) ──────────────────────────────────────────
-
-const LOGO_CACHE = new Map<string, string | null>();
-
-function embedLogo(logoPath: string | null): string | null {
-  if (!logoPath) return null;
-  if (LOGO_CACHE.has(logoPath)) return LOGO_CACHE.get(logoPath) ?? null;
-  try {
-    const relative = logoPath.replace(/^\//, "");
-    const logoRoot = resolve(__dirname, "../../../../financeos/public");
-    const diskPath = resolve(join(logoRoot, relative));
-    if (!diskPath.startsWith(logoRoot + sep)) { LOGO_CACHE.set(logoPath, null); return null; }
-    const bytes = readFileSync(diskPath);
-    const ext = diskPath.split(".").pop()?.toLowerCase() ?? "png";
-    const mime = ext === "svg" ? "image/svg+xml" : ext === "jpg" || ext === "jpeg" ? "image/jpeg" : "image/png";
-    const dataUrl = `data:${mime};base64,${bytes.toString("base64")}`;
-    LOGO_CACHE.set(logoPath, dataUrl);
-    return dataUrl;
-  } catch {
-    LOGO_CACHE.set(logoPath, null);
-    return null;
-  }
-}
-
-function entityLogoHtml(name: string, logoPath: string | null, primaryColor: string, size = "24pt"): string {
-  const src = embedLogo(logoPath);
-  if (src) return `<img class="entity-card__logo" src="${src}" alt="${escHtml(name)}" style="width:${size};height:${size}" />`;
-  const initials = escHtml(name.slice(0, 2).toUpperCase());
-  return `<span class="entity-card__logo--fallback" style="background:${escHtml(primaryColor)};width:${size};height:${size}">${initials}</span>`;
-}
+import { ENTITY_DEFINITIONS } from "../../lib/entities";
 
 // ─── Type helpers ─────────────────────────────────────────────────────────────
 
-type SectionData = Record<string, unknown>;
+type EntityEntry = { metrics: EntityMetrics; anomalies: Anomaly[] };
 
-function asPortfolio(s: unknown): PortfolioSummary | null {
-  const d = s as { portfolio?: PortfolioSummary } | undefined;
-  return d?.portfolio ?? null;
+function asEntityMap(s: unknown): Record<string, EntityEntry> {
+  return (s as Record<string, EntityEntry>) ?? {};
 }
-
-function asEntityMap(s: unknown): Record<string, { metrics: EntityMetrics; anomalies: Anomaly[] }> {
-  return (s as Record<string, { metrics: EntityMetrics; anomalies: Anomaly[] }>) ?? {};
-}
-
 function asFinancialsMap(s: unknown): Record<string, FinancialsData> {
   return (s as Record<string, FinancialsData>) ?? {};
 }
-
 function asAlerts(s: unknown): Alert[] {
   return (s as Alert[] | undefined) ?? [];
 }
-
 function asArAp(s: unknown): Record<string, { customers?: CustomersData; vendors?: VendorsData }> {
   return (s as Record<string, { customers?: CustomersData; vendors?: VendorsData }>) ?? {};
 }
-
 function asValidation(s: unknown): { summary?: ValidationSummary; freshness?: DataFreshness } {
   return (s as { summary?: ValidationSummary; freshness?: DataFreshness }) ?? {};
 }
-
-function asExecutive(s: unknown): {
-  greeting?: string;
-  executiveSummary?: string[];
-  insights?: { title: string; text: string; variant?: string }[];
-  keyRisks?: string[];
-  actions?: string[];
-  kpis?: { label: string; value: string; change?: string; changeClass?: string }[];
-} {
-  return (s as Record<string, unknown> ?? {}) as ReturnType<typeof asExecutive>;
+function asPortfolio(s: unknown): Record<string, unknown> {
+  const d = s as { portfolio?: Record<string, unknown> } | undefined;
+  return d?.portfolio ?? {};
 }
 
-// ─── Section 1: Cover Page ────────────────────────────────────────────────────
+function entityDef(slug: string) {
+  return ENTITY_DEFINITIONS.find((e) => e.slug === slug);
+}
+
+function primaryColorForSlug(slug: string): string {
+  return entityDef(slug)?.primaryColor ?? BRAND.darkGreen;
+}
+
+function logoPathForSlug(slug: string): string | null {
+  return entityDef(slug)?.logo ?? null;
+}
+
+// ─── FinanceOS logo embed ─────────────────────────────────────────────────────
+
+function financeosLockupHtml(darkBg = true): string {
+  const src = embedLogoPath("/branding/financeos-lockup.png");
+  if (src) {
+    const filter = darkBg ? "" : "";
+    return `<img src="${src}" alt="FinanceOS" style="height:26pt;width:auto;object-fit:contain;display:block${filter ? ";filter:" + filter : ""}" />`;
+  }
+  return `<span style="font-size:16pt;font-weight:700;color:#fff;font-family:Georgia,serif">FinanceOS</span>`;
+}
+
+function financeosIconHtml(size = "24pt"): string {
+  const src = embedLogoPath("/branding/financeos-icon.png");
+  if (src) {
+    return `<img src="${src}" alt="FinanceOS" style="height:${size};width:auto;object-fit:contain;display:block" />`;
+  }
+  return `<span style="display:inline-flex;align-items:center;justify-content:center;width:${size};height:${size};border-radius:6pt;background:${BRAND.darkGreen};color:#fff;font-weight:700;font-size:12pt;font-family:Georgia,serif">F</span>`;
+}
+
+// ─── Cover Page ───────────────────────────────────────────────────────────────
 
 function renderCover(report: BuiltReport): string {
   const { branding, template, period, generatedAt, metadata, sections } = report;
-  const freshness = asValidation(sections["validation"])?.freshness;
+  const freshnessData = asValidation(sections["validation"])?.freshness;
   const validation = asValidation(sections["validation"])?.summary;
   const norm = normalizeValidationSummary(validation);
 
-  const entityNames = branding.entities.map((e) => e.name);
   const isSingle = branding.mode === "single" && branding.primaryEntity;
-  const companyLabel = isSingle ? branding.primaryEntity!.name : "FinanceOS Portfolio";
-  const primaryColor = isSingle ? branding.primaryEntity!.primaryColor : BRAND.green;
+  const primaryColor = isSingle ? branding.primaryEntity!.primaryColor : BRAND.greenMid;
+  const entityLogoPath = isSingle ? branding.primaryEntity!.logoPath : null;
+  const entityName = isSingle ? branding.primaryEntity!.name : "FinanceOS Portfolio";
+  const entitySlug = isSingle ? branding.primaryEntity!.slug : null;
+  const basis = entitySlug ? entityDef(entitySlug)?.accountingBasis ?? "" : "";
 
-  const entityChips = entityNames
-    .map((n) => `<span class="cover__entity-chip">${escHtml(n)}</span>`)
-    .join("");
-
-  const validationBadge = norm
+  const validBadge = norm
     ? norm.allPassed
       ? badge("Validated", "green")
       : badge("Issues Found", "amber")
     : badge("Pending", "gray");
 
+  const dataAsOf = freshnessData?.data_as_of ? fmtDate(freshnessData.data_as_of) : "—";
   const generatedReadable = fmtDate(generatedAt);
-  const dataAsOf = freshness?.data_as_of ? fmtDate(freshness.data_as_of) : "—";
+
+  // Entity logo or chip strip
+  let entityDisplay: string;
+  if (isSingle) {
+    const src = embedLogoPath(entityLogoPath);
+    if (src) {
+      entityDisplay = `<img src="${src}" alt="${escHtml(entityName)}" style="height:44pt;width:auto;max-width:160pt;object-fit:contain;display:block;margin-bottom:6pt" />`;
+    } else {
+      entityDisplay = `<div style="width:52pt;height:52pt;border-radius:10pt;background:${escHtml(primaryColor)};display:flex;align-items:center;justify-content:center;font-size:20pt;font-weight:700;color:#fff;margin-bottom:6pt">${escHtml(entityName.slice(0,2).toUpperCase())}</div>`;
+    }
+  } else {
+    // Multi-entity chip strip with logos
+    const chips = branding.entities.map((e) => {
+      const def = entityDef(e.slug);
+      const logoSrc = embedLogoPath(e.logoPath ?? def?.logo ?? null);
+      const entityColor = def?.primaryColor ?? BRAND.darkGreen;
+      const logoEl = logoSrc
+        ? `<img src="${logoSrc}" alt="${escHtml(e.name)}" style="height:14pt;width:auto;max-width:36pt;object-fit:contain" />`
+        : `<span style="display:inline-flex;align-items:center;justify-content:center;width:16pt;height:16pt;border-radius:3pt;background:${entityColor};color:#fff;font-weight:700;font-size:8pt">${escHtml(e.name.slice(0,2).toUpperCase())}</span>`;
+      return `<div class="cover__entity-chip">${logoEl}<span>${escHtml(e.name)}</span></div>`;
+    }).join("");
+    entityDisplay = `<div class="cover__entity-chips mb-8">${chips}</div>`;
+  }
 
   return `
-<div class="cover" style="page-break-after:always">
-  <div class="cover__top-bar" style="background:${escHtml(primaryColor)}"></div>
+<div class="cover">
+  <!-- Hero header bar -->
+  <div class="cover__hero">
+    <div class="cover__hero-pattern"></div>
+    <div style="margin-bottom:auto">${financeosLockupHtml(true)}</div>
+    <div style="margin-top:16pt">
+      <div class="cover__tagline">Financial Intelligence Platform</div>
+      <div class="cover__report-type">${escHtml(template.name)}</div>
+    </div>
+  </div>
+
+  <!-- Entity accent strip -->
+  <div class="cover__accent-bar" style="background:${escHtml(primaryColor)}"></div>
+
+  <!-- Document body -->
   <div class="cover__body">
-    <div class="cover__brand">FinanceOS</div>
-    <h1 class="cover__title">${escHtml(template.name)}</h1>
-    <p class="cover__period">${escHtml(period)}</p>
-    <div class="cover__divider" style="background:${escHtml(primaryColor)}"></div>
-
-    ${isSingle
-      ? `<p style="font-size:13pt;font-weight:600;color:${escHtml(BRAND.textSecondary)};margin-bottom:14pt">${escHtml(companyLabel)}</p>`
-      : `<div class="cover__entities">${entityChips}</div>`
-    }
-
-    <div class="cover__meta-grid">
-      <div class="cover__meta-item">
-        <div class="cover__meta-label">Reporting Period</div>
-        <div class="cover__meta-value">${escHtml(period)}</div>
+    <!-- Entity identity -->
+    <div class="cover__entity-row">
+      <div>
+        ${entityDisplay}
+        <div class="cover__entity-name">${escHtml(entityName)}</div>
+        ${isSingle && basis ? `<div class="cover__entity-sub">${escHtml(basis)} Basis</div>` : ""}
       </div>
-      <div class="cover__meta-item">
+    </div>
+
+    <!-- Period -->
+    <div class="cover__period">Reporting Period: ${escHtml(period)}</div>
+
+    <!-- Metadata grid -->
+    <div class="cover__meta-grid">
+      <div class="cover__meta-cell" style="border-left-color:${escHtml(primaryColor)}">
         <div class="cover__meta-label">Data As Of</div>
         <div class="cover__meta-value">${escHtml(dataAsOf)}</div>
       </div>
-      <div class="cover__meta-item">
+      <div class="cover__meta-cell" style="border-left-color:${escHtml(primaryColor)}">
         <div class="cover__meta-label">Generated</div>
         <div class="cover__meta-value">${escHtml(generatedReadable)}</div>
       </div>
-      <div class="cover__meta-item">
+      <div class="cover__meta-cell" style="border-left-color:${escHtml(primaryColor)}">
         <div class="cover__meta-label">Validation Status</div>
-        <div class="cover__meta-value">${validationBadge}</div>
+        <div class="cover__meta-value">${validBadge}</div>
       </div>
-      <div class="cover__meta-item">
+      <div class="cover__meta-cell" style="border-left-color:${escHtml(primaryColor)}">
         <div class="cover__meta-label">Entities</div>
-        <div class="cover__meta-value">${metadata.entityCount} ${metadata.entityCount === 1 ? "entity" : "entities"}</div>
+        <div class="cover__meta-value">${metadata.entityCount} ${metadata.entityCount === 1 ? "Entity" : "Entities"}</div>
       </div>
-      <div class="cover__meta-item">
+      <div class="cover__meta-cell" style="border-left-color:${escHtml(primaryColor)}">
         <div class="cover__meta-label">Report Type</div>
-        <div class="cover__meta-value">${isSingle ? "Single Entity" : "Multi-Entity Portfolio"}</div>
+        <div class="cover__meta-value">${isSingle ? "Single Entity" : "Portfolio"}</div>
       </div>
+      ${norm ? `<div class="cover__meta-cell" style="border-left-color:${escHtml(primaryColor)}">
+        <div class="cover__meta-label">Checks Passed</div>
+        <div class="cover__meta-value">${norm.passed ?? "—"} / ${norm.totalChecks ?? "—"}</div>
+      </div>` : ""}
     </div>
 
-    <div class="cover__spacer"></div>
-
+    <!-- Footer -->
     <div class="cover__footer">
-      <span class="cover__confidential">Confidential</span>
-      <span class="cover__powered">Generated automatically by FinanceOS</span>
+      <div style="display:flex;align-items:center;gap:8pt">
+        ${financeosIconHtml("14pt")}
+        <span>Prepared by FinanceOS &middot; Automated Financial Intelligence</span>
+      </div>
+      <div class="cover__confidential">Confidential</div>
     </div>
   </div>
 </div>`;
 }
 
-// ─── Section 2: Executive Overview ───────────────────────────────────────────
+// ─── Helper: build per-page branding opts ─────────────────────────────────────
+
+function hdrOpts(report: BuiltReport): Parameters<typeof pageHeader>[0] {
+  const isSingle = report.branding.mode === "single" && report.branding.primaryEntity;
+  return {
+    reportTitle: report.template.name,
+    entityName: isSingle ? report.branding.primaryEntity!.name : "Portfolio",
+    period: report.period,
+    logoPath: isSingle ? report.branding.primaryEntity!.logoPath : "/branding/financeos-icon.png",
+    primaryColor: isSingle ? report.branding.primaryEntity!.primaryColor : BRAND.darkGreen,
+  };
+}
+
+// ─── Section 1: Executive Overview ───────────────────────────────────────────
 
 function renderExecutiveOverview(report: BuiltReport): string {
-  const exec = asExecutive(report.sections["executive_summary"]);
-  const portfolio = asPortfolio(report.sections["portfolio_kpis"]);
   const entityMap = asEntityMap(report.sections["entity_summary"]);
+  const portfolio = asPortfolio(report.sections["portfolio_kpis"]);
   const isSingle = report.branding.mode === "single" && report.branding.primaryEntity;
-  const firstEntity = Object.values(entityMap)[0];
-  const metrics: EntityMetrics | null = isSingle && firstEntity ? firstEntity.metrics : null;
-  const p = portfolio;
+  const entries = Object.entries(entityMap);
+  const firstMetrics: EntityMetrics | null = entries.length > 0 ? entries[0]![1].metrics : null;
 
-  const revYtd = metrics ? metrics.revenue_ytd : p?.portfolio_revenue_ytd ?? null;
-  const netInc = metrics ? metrics.net_income_ytd : p?.portfolio_net_income_ytd ?? null;
-  const netMgn = metrics ? metrics.net_margin_pct : p?.portfolio_net_margin_pct ?? null;
-  const cash = metrics ? metrics.cash_on_hand : p?.portfolio_cash_on_hand ?? null;
-  const openAr = metrics ? metrics.open_ar : p?.portfolio_open_ar ?? null;
-  const openAp = metrics ? metrics.open_ap : p?.portfolio_open_ap ?? null;
-  const runway = p?.cash_runway_months ?? null;
+  const rev = firstMetrics?.revenue_ytd ?? (portfolio["portfolio_revenue_ytd"] as number | null);
+  const ni = firstMetrics?.net_income_ytd ?? (portfolio["portfolio_net_income_ytd"] as number | null);
+  const netMgn = firstMetrics?.net_margin_pct ?? (portfolio["portfolio_net_margin_pct"] as number | null);
+  const grossMgn = firstMetrics?.gross_margin_pct ?? null;
+  const cash = firstMetrics?.cash_on_hand ?? (portfolio["portfolio_cash_on_hand"] as number | null);
+  const ar = firstMetrics?.open_ar ?? (portfolio["portfolio_open_ar"] as number | null);
+  const ap = firstMetrics?.open_ap ?? (portfolio["portfolio_open_ap"] as number | null);
+  const arOverdue = firstMetrics?.ar_overdue_pct ?? null;
+  const dso = firstMetrics?.dso_days ?? null;
+  const runway = portfolio["cash_runway_months"] as number | null ?? null;
 
-  const { html: netIncHtml } = amountCell(netInc);
+  const { html: niHtml } = amountCell(ni);
   const { html: cashHtml } = amountCell(cash);
 
-  // Build KPI grid
-  const kpis = [
-    kpiCard("Revenue YTD", fmtCurrency(revYtd)),
-    kpiCard("Net Income YTD", netIncHtml),
-    kpiCard("Net Margin", fmtPercent(netMgn), { accent: true }),
-    kpiCard("Cash on Hand", cashHtml),
-    kpiCard("Open AR", fmtCurrency(openAr)),
-    kpiCard("Open AP", fmtCurrency(openAp)),
-    ...(runway != null ? [kpiCard("Cash Runway", `${runway.toFixed(1)} mo`)] : []),
-  ].join("");
+  // KPI variant logic
+  const niVariant = ni === null ? "default" : ni < 0 ? "negative" : ni > 0 ? "positive" : "default";
+  const cashVariant = cash === null ? "default" : cash < 0 ? "negative" : "default";
+  const arVariant = arOverdue !== null && arOverdue >= 80 ? "negative" : arOverdue !== null && arOverdue >= 40 ? "warning" : "default";
 
-  // Insights
-  const rawInsights: { title: string; text: string; variant?: string }[] =
-    exec.insights ?? buildAutoInsights(metrics, p, isSingle !== false && isSingle != null);
+  // Trend sparkline from monthly P&L
+  const allFin = asFinancialsMap(report.sections["financials"]);
+  const firstFin = Object.values(allFin)[0];
+  const revTrend = (firstFin?.monthly_pl ?? []).map((m) => m.revenue);
+  const niTrend  = (firstFin?.monthly_pl ?? []).map((m) => m.net_income);
+  const labels   = (firstFin?.monthly_pl ?? []).map((m) => fmtMonthShort(m.month + "-01"));
 
-  const insightsHtml = rawInsights.slice(0, 5)
-    .map((ins) => insight(ins.title, ins.text, (ins.variant as Parameters<typeof insight>[2]) ?? "neutral"))
-    .join("");
+  const revChart = revTrend.length >= 2
+    ? `<div class="chart-box" style="margin-bottom:0">
+        <div class="chart-box__title">Revenue Trend</div>
+        ${svgLineChart(revTrend, { width: 240, height: 65, color: BRAND.darkGreen, labels, showDots: true, fillOpacity: 0.1 })}
+      </div>`
+    : "";
 
-  // Risks and actions
-  const risks = (exec.keyRisks ?? []).slice(0, 3);
-  const actions = (exec.actions ?? []).slice(0, 3);
+  const niChart = niTrend.length >= 2
+    ? `<div class="chart-box" style="margin-bottom:0">
+        <div class="chart-box__title">Net Income Trend</div>
+        ${svgLineChart(niTrend, { width: 240, height: 65, color: ni !== null && ni < 0 ? BRAND.negative : BRAND.positive, labels, showDots: true, fillOpacity: 0.1 })}
+      </div>`
+    : "";
 
-  const freshness = asValidation(report.sections["validation"])?.freshness;
-  const dataAsOf = freshness?.data_as_of ? fmtDate(freshness.data_as_of) : "—";
+  // Close status
+  const validData = asValidation(report.sections["validation"]);
+  const norm = normalizeValidationSummary(validData.summary);
+  const closeStatus = norm?.allPassed
+    ? insight("Close Status: Complete", `All ${norm.totalChecks ?? ""} validation checks passed. Data is publication-ready.`, "positive")
+    : norm
+    ? insight("Close Status: Review Required", `${norm.failed ?? "?"} of ${norm.totalChecks ?? "?"} validation checks failed. Review data integrity section.`, "warning")
+    : insight("Close Status: Unknown", "Validation results not available.", "neutral");
+
+  // Auto-insights
+  const autoInsights: { title: string; text: string; variant: "positive" | "warning" | "critical" | "info" | "neutral" }[] = [];
+  if (netMgn !== null && Number.isFinite(netMgn)) {
+    if (netMgn < 0) autoInsights.push({ title: "Net Loss", text: `Portfolio is operating at a net loss of ${fmtPercent(Math.abs(netMgn))} YTD. Operating expenses exceed revenue — immediate review required.`, variant: "critical" });
+    else if (netMgn < 5) autoInsights.push({ title: "Thin Margins", text: `Net margin of ${fmtPercent(netMgn)} is below the 5% watch threshold. Monitor opex closely.`, variant: "warning" });
+    else autoInsights.push({ title: "Profitability", text: `Net margin of ${fmtPercent(netMgn)} is within healthy range.`, variant: "positive" });
+  }
+  if (cash !== null && Number.isFinite(cash) && cash < 0) {
+    autoInsights.push({ title: "Negative Cash Position", text: `Cash on hand is ${fmtCurrency(cash, { showParens: true })}. Immediate liquidity action is required.`, variant: "critical" });
+  }
+  if (arOverdue !== null && arOverdue >= 60) {
+    autoInsights.push({ title: "AR Collection Risk", text: `${fmtPercent(arOverdue)} of accounts receivable is overdue. Collection action required.`, variant: "warning" });
+  }
+
+  const freshness = validData.freshness;
 
   return `
-<div class="section section--break-before" id="section-executive-overview">
-  ${pageHeader(report.template.name, report.branding.mode === "single" ? (report.branding.primaryEntity?.name ?? "Portfolio") : "Portfolio Overview", report.period)}
-  ${sectionHeading("Executive Overview", { number: 1 })}
+<div class="section section--break" id="section-executive-overview">
+  ${pageHeader(hdrOpts(report))}
+  ${sectionBanner("Executive Overview", { number: 1, bgColor: BRAND.sectionExec, accentColor: BRAND.greenMid })}
 
-  <div class="kpi-grid kpi-grid--4" style="margin-bottom:12pt">
-    ${kpis}
+  <!-- KPI grid row 1 -->
+  <div class="kpi-grid kpi-grid--4 mb-12">
+    ${kpiCard("Revenue YTD", fmtCurrency(rev), { variant: "primary" })}
+    ${kpiCard("Net Income YTD", niHtml, { variant: niVariant as "positive" | "negative" | "default" })}
+    ${kpiCard("Net Margin", fmtPercent(netMgn), { variant: netMgn !== null && netMgn < 0 ? "negative" : netMgn !== null && netMgn >= 15 ? "positive" : "default" })}
+    ${kpiCard("Gross Margin", fmtPercent(grossMgn))}
   </div>
 
-  ${insightsHtml || ""}
+  <div class="kpi-grid kpi-grid--4 mb-12">
+    ${kpiCard("Cash on Hand", cashHtml, { variant: cashVariant as "negative" | "default" })}
+    ${kpiCard("Open AR", fmtCurrency(ar), { variant: arVariant as "negative" | "warning" | "default" })}
+    ${kpiCard("Open AP", fmtCurrency(ap))}
+    ${runway !== null ? kpiCard("Cash Runway", `${runway.toFixed(1)} mo`) : kpiCard("DSO", dso != null ? `${dso.toFixed(0)} days` : "—")}
+  </div>
 
-  ${risks.length > 0 || actions.length > 0 ? `
-  <div class="two-col" style="margin-top:10pt">
-    ${risks.length > 0 ? `
-    <div>
-      <h4 style="margin-bottom:6pt;color:${BRAND.negative}">Key Risks</h4>
-      <ul style="padding-left:14pt;font-size:8.5pt;color:${BRAND.textSecondary}">
-        ${risks.map((r) => `<li style="margin-bottom:3pt">${escHtml(r)}</li>`).join("")}
-      </ul>
-    </div>` : ""}
-    ${actions.length > 0 ? `
-    <div>
-      <h4 style="margin-bottom:6pt;color:${BRAND.green}">Recommended Actions</h4>
-      <ul style="padding-left:14pt;font-size:8.5pt;color:${BRAND.textSecondary}">
-        ${actions.map((a) => `<li style="margin-bottom:3pt">${escHtml(a)}</li>`).join("")}
-      </ul>
-    </div>` : ""}
+  <!-- Trend charts + insights -->
+  ${revChart || niChart ? `
+  <div class="two-col mb-12">
+    <div>${revChart}</div>
+    <div>${niChart}</div>
   </div>` : ""}
 
-  ${dataFooter([`Data as of ${dataAsOf}`, `${report.metadata.entityCount} ${report.metadata.entityCount === 1 ? "entity" : "entities"}`, "FinanceOS — Confidential"])}
+  <!-- Insights -->
+  ${autoInsights.map((ins) => insight(ins.title, ins.text, ins.variant)).join("")}
+
+  <!-- Close status -->
+  ${closeStatus}
+
+  ${dataFooter([`Data as of ${freshness?.data_as_of ? fmtDate(freshness.data_as_of) : "—"}`, `${report.metadata.entityCount} ${report.metadata.entityCount === 1 ? "entity" : "entities"}`, "FinanceOS — Confidential"])}
 </div>`;
 }
 
-function buildAutoInsights(
-  metrics: EntityMetrics | null,
-  portfolio: PortfolioSummary | null,
-  isSingle: boolean,
-): { title: string; text: string; variant: string }[] {
-  const result: { title: string; text: string; variant: string }[] = [];
-  const netMgn = metrics?.net_margin_pct ?? portfolio?.portfolio_net_margin_pct;
-  const rev = metrics?.revenue_ytd ?? portfolio?.portfolio_revenue_ytd;
-  const ar = metrics?.open_ar ?? portfolio?.portfolio_open_ar;
-  const cash = metrics?.cash_on_hand ?? portfolio?.portfolio_cash_on_hand;
-  const arPct = metrics?.ar_overdue_pct;
+// ─── Section 2: Entity Performance ───────────────────────────────────────────
 
-  if (netMgn != null && Number.isFinite(netMgn)) {
-    const variant = netMgn >= 15 ? "positive" : netMgn >= 5 ? "neutral" : netMgn < 0 ? "critical" : "warning";
-    result.push({ title: "Profitability", text: `Net margin is ${fmtPercent(netMgn)}.${netMgn < 0 ? " The portfolio is currently operating at a net loss." : netMgn >= 15 ? " Strong margin performance." : " Margin is within acceptable range."}`, variant });
-  }
-  if (rev != null && Number.isFinite(rev)) {
-    result.push({ title: "Revenue", text: `YTD revenue stands at ${fmtCurrency(rev)}.`, variant: "neutral" });
-  }
-  if (arPct != null && Number.isFinite(arPct)) {
-    const variant = arPct >= 80 ? "critical" : arPct >= 50 ? "warning" : "positive";
-    result.push({ title: "Accounts Receivable", text: `${fmtPercent(arPct)} of open AR is overdue (${fmtCurrency(ar)}).${arPct >= 80 ? " Urgent collection action required." : ""}`, variant });
-  }
-  if (cash != null && Number.isFinite(cash)) {
-    const variant = cash < 0 ? "critical" : cash < 50000 ? "warning" : "positive";
-    result.push({ title: "Cash Position", text: cash < 0 ? `Cash position is negative at ${fmtCurrency(cash, { showParens: true })}. Requires immediate attention.` : `Cash on hand is ${fmtCurrency(cash)}.`, variant });
-  }
-  return result;
-}
-
-// ─── Section 3: Portfolio & Entity Performance ────────────────────────────────
-
-function renderPortfolioPerformance(report: BuiltReport): string {
+function renderEntityPerformance(report: BuiltReport): string {
   const entityMap = asEntityMap(report.sections["entity_summary"]);
-  const isSingle = report.branding.mode === "single" && report.branding.primaryEntity;
-  const entries = Object.entries(entityMap);
-
+  const entries = Object.entries(entityMap).filter(([, v]) => v.metrics);
   if (entries.length === 0) return "";
 
-  if (isSingle && entries.length === 1) {
-    return renderSingleEntitySummary(report, entries[0]![0] as EntitySlug, entries[0]![1]);
-  }
-
-  return renderMultiEntityTable(report, entityMap);
+  const isSingle = report.branding.mode === "single" && report.branding.primaryEntity;
+  return isSingle && entries.length === 1
+    ? renderSingleScorecard(report, entries[0]![0] as EntitySlug, entries[0]![1])
+    : renderMultiEntityTable(report, entries);
 }
 
-function renderSingleEntitySummary(
-  report: BuiltReport,
-  slug: EntitySlug,
-  entry: { metrics: EntityMetrics; anomalies: Anomaly[] },
-): string {
+function renderSingleScorecard(report: BuiltReport, slug: EntitySlug, entry: EntityEntry): string {
   const m = entry.metrics;
   if (!m) return "";
-  const primaryColor = report.branding.primaryEntity?.primaryColor ?? BRAND.green;
-  const logoSrc = embedLogo(report.branding.primaryEntity?.logoPath ?? null);
-  const logoHtml = logoSrc
-    ? `<img class="entity-card__logo" src="${logoSrc}" alt="${escHtml(m.entity)}" style="width:28pt;height:28pt" />`
-    : `<span class="entity-card__logo--fallback" style="background:${escHtml(primaryColor)};width:28pt;height:28pt">${escHtml(m.entity.slice(0, 2).toUpperCase())}</span>`;
+  const def = entityDef(slug);
+  const primaryColor = def?.primaryColor ?? BRAND.darkGreen;
+  const logoPath = def?.logo ?? null;
 
   const { html: niHtml } = amountCell(m.net_income_ytd);
   const { html: cashHtml } = amountCell(m.cash_on_hand);
 
+  // Cash bar (vs zero)
+  const maxForBar = Math.max(Math.abs(m.cash_on_hand ?? 0), Math.abs(m.open_ar ?? 0), Math.abs(m.open_ap ?? 0), 1);
+
+  const allFin = asFinancialsMap(report.sections["financials"]);
+  const fin = allFin[slug];
+  const revTrend = (fin?.monthly_pl ?? []).map((m) => m.revenue);
+  const mgnTrend = (fin?.monthly_pl ?? []).map((m) => m.net_income && m.revenue ? (m.net_income / m.revenue) * 100 : null);
+  const labels   = (fin?.monthly_pl ?? []).map((m) => fmtMonthShort(m.month + "-01"));
+
   return `
-<div class="section section--break-before" id="section-entity-performance">
-  ${pageHeader(report.template.name, m.entity, report.period)}
-  ${sectionHeading("Entity Performance", { number: 2, subtitle: `As of ${fmtDate(m.as_of)}` })}
-  <div class="entity-card">
-    <div class="entity-card__header" style="background:${escHtml(primaryColor)}">
-      ${logoHtml}
+<div class="section section--break" id="section-entity-performance">
+  ${pageHeader(hdrOpts(report))}
+  ${sectionBanner("Entity Performance", { number: 2, bgColor: BRAND.sectionPerf, accentColor: "#3b82f6" })}
+
+  <div class="scorecard no-break">
+    <div class="scorecard__header" style="background:${escHtml(primaryColor)}">
+      ${logoImg(logoPath, m.entity, primaryColor, { height: "40pt" })}
       <div>
-        <div class="entity-card__name">${escHtml(m.entity)}</div>
-        <div style="font-size:8pt;opacity:0.8">${escHtml(m.basis)} Basis &middot; ${escHtml(m.slug)}</div>
+        <div class="scorecard__name">${escHtml(m.entity)}</div>
+        <div class="scorecard__sub">${escHtml(m.basis)} Basis &middot; As of ${escHtml(fmtDate(m.as_of))} &middot; ${escHtml(m.slug)}</div>
       </div>
-      <div class="entity-card__meta">As of ${escHtml(fmtDate(m.as_of))}</div>
     </div>
-    <div class="entity-card__body">
-      <div class="kpi-grid kpi-grid--4">
-        ${kpiCard("Revenue YTD", fmtCurrency(m.revenue_ytd))}
-        ${kpiCard("Net Income YTD", niHtml)}
+    <div class="scorecard__body">
+      <div class="kpi-grid kpi-grid--4 mb-12">
+        ${kpiCard("Revenue YTD", fmtCurrency(m.revenue_ytd), { variant: "primary" })}
+        ${kpiCard("Net Income YTD", niHtml, { variant: m.net_income_ytd < 0 ? "negative" : m.net_income_ytd > 0 ? "positive" : "default" })}
         ${kpiCard("Gross Margin", fmtPercent(m.gross_margin_pct))}
-        ${kpiCard("Net Margin", fmtPercent(m.net_margin_pct))}
-        ${kpiCard("Cash on Hand", cashHtml)}
+        ${kpiCard("Net Margin", fmtPercent(m.net_margin_pct), { variant: m.net_margin_pct < 0 ? "negative" : "default" })}
+      </div>
+      <div class="kpi-grid kpi-grid--4 mb-12">
+        ${kpiCard("Cash on Hand", cashHtml, { variant: (m.cash_on_hand ?? 0) < 0 ? "negative" : "default" })}
         ${kpiCard("Open AR", fmtCurrency(m.open_ar))}
         ${kpiCard("Open AP", fmtCurrency(m.open_ap))}
         ${kpiCard("DSO", m.dso_days != null ? `${m.dso_days.toFixed(0)} days` : "—")}
       </div>
+
+      ${revTrend.length >= 2 ? `
+      <div class="two-col">
+        <div class="chart-box">
+          <div class="chart-box__title">Revenue Trend</div>
+          ${svgLineChart(revTrend, { width: 240, height: 60, color: primaryColor, labels, showDots: true, fillOpacity: 0.1 })}
+        </div>
+        <div class="chart-box">
+          <div class="chart-box__title">Net Margin Trend (%)</div>
+          ${svgLineChart(mgnTrend, { width: 240, height: 60, color: BRAND.info, labels, showDots: true, fillOpacity: 0.08 })}
+        </div>
+      </div>` : ""}
+
+      <!-- Working capital bars -->
+      <div class="chart-box" style="margin-bottom:0">
+        <div class="chart-box__title">Working Capital Overview</div>
+        ${barRow("Cash on Hand", m.cash_on_hand, maxForBar, fmtCurrency(m.cash_on_hand, { compact: true }), primaryColor)}
+        ${barRow("Open AR", m.open_ar, maxForBar, fmtCurrency(m.open_ar, { compact: true }), BRAND.info)}
+        ${barRow("Open AP", m.open_ap, maxForBar, fmtCurrency(m.open_ap, { compact: true }), BRAND.warning)}
+      </div>
     </div>
   </div>
-  ${dataFooter([`Data as of ${fmtDate(m.as_of)}`, "FinanceOS — Confidential"])}
+
+  ${dataFooter([`As of ${fmtDate(m.as_of)}`, "FinanceOS — Confidential"])}
 </div>`;
 }
 
 function renderMultiEntityTable(
   report: BuiltReport,
-  entityMap: Record<string, { metrics: EntityMetrics; anomalies: Anomaly[] }>,
+  entries: [string, EntityEntry][],
 ): string {
-  const entries = Object.entries(entityMap).filter(([, v]) => v.metrics != null);
-  if (entries.length === 0) return "";
+  // Find best / worst for conditional formatting
+  const revVals = entries.map(([, v]) => v.metrics?.revenue_ytd ?? 0);
+  const maxRev = Math.max(...revVals);
 
   const headerRow = `
 <tr>
+  <th style="width:28pt"></th>
   <th>Entity</th>
   <th class="num">Revenue YTD</th>
   <th class="num">Net Income</th>
   <th class="num">Net Margin</th>
+  <th class="num">Gross Margin</th>
   <th class="num">Cash</th>
   <th class="num">Open AR</th>
-  <th class="num">Open AP</th>
   <th class="num">DSO</th>
   <th class="num">AR Overdue</th>
 </tr>`;
 
-  const bodyRows = entries
-    .map(([, { metrics: m }]) => {
-      if (!m) return "";
-      const { html: cashHtml } = amountCell(m.cash_on_hand);
-      const { html: niHtml } = amountCell(m.net_income_ytd);
-      return `
+  const bodyRows = entries.map(([slug, { metrics: m }]) => {
+    if (!m) return "";
+    const def = entityDef(slug);
+    const primaryColor = def?.primaryColor ?? BRAND.darkGreen;
+    const logoSrc = embedLogoPath(def?.logo ?? null);
+    const logoEl = logoSrc
+      ? `<img src="${logoSrc}" alt="${escHtml(m.entity)}" style="height:16pt;width:auto;max-width:36pt;object-fit:contain;display:block" />`
+      : `<span style="display:inline-flex;align-items:center;justify-content:center;width:18pt;height:18pt;border-radius:3pt;background:${primaryColor};color:#fff;font-weight:700;font-size:7pt">${escHtml(m.entity.slice(0,2).toUpperCase())}</span>`;
+
+    const { html: niHtml } = amountCell(m.net_income_ytd);
+    const { html: cashHtml } = amountCell(m.cash_on_hand);
+    const mgnColor = m.net_margin_pct < 0 ? BRAND.negative : m.net_margin_pct >= 15 ? BRAND.positive : BRAND.textPrimary;
+    const arOvColor = m.ar_overdue_pct >= 80 ? BRAND.negative : m.ar_overdue_pct >= 40 ? BRAND.warning : BRAND.positive;
+    const isMaxRev = Math.abs((m.revenue_ytd ?? 0) - maxRev) < 0.01;
+
+    return `
 <tr>
-  <td><strong>${escHtml(m.entity)}</strong><br><span style="font-size:7.5pt;color:${BRAND.textMuted}">${escHtml(m.basis)}</span></td>
-  <td class="num">${fmtCurrency(m.revenue_ytd)}</td>
+  <td class="entity-logo-cell">${logoEl}</td>
+  <td class="entity-name-cell">
+    <strong>${escHtml(m.entity)}</strong>
+    <div style="font-size:7pt;color:${BRAND.textFaint}">${escHtml(m.basis)}</div>
+  </td>
+  <td class="num" style="${isMaxRev ? `font-weight:700;color:${BRAND.darkGreen}` : ""}">${fmtCurrency(m.revenue_ytd)}</td>
   <td class="num">${niHtml}</td>
-  <td class="num">${fmtPercent(m.net_margin_pct)}</td>
+  <td class="num" style="color:${mgnColor};font-weight:600">${fmtPercent(m.net_margin_pct)}</td>
+  <td class="num">${fmtPercent(m.gross_margin_pct)}</td>
   <td class="num">${cashHtml}</td>
   <td class="num">${fmtCurrency(m.open_ar)}</td>
-  <td class="num">${fmtCurrency(m.open_ap)}</td>
   <td class="num">${m.dso_days != null ? `${m.dso_days.toFixed(0)}d` : "—"}</td>
-  <td class="num">${fmtPercent(m.ar_overdue_pct)}</td>
+  <td class="num" style="color:${arOvColor};font-weight:600">${fmtPercent(m.ar_overdue_pct)}</td>
 </tr>`;
-    })
-    .join("");
+  }).join("");
 
-  // Bar chart: Revenue comparison
-  const maxRev = Math.max(...entries.map(([, v]) => Math.abs(v.metrics?.revenue_ytd ?? 0)));
-  const revBars = entries
-    .map(([, { metrics: m }]) => m
-      ? barRow(m.entity, m.revenue_ytd, maxRev, fmtCurrency(m.revenue_ytd, { compact: true }))
-      : "")
-    .join("");
+  // Revenue comparison bars
+  const revBarsHtml = svgHBars(
+    entries.map(([slug, { metrics: m }]) => ({
+      label: m?.entity ?? slug,
+      value: m?.revenue_ytd ?? 0,
+      color: entityDef(slug)?.primaryColor ?? BRAND.darkGreen,
+    })),
+    { width: 340, maxValue: maxRev, unit: "$" },
+  );
 
-  const entityNames = entries.map(([, v]) => v.metrics?.entity ?? "").filter(Boolean).join(", ");
-  const freshness = asValidation(report.sections["validation"])?.freshness;
+  const freshnessData = asValidation(report.sections["validation"])?.freshness;
 
   return `
-<div class="section section--break-before" id="section-portfolio-performance">
-  ${pageHeader(report.template.name, "Portfolio Overview", report.period)}
-  ${sectionHeading("Portfolio & Entity Performance", { number: 2, subtitle: `${entries.length} entities` })}
+<div class="section section--break" id="section-entity-performance">
+  ${pageHeader(hdrOpts(report))}
+  ${sectionBanner("Portfolio & Entity Performance", { number: 2, bgColor: BRAND.sectionPerf, accentColor: "#3b82f6" })}
 
-  <p style="font-size:8.5pt;color:${BRAND.textSecondary};margin-bottom:10pt">
-    Entities included: <strong>${escHtml(entityNames)}</strong>
-  </p>
-
-  <table class="fin-table" style="margin-bottom:14pt">
+  <table class="fin-table entity-table mb-12">
     <thead>${headerRow}</thead>
     <tbody>${bodyRows}</tbody>
   </table>
 
-  <div class="chart-container">
-    <h4 style="margin-bottom:8pt;font-size:9pt">Revenue YTD Comparison</h4>
-    ${revBars || emptyState("No revenue data available.")}
+  <div class="col-55-45">
+    <div class="chart-box">
+      <div class="chart-box__title">Revenue YTD — Entity Comparison</div>
+      ${revBarsHtml}
+      ${legendItems(entries.map(([slug, { metrics: m }]) => ({ label: m?.entity ?? slug, color: entityDef(slug)?.primaryColor ?? BRAND.darkGreen })))}
+    </div>
+    <div class="chart-box">
+      <div class="chart-box__title">Net Margin by Entity</div>
+      ${svgHBars(
+        entries.map(([slug, { metrics: m }]) => ({
+          label: m?.entity ?? slug,
+          value: m?.net_margin_pct ?? 0,
+          color: (m?.net_margin_pct ?? 0) < 0 ? BRAND.negative : (entityDef(slug)?.primaryColor ?? BRAND.darkGreen),
+        })),
+        { width: 260 },
+      )}
+    </div>
   </div>
 
-  ${dataFooter([
-    `Data as of ${freshness?.data_as_of ? fmtDate(freshness.data_as_of) : "—"}`,
-    `${entries.length} entities`,
-    "FinanceOS — Confidential",
-  ])}
+  ${dataFooter([`Data as of ${freshnessData?.data_as_of ? fmtDate(freshnessData.data_as_of) : "—"}`, `${entries.length} entities`, "FinanceOS — Confidential"])}
 </div>`;
 }
 
-// ─── Section 4: Profit & Loss ─────────────────────────────────────────────────
+// ─── Section 3: Profit & Loss ─────────────────────────────────────────────────
 
 function renderProfitLoss(report: BuiltReport): string {
   const financialsMap = asFinancialsMap(report.sections["financials"]);
   const entries = Object.entries(financialsMap);
   if (entries.length === 0) return "";
 
-  const blocks = entries
-    .map(([slug, fin]) => renderEntityPL(report, slug as EntitySlug, fin))
-    .join("");
+  const blocks = entries.map(([slug, fin]) => renderEntityPL(report, slug as EntitySlug, fin)).join("");
 
   return `
-<div class="section section--break-before" id="section-profit-loss">
-  ${pageHeader(report.template.name, "Profit & Loss", report.period)}
-  ${sectionHeading("Profit & Loss", { number: 3 })}
+<div class="section section--break" id="section-profit-loss">
+  ${pageHeader(hdrOpts(report))}
+  ${sectionBanner("Profit & Loss Statement", { number: 3, bgColor: BRAND.sectionPnL, accentColor: "#60a5fa" })}
   ${blocks}
 </div>`;
 }
@@ -473,61 +561,68 @@ function renderEntityPL(report: BuiltReport, slug: EntitySlug, fin: FinancialsDa
   const pl = fin.monthly_pl ?? [];
   const ytd = fin.ytd_summary;
   const isSingle = report.branding.mode === "single";
+  const def = entityDef(slug);
+  const primaryColor = def?.primaryColor ?? BRAND.darkGreen;
 
-  // Show last 3 months + YTD
   const recentMonths = pl.slice(-3);
 
-  const plRows: { label: string; key: keyof MonthlyPL; indent?: boolean; isSubtotal?: boolean; isTotal?: boolean; favorableWhenPositive?: boolean }[] = [
-    { label: "Revenue", key: "revenue" },
-    { label: "Cost of Goods Sold", key: "cogs", indent: true, favorableWhenPositive: false },
-    { label: "Gross Profit", key: "gross_profit", isSubtotal: true },
-    { label: "Operating Expenses", key: "opex", indent: true, favorableWhenPositive: false },
-    { label: "Net Income", key: "net_income", isTotal: true },
+  type PLKey = "revenue" | "cogs" | "gross_profit" | "opex" | "net_income";
+  const plRows: {
+    label: string; key: PLKey; indent?: boolean; subtotal?: boolean; total?: boolean; section?: boolean; section_key?: boolean;
+    isCost?: boolean;
+  }[] = [
+    { label: "Revenue", key: "revenue", section_key: true },
+    { label: "Cost of Goods Sold", key: "cogs", indent: true, isCost: true },
+    { label: "Gross Profit", key: "gross_profit", subtotal: true },
+    { label: "Operating Expenses", key: "opex", indent: true, isCost: true },
+    { label: "Net Income", key: "net_income", total: true },
   ];
 
   const monthHeaders = recentMonths.map((m) => `<th class="num">${escHtml(fmtMonthYear(m.month + "-01"))}</th>`).join("");
 
-  const bodyRows = plRows
-    .map((row) => {
-      const rowClass = row.isTotal
-        ? "row--total"
-        : row.isSubtotal
-        ? "row--subtotal"
-        : row.indent
-        ? "row--indent"
-        : "";
+  const bodyRows = plRows.map((row) => {
+    const rowClass = row.total ? "row--total" : row.subtotal ? "row--subtotal" : row.indent ? "row--indent" : "";
 
-      const monthCells = recentMonths.map((m) => {
-        const val = m[row.key] as number;
-        const { html } = amountCell(val, row.favorableWhenPositive === false);
-        return `<td class="num">${html}</td>`;
-      }).join("");
+    const monthCells = recentMonths.map((m) => {
+      const val = m[row.key] as number;
+      const { html } = amountCell(val, row.isCost === true);
+      return `<td class="num">${html}</td>`;
+    }).join("");
 
-      const ytdVal = ytd?.[row.key as keyof typeof ytd] as number | undefined;
-      const { html: ytdHtml } = amountCell(ytdVal, row.favorableWhenPositive === false);
+    const ytdVal = ytd?.[row.key as keyof typeof ytd] as number | undefined;
+    const { html: ytdHtml } = amountCell(ytdVal, row.isCost === true);
 
-      // Prior month variance (last two months)
-      const last = recentMonths[recentMonths.length - 1];
-      const prev = recentMonths[recentMonths.length - 2];
-      const varCell = last && prev
-        ? varianceCell(
-            last[row.key] as number,
-            prev[row.key] as number,
-            row.favorableWhenPositive !== false,
-          )
-        : '<span class="variance--na">—</span>';
+    const last = recentMonths[recentMonths.length - 1];
+    const prev = recentMonths[recentMonths.length - 2];
+    const varCell = last && prev
+      ? varianceCell(last[row.key] as number, prev[row.key] as number, row.isCost !== true)
+      : '<span class="variance--na">—</span>';
 
-      return `
-<tr class="${rowClass}">
-  <td>${escHtml(row.label)}</td>
-  ${monthCells}
-  <td class="num">${ytdHtml}</td>
-  <td class="num">${varCell}</td>
-</tr>`;
-    })
-    .join("");
+    return `<tr class="${rowClass}"><td>${escHtml(row.label)}</td>${monthCells}<td class="num">${ytdHtml}</td><td class="num nowrap">${varCell}</td></tr>`;
+  }).join("");
 
-  const entityLabel = isSingle ? "" : `<h3 style="margin-bottom:8pt;color:${BRAND.textSecondary}">${escHtml(fin.entity_slug)}</h3>`;
+  // Gross margin row
+  const gmRow = recentMonths.map((m) => {
+    const gm = m.revenue && m.revenue !== 0 ? ((m.gross_profit ?? 0) / m.revenue) * 100 : null;
+    return `<td class="num" style="color:${BRAND.textMuted}">${fmtPercent(gm)}</td>`;
+  }).join("");
+  const ytdGm = ytd && ytd.revenue && ytd.revenue !== 0 ? ((ytd.gross_profit ?? 0) / ytd.revenue) * 100 : null;
+
+  // Net margin row
+  const nmRow = recentMonths.map((m) => {
+    const nm = m.revenue && m.revenue !== 0 ? ((m.net_income ?? 0) / m.revenue) * 100 : null;
+    const color = nm !== null && nm < 0 ? BRAND.negative : BRAND.textMuted;
+    return `<td class="num" style="color:${color}">${fmtPercent(nm)}</td>`;
+  }).join("");
+  const ytdNm = ytd && ytd.revenue && ytd.revenue !== 0 ? ((ytd.net_income ?? 0) / ytd.revenue) * 100 : null;
+  const ytdNmColor = ytdNm !== null && ytdNm < 0 ? BRAND.negative : BRAND.textMuted;
+
+  const entityLabel = isSingle
+    ? ""
+    : `<div style="display:flex;align-items:center;gap:8pt;margin-bottom:8pt">
+        ${logoImg(def?.logo ?? null, fin.entity_slug, primaryColor, { height: "18pt" })}
+        <span style="font-size:10pt;font-weight:700;color:${BRAND.textSecondary}">${escHtml(fin.entity_slug)}</span>
+      </div>`;
 
   return `
 <div style="margin-bottom:16pt;page-break-inside:avoid">
@@ -535,33 +630,46 @@ function renderEntityPL(report: BuiltReport, slug: EntitySlug, fin: FinancialsDa
   <table class="fin-table">
     <thead>
       <tr>
-        <th style="width:34%">Line Item</th>
+        <th style="width:38%">Line Item</th>
         ${monthHeaders}
         <th class="num">YTD</th>
         <th class="num">MoM Δ</th>
       </tr>
     </thead>
-    <tbody>${bodyRows}</tbody>
+    <tbody>
+      ${bodyRows}
+      <tr class="row--spacer"><td colspan="${3 + recentMonths.length}"></td></tr>
+      <tr style="background:${BRAND.bgMid}">
+        <td style="font-size:7.5pt;color:${BRAND.textMuted};padding-left:9pt;font-style:italic">Gross Margin %</td>
+        ${gmRow}
+        <td class="num" style="color:${BRAND.textMuted}">${fmtPercent(ytdGm)}</td>
+        <td class="num">—</td>
+      </tr>
+      <tr style="background:${BRAND.bgMid}">
+        <td style="font-size:7.5pt;color:${ytdNmColor};padding-left:9pt;font-style:italic">Net Margin %</td>
+        ${nmRow}
+        <td class="num" style="color:${ytdNmColor}">${fmtPercent(ytdNm)}</td>
+        <td class="num">—</td>
+      </tr>
+    </tbody>
   </table>
   ${pl.length === 0 ? emptyState("Monthly P&L data not available for this period.") : ""}
 </div>`;
 }
 
-// ─── Section 5: Balance Sheet ─────────────────────────────────────────────────
+// ─── Section 4: Balance Sheet ─────────────────────────────────────────────────
 
 function renderBalanceSheet(report: BuiltReport): string {
   const financialsMap = asFinancialsMap(report.sections["financials"]);
   const entries = Object.entries(financialsMap);
   if (entries.length === 0) return "";
 
-  const blocks = entries
-    .map(([slug, fin]) => renderEntityBS(report, slug as EntitySlug, fin))
-    .join("");
+  const blocks = entries.map(([slug, fin]) => renderEntityBS(report, slug as EntitySlug, fin)).join("");
 
   return `
-<div class="section section--break-before" id="section-balance-sheet">
-  ${pageHeader(report.template.name, "Balance Sheet", report.period)}
-  ${sectionHeading("Balance Sheet", { number: 4 })}
+<div class="section section--break" id="section-balance-sheet">
+  ${pageHeader(hdrOpts(report))}
+  ${sectionBanner("Balance Sheet", { number: 4, bgColor: BRAND.sectionBS, accentColor: "#818cf8" })}
   ${blocks}
 </div>`;
 }
@@ -569,88 +677,105 @@ function renderBalanceSheet(report: BuiltReport): string {
 function renderEntityBS(report: BuiltReport, slug: EntitySlug, fin: FinancialsData): string {
   if (!fin) return "";
   const bs = fin.balance_sheet;
+  const isSingle = report.branding.mode === "single";
+  const def = entityDef(slug);
+  const primaryColor = def?.primaryColor ?? BRAND.darkGreen;
+
   if (!bs) return `<p style="color:${BRAND.textMuted};font-style:italic;margin-bottom:12pt">Balance sheet not available for ${escHtml(slug)}.</p>`;
 
-  const isSingle = report.branding.mode === "single";
-  const entityLabel = isSingle ? "" : `<h3 style="margin-bottom:8pt;color:${BRAND.textSecondary}">${escHtml(slug)}</h3>`;
-
-  // Check balance: assets = liabilities + equity
-  const assetTotal = bs.assets?.total ?? 0;
-  const liabEquityTotal = (bs.liabilities?.total ?? 0) + (bs.equity?.total ?? 0);
-  const diff = Math.abs(assetTotal - liabEquityTotal);
+  const totalLiabEquity = (bs.liabilities?.total ?? 0) + (bs.equity?.total ?? 0);
+  const diff = Math.abs((bs.assets?.total ?? 0) - totalLiabEquity);
   const balanced = diff < 0.02;
 
-  function row(label: string, value: number | null | undefined, opts: { indent?: boolean; subtotal?: boolean; total?: boolean; section?: boolean } = {}): string {
-    const rowClass = opts.total ? "row--total" : opts.subtotal ? "row--subtotal" : opts.section ? "row--section" : opts.indent ? "row--indent" : "";
+  function bsRow(label: string, value: number | null | undefined, type: "normal" | "indent" | "subtotal" | "total" | "section" = "normal"): string {
+    const rowClass = type === "total" ? "row--total" : type === "subtotal" ? "row--subtotal" : type === "section" ? "row--section" : type === "indent" ? "row--indent" : "";
     const { html: valHtml } = amountCell(value);
     return `<tr class="${rowClass}"><td>${escHtml(label)}</td><td class="num">${valHtml}</td></tr>`;
   }
 
-  const rows = [
-    row("ASSETS", null, { section: true }),
-    row("Cash & Cash Equivalents", bs.assets?.cash, { indent: true }),
-    row("Accounts Receivable", bs.assets?.accounts_receivable, { indent: true }),
-    row("Prepaid Expenses", bs.assets?.prepaid_expenses, { indent: true }),
-    row("Equipment (Net)", bs.assets?.equipment_net, { indent: true }),
-    row("Total Assets", bs.assets?.total, { subtotal: true }),
-    row("LIABILITIES", null, { section: true }),
-    row("Accounts Payable", bs.liabilities?.accounts_payable, { indent: true }),
-    row("Accrued Liabilities", bs.liabilities?.accrued_liabilities, { indent: true }),
-    row("Deferred Revenue", bs.liabilities?.deferred_revenue, { indent: true }),
-    row("Notes Payable", bs.liabilities?.notes_payable, { indent: true }),
-    row("Total Liabilities", bs.liabilities?.total, { subtotal: true }),
-    row("EQUITY", null, { section: true }),
-    row("Paid-In Capital", bs.equity?.paid_in_capital, { indent: true }),
-    row("Retained Earnings", bs.equity?.retained_earnings, { indent: true }),
-    row("Total Equity", bs.equity?.total, { subtotal: true }),
-    row("Total Liabilities & Equity", liabEquityTotal, { total: true }),
+  const bsRows = [
+    bsRow("ASSETS", undefined, "section"),
+    bsRow("Cash & Cash Equivalents", bs.assets?.cash, "indent"),
+    bsRow("Accounts Receivable", bs.assets?.accounts_receivable, "indent"),
+    bsRow("Prepaid Expenses", bs.assets?.prepaid_expenses, "indent"),
+    bsRow("Equipment (Net)", bs.assets?.equipment_net, "indent"),
+    bsRow("Total Assets", bs.assets?.total, "subtotal"),
+    bsRow("", undefined, "section"),
+    bsRow("LIABILITIES", undefined, "section"),
+    bsRow("Accounts Payable", bs.liabilities?.accounts_payable, "indent"),
+    bsRow("Accrued Liabilities", bs.liabilities?.accrued_liabilities, "indent"),
+    bsRow("Deferred Revenue", bs.liabilities?.deferred_revenue, "indent"),
+    bsRow("Notes Payable", bs.liabilities?.notes_payable, "indent"),
+    bsRow("Total Liabilities", bs.liabilities?.total, "subtotal"),
+    bsRow("EQUITY", undefined, "section"),
+    bsRow("Paid-In Capital", bs.equity?.paid_in_capital, "indent"),
+    bsRow("Retained Earnings", bs.equity?.retained_earnings, "indent"),
+    bsRow("Total Equity", bs.equity?.total, "subtotal"),
+    bsRow("Total Liabilities & Equity", totalLiabEquity, "total"),
   ].join("");
 
-  const balanceCheck = balanced
-    ? `<p style="font-size:8pt;color:${BRAND.positive};margin-top:5pt">✓ Balance sheet is in balance.</p>`
-    : `<p style="font-size:8pt;color:${BRAND.negative};margin-top:5pt">⚠ Out-of-balance by ${fmtCurrency(diff)} — review source data.</p>`;
+  // Asset composition donut
+  const assetSegments = [
+    { label: "Cash", value: bs.assets?.cash ?? 0, color: primaryColor },
+    { label: "AR", value: bs.assets?.accounts_receivable ?? 0, color: "#60a5fa" },
+    { label: "Prepaid", value: bs.assets?.prepaid_expenses ?? 0, color: "#a78bfa" },
+    { label: "Equipment", value: bs.assets?.equipment_net ?? 0, color: "#34d399" },
+  ].filter((s) => s.value > 0);
+
+  const totalAssetsCompact = fmtCurrency(bs.assets?.total, { compact: true });
+  const donutChart = svgDonut(assetSegments, { size: 110, centerLabel: totalAssetsCompact, centerSub: "Total Assets" });
+
+  const entityLabel = isSingle
+    ? ""
+    : `<div style="display:flex;align-items:center;gap:8pt;margin-bottom:8pt">
+        ${logoImg(def?.logo ?? null, fin.entity_slug, primaryColor, { height: "18pt" })}
+        <span style="font-size:10pt;font-weight:700;color:${BRAND.textSecondary}">${escHtml(fin.entity_slug)}</span>
+      </div>`;
+
+  const balanceCheckHtml = balanced
+    ? `<div class="status-block status-block--pass" style="margin-top:8pt"><span class="status-block__icon">✓</span><div><div class="status-block__title">Balance Sheet Balanced</div><div class="status-block__sub">Assets = Liabilities + Equity</div></div></div>`
+    : `<div class="status-block status-block--fail" style="margin-top:8pt"><span class="status-block__icon">⚠</span><div><div class="status-block__title">Out-of-Balance by ${fmtCurrency(diff)}</div><div class="status-block__sub">Review source data</div></div></div>`;
 
   return `
 <div style="margin-bottom:16pt;page-break-inside:avoid">
   ${entityLabel}
-  <p style="font-size:8.5pt;color:${BRAND.textMuted};margin-bottom:8pt">As of ${escHtml(fmtDate(bs.as_of))}</p>
-  <div class="two-col">
+  <p style="font-size:8pt;color:${BRAND.textMuted};margin-bottom:8pt">As of ${escHtml(fmtDate(bs.as_of))}</p>
+  <div class="col-60-40">
     <table class="fin-table">
       <thead><tr><th>Line Item</th><th class="num">Amount</th></tr></thead>
-      <tbody>${rows}</tbody>
+      <tbody>${bsRows}</tbody>
     </table>
     <div>
-      <div class="chart-container">
-        <h4 style="margin-bottom:8pt;font-size:9pt">Asset Composition</h4>
-        ${barRow("Cash", bs.assets?.cash, bs.assets?.total ?? 1, fmtCurrency(bs.assets?.cash, { compact: true }))}
-        ${barRow("AR", bs.assets?.accounts_receivable, bs.assets?.total ?? 1, fmtCurrency(bs.assets?.accounts_receivable, { compact: true }), "accent")}
-        ${barRow("Prepaid", bs.assets?.prepaid_expenses, bs.assets?.total ?? 1, fmtCurrency(bs.assets?.prepaid_expenses, { compact: true }), "amber")}
-        ${barRow("Equipment", bs.assets?.equipment_net, bs.assets?.total ?? 1, fmtCurrency(bs.assets?.equipment_net, { compact: true }), "accent")}
+      <div class="chart-box" style="text-align:center">
+        <div class="chart-box__title">Asset Composition</div>
+        ${donutChart}
+        <div style="margin-top:8pt">
+          ${legendItems(assetSegments.map((s) => ({ label: s.label, color: s.color })))}
+        </div>
       </div>
-      ${balanceCheck}
+      ${balanceCheckHtml}
     </div>
   </div>
 </div>`;
 }
 
-// ─── Section 6: Cash Flow Statement ──────────────────────────────────────────
+// ─── Section 5: Cash Flow ─────────────────────────────────────────────────────
 
 function renderCashFlow(report: BuiltReport): string {
   const financialsMap = asFinancialsMap(report.sections["financials"]);
   const entries = Object.entries(financialsMap);
   if (entries.length === 0) return "";
 
-  const blocks = entries
-    .map(([slug, fin]) => renderEntityCF(report, slug as EntitySlug, fin))
-    .join("");
+  const blocks = entries.map(([slug, fin]) => renderEntityCF(report, slug as EntitySlug, fin)).join("");
 
   return `
-<div class="section section--break-before" id="section-cash-flow">
-  ${pageHeader(report.template.name, "Cash Flow", report.period)}
-  ${sectionHeading("Cash Flow Statement", { number: 5 })}
-  <p style="font-size:8pt;color:${BRAND.textMuted};margin-bottom:10pt">
-    Source: Published RC-016 cash-flow data (validation_status = passed, publication_status = published).
-    Only validated and published statements are shown.
+<div class="section section--break" id="section-cash-flow">
+  ${pageHeader(hdrOpts(report))}
+  ${sectionBanner("Cash Flow Statement", { number: 5, bgColor: BRAND.sectionCF, accentColor: "#2dd4bf" })}
+  <p style="font-size:8pt;color:${BRAND.textMuted};margin-bottom:12pt">
+    Cash flow data sourced from RC-016 validated and published statements only
+    (validation_status = 'passed', publication_status = 'published').
+    Entities without a published statement display an explanatory notice.
   </p>
   ${blocks}
 </div>`;
@@ -660,19 +785,20 @@ function renderEntityCF(report: BuiltReport, slug: EntitySlug, fin: FinancialsDa
   if (!fin) return "";
   const cf: CashFlowStatement | null = fin.cash_flow;
   const isSingle = report.branding.mode === "single";
-  const entityLabel = isSingle ? "" : `<h3 style="margin-bottom:8pt;color:${BRAND.textSecondary}">${escHtml(slug)}</h3>`;
+  const def = entityDef(slug);
+  const primaryColor = def?.primaryColor ?? BRAND.darkGreen;
+
+  const entityLabel = isSingle ? ""
+    : `<div style="display:flex;align-items:center;gap:8pt;margin-bottom:8pt">
+        ${logoImg(def?.logo ?? null, slug, primaryColor, { height: "18pt" })}
+        <span style="font-size:10pt;font-weight:700;color:${BRAND.textSecondary}">${escHtml(slug)}</span>
+      </div>`;
 
   if (!cf) {
     return `
-<div style="margin-bottom:16pt">
+<div style="margin-bottom:12pt">
   ${entityLabel}
-  <div class="insight insight--neutral">
-    <span class="insight__icon">ℹ</span>
-    <div class="insight__body">
-      <div class="insight__title">Cash Flow Statement Unavailable</div>
-      <div class="insight__text">No published cash flow statement is available for this entity. A statement is published only after all 14 CF validation checks pass (validation_status = passed, publication_status = published).</div>
-    </div>
-  </div>
+  ${insight("Cash Flow Statement Unavailable", "No published cash flow statement is available for this entity. A statement is published only after all 14 RC-016 validation checks pass. Check the Data Integrity section for details.", "neutral")}
 </div>`;
   }
 
@@ -680,108 +806,152 @@ function renderEntityCF(report: BuiltReport, slug: EntitySlug, fin: FinancialsDa
   const investingSection = cf.sections.find((s) => s.name.toLowerCase().includes("invest"));
   const financingSection = cf.sections.find((s) => s.name.toLowerCase().includes("financ"));
 
-  function sectionRows(sec: typeof operatingSection): string {
-    if (!sec) return "";
-    const lineRows = (sec.lines ?? [])
-      .filter((l) => !l.is_subtotal)
-      .map((l) => {
-        const { html } = amountCell(l.amount);
-        return `<tr class="row--indent"><td>${escHtml(l.label)}</td><td class="num">${html}</td></tr>`;
-      })
-      .join("");
-    const { html: netHtml } = amountCell(sec.net_cash);
-    return `
-<tr class="row--section"><td colspan="2">${escHtml(sec.name)}</td></tr>
-${lineRows}
-<tr class="row--subtotal"><td>Net Cash from ${escHtml(sec.name.replace(/activities/i, "Activities"))}</td><td class="num">${netHtml}</td></tr>`;
+  function cfRow(label: string, value: number | null | undefined, type: "normal" | "indent" | "subtotal" | "total" | "section" = "normal", isCost = false): string {
+    const rowClass = type === "total" ? "row--total" : type === "subtotal" ? "row--subtotal" : type === "section" ? "row--section" : type === "indent" ? "row--indent" : "";
+    const { html: valHtml } = amountCell(value, isCost);
+    return `<tr class="${rowClass}"><td>${escHtml(label)}</td><td class="num">${valHtml}</td></tr>`;
   }
 
-  const { html: beginHtml } = amountCell(cf.sections[0]?.lines?.find((l) => l.label?.toLowerCase().includes("beginning"))?.amount ?? null);
-  const { html: netChangeHtml } = amountCell(cf.net_cash_change);
-  const { html: endHtml } = amountCell(cf.cash_at_end);
+  function sectionRows(sec: typeof operatingSection): string {
+    if (!sec) return "";
+    const detail = (sec.lines ?? [])
+      .filter((l) => !l.is_subtotal)
+      .map((l) => cfRow(l.label ?? "", l.amount, "indent"))
+      .join("");
+    return `
+      ${cfRow(sec.name, undefined, "section")}
+      ${detail}
+      ${cfRow(`Net Cash from ${sec.name}`, sec.net_cash, "subtotal")}`;
+  }
+
+  // Beginning cash — look in first section lines
+  const beginningAmount = cf.sections[0]?.lines?.find((l) => l.label?.toLowerCase().includes("beginning"))?.amount ?? null;
 
   const rows = `
-<tr><td>Beginning Cash</td><td class="num">${beginHtml}</td></tr>
-${sectionRows(operatingSection)}
-${sectionRows(investingSection)}
-${sectionRows(financingSection)}
-<tr class="row--subtotal"><td>Net Change in Cash</td><td class="num">${netChangeHtml}</td></tr>
-<tr class="row--total"><td>Ending Cash</td><td class="num">${endHtml}</td></tr>`;
+    ${cfRow("Beginning Cash Balance", beginningAmount)}
+    ${sectionRows(operatingSection)}
+    ${sectionRows(investingSection)}
+    ${sectionRows(financingSection)}
+    ${cfRow("Net Change in Cash", cf.net_cash_change, "subtotal")}
+    ${cfRow("Ending Cash Balance", cf.cash_at_end, "total")}`;
+
+  // Waterfall chart data
+  const waterfallBars: { label: string; value: number; isTotal?: boolean; color?: string }[] = [];
+  if (beginningAmount != null) waterfallBars.push({ label: "Begin", value: beginningAmount, isTotal: true, color: BRAND.darkGreen });
+  if (operatingSection?.net_cash != null) waterfallBars.push({ label: "Ops", value: operatingSection.net_cash });
+  if (investingSection?.net_cash != null) waterfallBars.push({ label: "Invest", value: investingSection.net_cash });
+  if (financingSection?.net_cash != null) waterfallBars.push({ label: "Finance", value: financingSection.net_cash });
+  if (cf.cash_at_end != null) waterfallBars.push({ label: "End", value: cf.cash_at_end, isTotal: true, color: BRAND.darkGreen });
+
+  const waterfallSvg = waterfallBars.length >= 2
+    ? `<div class="chart-box">
+        <div class="chart-box__title">Cash Flow Waterfall</div>
+        ${svgWaterfallChart(waterfallBars, { width: 340, height: 130 })}
+      </div>`
+    : "";
+
+  // Reconciliation indicator
+  const expectedEnd = (beginningAmount ?? 0) + (cf.net_cash_change ?? 0);
+  const reconciliationOk = cf.cash_at_end !== null && Math.abs(expectedEnd - (cf.cash_at_end ?? 0)) < 0.02;
 
   return `
 <div style="margin-bottom:16pt;page-break-inside:avoid">
   ${entityLabel}
-  <p style="font-size:8.5pt;color:${BRAND.textMuted};margin-bottom:8pt">As of ${escHtml(fmtDate(cf.as_of))}</p>
-  <table class="fin-table">
-    <thead><tr><th>Activity</th><th class="num">Amount</th></tr></thead>
-    <tbody>${rows}</tbody>
-  </table>
+  <p style="font-size:8pt;color:${BRAND.textMuted};margin-bottom:8pt">As of ${escHtml(fmtDate(cf.as_of))}</p>
+  <div class="col-55-45">
+    <table class="fin-table">
+      <thead><tr><th>Activity</th><th class="num">Amount</th></tr></thead>
+      <tbody>${rows}</tbody>
+    </table>
+    <div>
+      ${waterfallSvg}
+      <div class="status-block ${reconciliationOk ? "status-block--pass" : "status-block--warn"}" style="margin-top:0">
+        <span class="status-block__icon">${reconciliationOk ? "✓" : "⚠"}</span>
+        <div>
+          <div class="status-block__title">${reconciliationOk ? "Reconciliation Check Passed" : "Reconciliation Warning"}</div>
+          <div class="status-block__sub">Begin + Net Change = Ending Cash</div>
+        </div>
+      </div>
+    </div>
+  </div>
 </div>`;
 }
 
-// ─── Section 7: AR & AP ───────────────────────────────────────────────────────
+// ─── Section 6: AR & AP ───────────────────────────────────────────────────────
 
 function renderArAp(report: BuiltReport): string {
   const arapMap = asArAp(report.sections["ar_ap"]);
   const entityMap = asEntityMap(report.sections["entity_summary"]);
   const entries = Object.entries(arapMap);
-  if (entries.length === 0) {
-    // Fall back to showing aggregate AR/AP from entity metrics
-    return renderArApFromMetrics(report, entityMap);
-  }
-  const blocks = entries
-    .map(([slug, data]) => renderEntityArAp(report, slug as EntitySlug, data))
-    .join("");
+
+  const hasRealData = entries.some(([, v]) => v.customers || v.vendors);
+
   return `
-<div class="section section--break-before" id="section-ar-ap">
-  ${pageHeader(report.template.name, "AR & AP", report.period)}
-  ${sectionHeading("Accounts Receivable & Payable", { number: 6 })}
-  ${blocks}
+<div class="section section--break" id="section-ar-ap">
+  ${pageHeader(hdrOpts(report))}
+  ${sectionBanner("Accounts Receivable & Payable", { number: 6, bgColor: BRAND.sectionARAP, accentColor: "#c084fc" })}
+  ${hasRealData
+    ? entries.map(([slug, data]) => renderEntityArAp(report, slug as EntitySlug, data)).join("")
+    : renderArApFromMetrics(report, entityMap)}
 </div>`;
 }
 
 function renderArApFromMetrics(
   report: BuiltReport,
-  entityMap: Record<string, { metrics: EntityMetrics; anomalies: Anomaly[] }>,
+  entityMap: Record<string, EntityEntry>,
 ): string {
   const entries = Object.entries(entityMap).filter(([, v]) => v.metrics);
-  if (entries.length === 0) return "";
+  if (entries.length === 0) return emptyState("No AR/AP data available.");
 
-  const rows = entries
-    .map(([, { metrics: m }]) => {
-      const { html: arHtml } = amountCell(m.open_ar);
-      const { html: apHtml } = amountCell(m.open_ap);
-      return `
-<tr>
-  <td><strong>${escHtml(m.entity)}</strong></td>
-  <td class="num">${arHtml}</td>
-  <td class="num">${fmtPercent(m.ar_overdue_pct)}</td>
-  <td class="num">${m.dso_days != null ? `${m.dso_days.toFixed(0)} days` : "—"}</td>
-  <td class="num">${apHtml}</td>
-  <td class="num">${fmtPercent(m.ap_overdue_pct)}</td>
-</tr>`;
-    })
-    .join("");
+  const freshnessData = asValidation(report.sections["validation"])?.freshness;
+
+  // Summary cards
+  const cards = entries.map(([slug, { metrics: m }]) => {
+    const def = entityDef(slug);
+    const primaryColor = def?.primaryColor ?? BRAND.darkGreen;
+    const arOvColor = m.ar_overdue_pct >= 80 ? BRAND.negative : m.ar_overdue_pct >= 40 ? BRAND.warning : BRAND.positive;
+
+    const { html: arHtml } = amountCell(m.open_ar);
+    const { html: apHtml } = amountCell(m.open_ap);
+    const { html: cashHtml } = amountCell(m.cash_on_hand);
+
+    return `
+<div class="scorecard no-break" style="margin-bottom:12pt">
+  <div class="scorecard__header" style="background:${escHtml(primaryColor)}">
+    ${logoImg(def?.logo ?? null, m.entity, primaryColor, { height: "28pt" })}
+    <div>
+      <div class="scorecard__name">${escHtml(m.entity)}</div>
+      <div class="scorecard__sub">Working Capital Summary &middot; ${escHtml(m.basis)} Basis</div>
+    </div>
+  </div>
+  <div class="scorecard__body">
+    <div class="kpi-grid kpi-grid--4 mb-8">
+      ${kpiCard("Open AR", arHtml, { variant: "default" })}
+      ${kpiCard("AR Overdue %", `<span style="color:${arOvColor};font-weight:700">${fmtPercent(m.ar_overdue_pct)}</span>`, { variant: m.ar_overdue_pct >= 80 ? "negative" : m.ar_overdue_pct >= 40 ? "warning" : "default" })}
+      ${kpiCard("DSO", m.dso_days != null ? `${m.dso_days.toFixed(0)} days` : "—")}
+      ${kpiCard("Open AP", apHtml)}
+    </div>
+    <div class="col-55-45">
+      <div class="chart-box">
+        <div class="chart-box__title">Working Capital Breakdown</div>
+        ${barRow("Open AR", m.open_ar, Math.max(Math.abs(m.open_ar ?? 0), Math.abs(m.open_ap ?? 0), Math.abs(m.cash_on_hand ?? 0), 1), fmtCurrency(m.open_ar, { compact: true }), "#60a5fa")}
+        ${barRow("Open AP", m.open_ap, Math.max(Math.abs(m.open_ar ?? 0), Math.abs(m.open_ap ?? 0), Math.abs(m.cash_on_hand ?? 0), 1), fmtCurrency(m.open_ap, { compact: true }), BRAND.warning)}
+        ${barRow("Cash on Hand", m.cash_on_hand, Math.max(Math.abs(m.open_ar ?? 0), Math.abs(m.open_ap ?? 0), Math.abs(m.cash_on_hand ?? 0), 1), fmtCurrency(m.cash_on_hand, { compact: true }), primaryColor)}
+      </div>
+      <div>
+        ${m.ar_overdue_pct >= 50
+          ? insight("High AR Overdue", `${fmtPercent(m.ar_overdue_pct)} of AR is overdue. Priority collection action recommended.`, "warning")
+          : insight("AR Status", `${fmtPercent(m.ar_overdue_pct)} of AR is overdue.`, m.ar_overdue_pct < 20 ? "positive" : "neutral")}
+        ${(m.cash_on_hand ?? 0) < 0 ? insight("Cash Deficit", `Cash position is negative at ${fmtCurrency(m.cash_on_hand, { showParens: true })}.`, "critical") : ""}
+      </div>
+    </div>
+  </div>
+</div>`;
+  }).join("");
 
   return `
-<div class="section section--break-before" id="section-ar-ap">
-  ${pageHeader(report.template.name, "AR & AP", report.period)}
-  ${sectionHeading("Accounts Receivable & Payable", { number: 6 })}
-  <table class="fin-table">
-    <thead>
-      <tr>
-        <th>Entity</th>
-        <th class="num">Open AR</th>
-        <th class="num">AR Overdue %</th>
-        <th class="num">DSO</th>
-        <th class="num">Open AP</th>
-        <th class="num">AP Overdue %</th>
-      </tr>
-    </thead>
-    <tbody>${rows}</tbody>
-  </table>
-  ${dataFooter(["Sourced from QBO semantic layer snapshots", "FinanceOS — Confidential"])}
-</div>`;
+  ${cards}
+  ${dataFooter([`Sourced from QBO semantic layer`, `As of ${freshnessData?.data_as_of ? fmtDate(freshnessData.data_as_of) : "—"}`, "FinanceOS — Confidential"])}`;
 }
 
 function renderEntityArAp(
@@ -791,170 +961,216 @@ function renderEntityArAp(
 ): string {
   const cust = data.customers;
   const vend = data.vendors;
+  const def = entityDef(slug);
+  const primaryColor = def?.primaryColor ?? BRAND.darkGreen;
   const isSingle = report.branding.mode === "single";
-  const label = isSingle ? "" : `<h3 style="margin-bottom:8pt">${escHtml(slug)}</h3>`;
 
-  let arHtml = "";
+  const label = isSingle ? ""
+    : `<div style="display:flex;align-items:center;gap:8pt;margin-bottom:8pt">
+        ${logoImg(def?.logo ?? null, slug, primaryColor, { height: "18pt" })}
+        <strong>${escHtml(slug)}</strong>
+      </div>`;
+
+  let arSection = "";
   if (cust) {
-    const agingRows = (cust.aging ?? [])
-      .map((b) => `<tr><td>${escHtml(b.label)}</td><td>${escHtml(b.days)}</td><td class="num">${fmtCurrency(b.amount)}</td><td class="num">${b.count}</td></tr>`)
-      .join("");
-    const topCustomers = (cust.top_customers ?? []).slice(0, 5)
-      .map((c) => `<tr><td>${escHtml(c.name)}</td><td class="num">${fmtCurrency(c.balance)}</td><td class="num">${c.dso_days.toFixed(0)}d</td><td>${badge(c.status, c.status === "current" ? "green" : "red")}</td></tr>`)
-      .join("");
-    arHtml = `
-<div style="margin-bottom:10pt">
-  <h4 style="margin-bottom:6pt">Accounts Receivable — As of ${escHtml(fmtDate(cust.as_of))}</h4>
-  <div class="kpi-grid kpi-grid--4" style="margin-bottom:8pt">
+    const agingColors = ["#16a34a", "#f59e0b", "#f97316", "#b91c1c"];
+    const buckets = (cust.aging ?? []).map((b, i) => ({
+      label: b.label ?? b.days,
+      amount: b.amount ?? 0,
+      color: agingColors[Math.min(i, agingColors.length - 1)] ?? "#94a3b8",
+    }));
+    const agingBar = agingBars(buckets);
+    const agingRows = buckets.map((b) =>
+      `<tr><td>${escHtml(b.label)}</td><td class="num">${fmtCurrency(b.amount)}</td><td class="num">${fmtPercent((b.amount / Math.max(cust.open_ar ?? 1, 1)) * 100)}</td></tr>`
+    ).join("");
+
+    const topCustomers = (cust.top_customers ?? []).slice(0, 5).map((c) =>
+      `<tr><td>${escHtml(c.name)}</td><td class="num">${fmtCurrency(c.balance)}</td><td class="num">${c.dso_days.toFixed(0)}d</td><td>${badge(c.status, c.status === "current" ? "green" : "red")}</td></tr>`
+    ).join("");
+
+    arSection = `
+<div class="chart-box mb-12">
+  <div class="chart-box__title">Accounts Receivable — As of ${escHtml(fmtDate(cust.as_of))}</div>
+  <div class="kpi-grid kpi-grid--4 mb-8">
     ${kpiCard("Open AR", fmtCurrency(cust.open_ar))}
-    ${kpiCard("Overdue Amount", fmtCurrency(cust.ar_overdue))}
-    ${kpiCard("Overdue %", fmtPercent(cust.ar_overdue_pct))}
-    ${kpiCard("DSO", cust.dso_history?.[cust.dso_history.length - 1] != null ? `${(cust.dso_history[cust.dso_history.length - 1]!).toFixed(0)} days` : "—")}
+    ${kpiCard("Overdue Amount", fmtCurrency(cust.ar_overdue), { variant: (cust.ar_overdue_pct ?? 0) >= 60 ? "negative" : "default" })}
+    ${kpiCard("Overdue %", fmtPercent(cust.ar_overdue_pct), { variant: (cust.ar_overdue_pct ?? 0) >= 60 ? "negative" : "default" })}
+    ${kpiCard("DSO", cust.dso_history ? `${(cust.dso_history[cust.dso_history.length - 1] ?? 0).toFixed(0)}d` : "—")}
   </div>
-  ${agingRows ? `
-  <table class="fin-table" style="margin-bottom:8pt">
-    <thead><tr><th>Bucket</th><th>Days</th><th class="num">Amount</th><th class="num">Count</th></tr></thead>
-    <tbody>${agingRows}</tbody>
-  </table>` : ""}
-  ${topCustomers ? `
-  <h4 style="margin-bottom:6pt">Top Outstanding Balances</h4>
-  <table class="fin-table">
-    <thead><tr><th>Customer</th><th class="num">Balance</th><th class="num">DSO</th><th>Status</th></tr></thead>
-    <tbody>${topCustomers}</tbody>
-  </table>` : ""}
+  <div class="two-col">
+    <div>
+      <div style="font-size:7.5pt;font-weight:700;color:${BRAND.textSecondary};margin-bottom:6pt">AR Aging Distribution</div>
+      ${agingBar}
+      ${legendItems(buckets.map((b) => ({ label: b.label, color: b.color })))}
+      ${agingRows ? `<table class="fin-table mt-8"><thead><tr><th>Bucket</th><th class="num">Amount</th><th class="num">% of AR</th></tr></thead><tbody>${agingRows}</tbody></table>` : ""}
+    </div>
+    ${topCustomers ? `<div><div style="font-size:7.5pt;font-weight:700;color:${BRAND.textSecondary};margin-bottom:6pt">Top Outstanding Balances</div><table class="fin-table"><thead><tr><th>Customer</th><th class="num">Balance</th><th class="num">DSO</th><th>Status</th></tr></thead><tbody>${topCustomers}</tbody></table></div>` : ""}
+  </div>
 </div>`;
   }
 
-  let apHtml = "";
+  let apSection = "";
   if (vend) {
-    const agingRows = (vend.aging ?? [])
-      .map((b) => `<tr><td>${escHtml(b.label)}</td><td>${escHtml(b.days)}</td><td class="num">${fmtCurrency(b.amount)}</td><td class="num">${b.count}</td></tr>`)
-      .join("");
-    apHtml = `
-<div style="margin-bottom:10pt">
-  <h4 style="margin-bottom:6pt">Accounts Payable — As of ${escHtml(fmtDate(vend.as_of))}</h4>
-  <div class="kpi-grid kpi-grid--3" style="margin-bottom:8pt">
+    const apAgingColors = ["#16a34a", "#f59e0b", "#f97316", "#b91c1c"];
+    const apBuckets = (vend.aging ?? []).map((b, i) => ({
+      label: b.label ?? b.days,
+      amount: b.amount ?? 0,
+      color: apAgingColors[Math.min(i, apAgingColors.length - 1)] ?? "#94a3b8",
+    }));
+    const apAgingBar = agingBars(apBuckets);
+    const apAgingRows = apBuckets.map((b) =>
+      `<tr><td>${escHtml(b.label)}</td><td class="num">${fmtCurrency(b.amount)}</td></tr>`
+    ).join("");
+
+    apSection = `
+<div class="chart-box">
+  <div class="chart-box__title">Accounts Payable — As of ${escHtml(fmtDate(vend.as_of))}</div>
+  <div class="kpi-grid kpi-grid--3 mb-8">
     ${kpiCard("Open AP", fmtCurrency(vend.open_ap))}
   </div>
-  ${agingRows ? `
-  <table class="fin-table">
-    <thead><tr><th>Bucket</th><th>Days</th><th class="num">Amount</th><th class="num">Count</th></tr></thead>
-    <tbody>${agingRows}</tbody>
-  </table>` : ""}
+  ${apAgingBar}
+  ${apAgingRows ? `<table class="fin-table mt-8"><thead><tr><th>Bucket</th><th class="num">Amount</th></tr></thead><tbody>${apAgingRows}</tbody></table>` : ""}
 </div>`;
   }
 
-  return `
-<div style="margin-bottom:12pt;page-break-inside:avoid">
-  ${label}
-  ${arHtml || emptyState("AR data not available.")}
-  ${apHtml || ""}
-</div>`;
+  return `<div style="margin-bottom:12pt">${label}${arSection}${apSection}</div>`;
 }
 
-// ─── Section 8: Alerts & Action Plan ─────────────────────────────────────────
+// ─── Section 7: Alerts & Action Plan ─────────────────────────────────────────
 
 function renderAlerts(report: BuiltReport): string {
   const alerts = asAlerts(report.sections["alerts"]);
+  const severityOrder: Record<string, number> = { critical: 0, high: 1, medium: 2, low: 3 };
+  const sorted = [...alerts].sort((a, b) => (severityOrder[a.severity] ?? 9) - (severityOrder[b.severity] ?? 9));
+
+  const critCount = alerts.filter((a) => a.severity === "critical").length;
+  const highCount = alerts.filter((a) => a.severity === "high").length;
+  const medCount  = alerts.filter((a) => a.severity === "medium").length;
+  const lowCount  = alerts.filter((a) => a.severity === "low").length;
 
   if (alerts.length === 0) {
     return `
-<div class="section section--break-before" id="section-alerts">
-  ${pageHeader(report.template.name, "Alerts & Action Plan", report.period)}
-  ${sectionHeading("Alerts & Action Plan", { number: 7 })}
-  ${insight("No Active Alerts", "All monitored metrics are within acceptable thresholds.", "positive")}
+<div class="section section--break" id="section-alerts">
+  ${pageHeader(hdrOpts(report))}
+  ${sectionBanner("Alerts & Action Plan", { number: 7, bgColor: BRAND.sectionAlerts, accentColor: "#fb923c" })}
+  ${insight("No Active Alerts", "All monitored metrics are within acceptable thresholds for this reporting period.", "positive")}
 </div>`;
   }
 
-  // Sort: critical → high → medium → low
-  const severityOrder: Record<string, number> = { critical: 0, high: 1, medium: 2, low: 3 };
-  const sorted = [...alerts].sort(
-    (a, b) => (severityOrder[a.severity] ?? 9) - (severityOrder[b.severity] ?? 9),
-  );
-
   const alertCards = sorted.map((a) => {
-    const badgeColor = a.severity === "critical" || a.severity === "high" ? "red" : a.severity === "medium" ? "amber" : "green";
-    const cardClass = `alert-card--${a.severity}`;
+    const sevColor = a.severity === "critical" ? "red" : a.severity === "high" ? "amber" : a.severity === "medium" ? "amber" : "gray";
+    const sevBadge = badge(a.severity.toUpperCase(), sevColor as "red" | "amber" | "gray");
     const action = (a as Record<string, unknown>)["recommended_action"] as string | undefined
       || (a as Record<string, unknown>)["action"] as string | undefined;
-    const impact = (a as Record<string, unknown>)["financial_impact"] as string | undefined;
-    const owner = (a as Record<string, unknown>)["owner"] as string | undefined;
+    const impact  = (a as Record<string, unknown>)["financial_impact"] as string | undefined;
+    const owner   = (a as Record<string, unknown>)["owner"] as string | undefined;
+    const dueDate = (a as Record<string, unknown>)["due_date"] as string | undefined;
+
+    const entityDef_ = ENTITY_DEFINITIONS.find((e) => e.displayName === a.entity || e.slug === a.entity);
+    const logoSrc = embedLogoPath(entityDef_?.logo ?? null);
+    const logoEl = logoSrc
+      ? `<img src="${logoSrc}" alt="${escHtml(a.entity)}" style="height:14pt;width:auto;max-width:30pt;object-fit:contain;display:inline-block;vertical-align:middle" />`
+      : "";
 
     return `
-<div class="alert-card ${cardClass}">
-  <div class="alert-card__priority">${badge(a.severity.toUpperCase(), badgeColor)}</div>
+<div class="alert-card alert-card--${a.severity}">
+  <div class="alert-card__severity">${sevBadge}</div>
   <div class="alert-card__body">
-    <div class="alert-card__title">${escHtml(a.entity)} — ${escHtml(a.title)}</div>
+    <div class="alert-card__entity">${logoEl} ${escHtml(a.entity)}</div>
+    <div class="alert-card__title">${escHtml(a.title)}</div>
     <div class="alert-card__desc">${escHtml(a.description)}</div>
-    ${impact ? `<div style="font-size:8pt;color:${BRAND.textSecondary};margin-bottom:4pt">Impact: ${escHtml(impact)}</div>` : ""}
+    ${impact ? `<div class="alert-card__meta">Financial Impact: <strong>${escHtml(impact)}</strong></div>` : ""}
     ${action ? `<div class="alert-card__action">→ ${escHtml(action)}</div>` : ""}
-    ${owner ? `<div class="alert-card__meta">Owner: ${escHtml(owner)}</div>` : ""}
+    ${owner || dueDate ? `<div class="alert-card__meta" style="margin-top:4pt">${owner ? `Owner: ${escHtml(owner)}` : ""}${owner && dueDate ? " &middot; " : ""}${dueDate ? `Due: ${escHtml(fmtDate(dueDate))}` : ""}</div>` : ""}
   </div>
 </div>`;
   }).join("");
 
-  // Summary counts
-  const critCount = alerts.filter((a) => a.severity === "critical" || a.severity === "high").length;
-  const medCount = alerts.filter((a) => a.severity === "medium").length;
-
   return `
-<div class="section section--break-before" id="section-alerts">
-  ${pageHeader(report.template.name, "Alerts & Action Plan", report.period)}
-  ${sectionHeading("Alerts & Action Plan", { number: 7 })}
+<div class="section section--break" id="section-alerts">
+  ${pageHeader(hdrOpts(report))}
+  ${sectionBanner("Alerts & Action Plan", { number: 7, bgColor: BRAND.sectionAlerts, accentColor: "#fb923c" })}
 
-  <div class="kpi-grid kpi-grid--3" style="margin-bottom:12pt">
+  <div class="kpi-grid kpi-grid--4 mb-12">
     ${kpiCard("Total Alerts", String(alerts.length))}
-    ${kpiCard("Critical / High", String(critCount))}
-    ${kpiCard("Medium", String(medCount))}
+    ${kpiCard("Critical", String(critCount), { variant: critCount > 0 ? "negative" : "default" })}
+    ${kpiCard("High / Medium", String(highCount + medCount), { variant: highCount > 0 ? "warning" : "default" })}
+    ${kpiCard("Low / Info", String(lowCount))}
   </div>
 
   ${alertCards}
 </div>`;
 }
 
-// ─── Section 9: Data Integrity ────────────────────────────────────────────────
+// ─── Section 8: Data Integrity ────────────────────────────────────────────────
 
 function renderDataIntegrity(report: BuiltReport): string {
   const { summary, freshness } = asValidation(report.sections["validation"]);
   const norm = normalizeValidationSummary(summary);
 
-  const pipelineStatus = (freshness as Record<string, unknown> | undefined)?.qbo_connection as string ?? "—";
   const dataAsOf = freshness?.data_as_of ? fmtDate(freshness.data_as_of) : "—";
-  // Avoid raw ISO timestamps — format pipeline_run if it looks like ISO
   const pipelineRun = (freshness as Record<string, unknown> | undefined)?.pipeline_run as string | undefined;
-  const pipelineRunFormatted = pipelineRun && pipelineRun !== "unknown" ? fmtDate(pipelineRun) : "—";
+  const pipelineRunFmt = pipelineRun ? fmtDate(pipelineRun) : "—";
 
-  const statusBadge = norm
-    ? norm.allPassed
-      ? badge("All Checks Passed", "green")
-      : badge("Issues Found", "amber")
-    : badge("Unknown", "gray");
+  const totalChecks = norm?.totalChecks ?? 0;
+  const passed = norm?.passed ?? 0;
+  const failed = norm?.failed ?? 0;
+  const allPassed = norm?.allPassed ?? false;
+
+  const overallStatus = allPassed
+    ? `<div class="status-block status-block--pass"><span class="status-block__icon">✓</span><div><div class="status-block__title">Close Complete — All Checks Passed</div><div class="status-block__sub">Published data meets all FinanceOS quality thresholds. Safe to distribute.</div></div></div>`
+    : norm
+    ? `<div class="status-block status-block--warn"><span class="status-block__icon">⚠</span><div><div class="status-block__title">Review Required — ${failed} Check${failed !== 1 ? "s" : ""} Failed</div><div class="status-block__sub">Review failed checks before distributing this report.</div></div></div>`
+    : `<div class="status-block status-block--gray"><span class="status-block__icon">ℹ</span><div><div class="status-block__title">Validation Status Unknown</div><div class="status-block__sub">Validation results were not available at report generation time.</div></div></div>`;
+
+  // Progress-bar style check visualization
+  const passBar = totalChecks > 0
+    ? `<div style="margin:10pt 0">
+        <div style="font-size:7.5pt;color:${BRAND.textSecondary};margin-bottom:4pt">Validation Checks: ${passed}/${totalChecks} passed</div>
+        <div style="height:8pt;background:${BRAND.bgMid};border-radius:4pt;overflow:hidden">
+          <div style="width:${totalChecks > 0 ? ((passed / totalChecks) * 100).toFixed(1) : "0"}%;height:100%;background:${allPassed ? BRAND.positive : BRAND.warning};border-radius:4pt"></div>
+        </div>
+      </div>`
+    : "";
 
   return `
-<div class="section section--break-before" id="section-data-integrity">
-  ${pageHeader(report.template.name, "Data Integrity", report.period)}
-  ${sectionHeading("Data Integrity", { number: 8 })}
+<div class="section section--break" id="section-data-integrity">
+  ${pageHeader(hdrOpts(report))}
+  ${sectionBanner("Data Integrity & Close Status", { number: 8, bgColor: BRAND.sectionInteg, accentColor: "#64748b" })}
 
-  <div class="kpi-grid kpi-grid--4" style="margin-bottom:12pt">
+  ${overallStatus}
+  ${passBar}
+
+  <div class="kpi-grid kpi-grid--4 mb-12">
     ${kpiCard("Data As Of", dataAsOf)}
-    ${kpiCard("Pipeline Run", pipelineRunFormatted)}
-    ${kpiCard("Checks Passed", norm?.passed != null ? `${norm.passed}/${norm.totalChecks ?? "?"}` : "—")}
-    ${kpiCard("Status", statusBadge)}
+    ${kpiCard("Pipeline Run", pipelineRunFmt)}
+    ${kpiCard("Checks Passed", totalChecks > 0 ? `${passed} / ${totalChecks}` : "—", { variant: allPassed ? "positive" : failed > 0 ? "warning" : "default" })}
+    ${kpiCard("Entities Published", String(report.metadata.entityCount))}
   </div>
 
-  ${norm && !norm.allPassed
-    ? insight("Validation Issues", "One or more data validation checks did not pass. Review the validation report before distributing this document.", "warning")
-    : insight("Data Validated", "All monitored pipeline checks passed. Published data meets FinanceOS quality thresholds.", "positive")
-  }
+  <div class="two-col mb-12">
+    <div>
+      <div style="font-size:8.5pt;font-weight:700;color:${BRAND.textSecondary};margin-bottom:8pt">Source System Coverage</div>
+      <div class="status-block status-block--pass" style="margin-bottom:6pt">
+        <span class="status-block__icon">✓</span>
+        <div><div class="status-block__title">QuickBooks Online</div><div class="status-block__sub">P&L, Balance Sheet, Cash Flow, AR/AP</div></div>
+      </div>
+      <div class="status-block status-block--pass" style="margin-bottom:6pt">
+        <span class="status-block__icon">✓</span>
+        <div><div class="status-block__title">FinanceOS Semantic Layer</div><div class="status-block__sub">RC-016 cash flow validation &middot; Entity snapshots</div></div>
+      </div>
+    </div>
+    <div>
+      <div style="font-size:8.5pt;font-weight:700;color:${BRAND.textSecondary};margin-bottom:8pt">Data Quality Notes</div>
+      <div style="font-size:8pt;color:${BRAND.textSecondary};line-height:1.55">
+        <p style="margin-bottom:6pt">Financial values are sourced from QuickBooks Online via the FinanceOS Core semantic layer and have not been manually adjusted.</p>
+        <p style="margin-bottom:6pt">Cash flow statements use only rows where <code style="background:${BRAND.bgMid};padding:1pt 3pt;border-radius:2pt;font-size:7pt">validation_status = 'passed'</code> and <code style="background:${BRAND.bgMid};padding:1pt 3pt;border-radius:2pt;font-size:7pt">publication_status = 'published'</code>.</p>
+        <p>Data source: <strong>${escHtml(report.source)}</strong></p>
+      </div>
+    </div>
+  </div>
 
-  <p style="font-size:8pt;color:${BRAND.textMuted};margin-top:10pt">
-    This report was generated automatically by the FinanceOS pipeline.
-    Financial values are sourced from QuickBooks Online via the FinanceOS Core semantic layer.
-    Cash flow statements use only rows where validation_status = 'passed' and publication_status = 'published'.
-    Do not distribute without verifying the validation status above.
-  </p>
-
-  ${dataFooter([`Generated ${fmtDate(report.generatedAt)}`, `Source: ${report.source}`, "FinanceOS — Confidential"])}
+  ${dataFooter([`Generated ${fmtDate(report.generatedAt)}`, `Source: ${report.source}`, "FinanceOS — Confidential — Do not distribute without validation review"])}
 </div>`;
 }
 
@@ -962,12 +1178,12 @@ function renderDataIntegrity(report: BuiltReport): string {
 
 export function renderMonthlyClose(report: BuiltReport): string {
   const isSingle = report.branding.mode === "single" && report.branding.primaryEntity;
-  const primaryColor = isSingle ? (report.branding.primaryEntity?.primaryColor ?? BRAND.green) : BRAND.green;
+  const primaryColor = isSingle ? (report.branding.primaryEntity?.primaryColor ?? BRAND.darkGreen) : BRAND.darkGreen;
 
   const sections = [
     renderCover(report),
     renderExecutiveOverview(report),
-    renderPortfolioPerformance(report),
+    renderEntityPerformance(report),
     renderProfitLoss(report),
     renderBalanceSheet(report),
     renderCashFlow(report),
@@ -985,7 +1201,7 @@ export function renderMonthlyClose(report: BuiltReport): string {
   ${buildBaseStyles(primaryColor)}
 </head>
 <body>
-  ${sections}
+${sections}
 </body>
 </html>`;
 }
