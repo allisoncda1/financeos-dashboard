@@ -47,6 +47,7 @@ import type {
   BankAccount,
   BankTransaction,
 } from "./types";
+import { computeEntityHealthScore } from "./health";
 import { computePipelineMetrics } from "./pipelineMetrics";
 
 /** Canonical display order, mirroring the Drive/mock `entities` array. */
@@ -92,6 +93,9 @@ export async function getPortfolioSummaryFromNeon(): Promise<PortfolioSummary> {
       cashOnHand: financialPeriodsTable.cashOnHand,
       openAr: financialPeriodsTable.openAr,
       openAp: financialPeriodsTable.openAp,
+      dsoDays: financialPeriodsTable.dsoDays,
+      arOverduePct: financialPeriodsTable.arOverduePct,
+      netMarginPct: financialPeriodsTable.netMarginPct,
     })
     .from(financialPeriodsTable)
     .innerJoin(entitiesTable, eq(entitiesTable.id, financialPeriodsTable.entityId))
@@ -141,6 +145,29 @@ export async function getPortfolioSummaryFromNeon(): Promise<PortfolioSummary> {
     .sort((a, b) => slugRank(a.slug) - slugRank(b.slug))
     .map((r) => r.displayName);
 
+  // Compute server-side health scores from each entity's YTD metrics so the
+  // portfolio average uses the same penalty formula as individual entity pages.
+  const healthScores: number[] = [];
+  for (const r of ytdRows) {
+    const dso = num(r.dsoDays);
+    const arPct = num(r.arOverduePct);
+    const margin = num(r.netMarginPct);
+    const score = computeEntityHealthScore({
+      entity: r.slug, slug: r.slug as EntitySlug, basis: "Accrual", as_of: r.periodEnd,
+      pipeline_run: r.periodEnd,
+      revenue_ytd: num(r.revenue), cogs_ytd: num(r.cogs), gross_profit_ytd: num(r.grossProfit),
+      gross_margin_pct: 0, opex_ytd: num(r.opex), net_income_ytd: num(r.netIncome),
+      net_margin_pct: margin, total_assets: 0, total_liabilities: 0, total_equity: 0,
+      open_ar: num(r.openAr), open_ap: num(r.openAp),
+      dso_days: dso, dpo_days: 0, cash_on_hand: num(r.cashOnHand),
+      ar_overdue_pct: arPct, ap_overdue_pct: 0,
+    });
+    healthScores.push(score);
+  }
+  const portfolioHealthScoreAvg = healthScores.length > 0
+    ? Math.round(healthScores.reduce((s, v) => s + v, 0) / healthScores.length)
+    : null;
+
   return {
     as_of: snapshot ? snapshot.asOf : new Date().toISOString().slice(0, 10),
     pipeline_run: snapshot ? snapshot.pipelineRun.toISOString() : new Date().toISOString(),
@@ -156,6 +183,7 @@ export async function getPortfolioSummaryFromNeon(): Promise<PortfolioSummary> {
     portfolio_open_ap: openAp,
     portfolio_cash_on_hand: cashOnHand,
     cash_runway_months: cashRunwayMonths,
+    portfolio_health_score_avg: portfolioHealthScoreAvg,
   };
 }
 

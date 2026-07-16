@@ -85,6 +85,8 @@ export type PortfolioSummary = {
   portfolio_open_ar: number;
   portfolio_open_ap: number;
   portfolio_cash_on_hand: number;
+  cash_runway_months: number | null;
+  portfolio_health_score_avg: number | null;
 };
 
 // ─── Validation matrix (GET /api/validation/matrix) ─────────────────────────

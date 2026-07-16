@@ -57,5 +57,6 @@ export async function transformPortfolioNeon(): Promise<PortfolioSummary> {
     portfolio_open_ap: agg.openAp,
     portfolio_cash_on_hand: agg.cashOnHand,
     cash_runway_months: cashRunwayMonths,
+    portfolio_health_score_avg: null,
   };
 }

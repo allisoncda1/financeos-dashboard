@@ -11,5 +11,7 @@
   "portfolio_net_margin_pct": 28.9,
   "portfolio_open_ar": 218600,
   "portfolio_open_ap": 97600,
-  "portfolio_cash_on_hand": 739800
+  "portfolio_cash_on_hand": 739800,
+  "cash_runway_months": null,
+  "portfolio_health_score_avg": null
 }

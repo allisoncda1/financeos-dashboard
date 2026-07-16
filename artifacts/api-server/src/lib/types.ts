@@ -68,6 +68,7 @@ export type PortfolioSummary = {
   portfolio_open_ap: number;
   portfolio_cash_on_hand: number;
   cash_runway_months: number | null;
+  portfolio_health_score_avg: number | null;
 };
 
 export type ValidationSummary = {
