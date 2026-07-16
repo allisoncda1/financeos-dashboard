@@ -24,6 +24,7 @@ import type {
 import type { BriefingResponse } from "../../lib/types";
 import type { Alert } from "../../rules/evaluator";
 import { normalizeValidationSummary } from "./validationView";
+import { renderMonthlyClose } from "./monthlyClose";
 
 // ─── shared formatting helpers (also used by pdf.ts) ───────────────────────
 
@@ -438,6 +439,10 @@ export const HtmlRenderer: Renderer = {
   format: "html",
 
   render(report: BuiltReport): string {
+    if (report.template.id === "monthly-close") {
+      return renderMonthlyClose(report);
+    }
+
     const primaryColor =
       report.branding.mode === "single" && report.branding.primaryEntity
         ? report.branding.primaryEntity.primaryColor
