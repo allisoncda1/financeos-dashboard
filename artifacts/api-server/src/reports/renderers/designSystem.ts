@@ -19,7 +19,11 @@
  */
 
 import { readFileSync } from "fs";
-import { resolve, join, sep } from "path";
+import { resolve, join, sep, dirname } from "path";
+import { fileURLToPath } from "url";
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname  = dirname(__filename);
 
 // ─── Brand tokens ─────────────────────────────────────────────────────────────
 
@@ -760,7 +764,9 @@ export function buildBaseStyles(accentColor: string): string {
 /* ── Reset & print ───────────────────────────────────── */
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
-@page { size: A4; background: #fff; }
+@page { size: A4; background: #fff; margin: 16mm 18mm; }
+/* Cover page: zero margins so dark background fills the full A4 sheet */
+@page :first { margin: 0; }
 
 html, body {
   background: #fff;
@@ -785,20 +791,39 @@ html, body {
 .page-section { page-break-before: always; }
 .page-section:first-of-type { page-break-before: auto; }
 
-/* ── Cover page (full dark page) ─────────────────────── */
-.cover { background: #0f172a; min-height: 100vh; padding: 0; display: flex; flex-direction: column; color: #fff; page-break-after: always; }
-.cover__top-strip { height: 4pt; background: ${accentColor}; }
-.cover__inner { padding: 28pt 36pt; flex: 1; display: flex; flex-direction: column; }
-.cover__logo-row { margin-bottom: 32pt; }
-.cover__report-label { font-size: 7.5pt; letter-spacing: 0.12em; text-transform: uppercase; color: #94a3b8; margin-bottom: 10pt; }
-.cover__title { font-size: 32pt; font-weight: 300; line-height: 1.15; color: #fff; margin-bottom: 10pt; }
-.cover__subtitle { font-size: 13pt; color: #cbd5e1; margin-bottom: 28pt; }
-.cover__divider { border: none; border-top: 1pt solid #334155; margin: 0 0 22pt; }
-.cover__meta { display: flex; flex-direction: column; gap: 12pt; }
-.cover__meta-row { display: grid; grid-template-columns: 90pt 1fr; }
-.cover__meta-label { font-size: 7.5pt; color: #2563eb; font-weight: 700; letter-spacing: 0.1em; text-transform: uppercase; padding-top: 1pt; }
+/* ── Cover page — fixed A4 height, zero-margin first page ─────── */
+/* height:297mm matches the full A4 sheet (margins are 0 on page :first) */
+.cover {
+  background: #0f172a;
+  height: 297mm;
+  width: 100%;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  color: #fff;
+  page-break-after: always;
+  break-after: page;
+  overflow: hidden;
+}
+/* Class names used by buildCover() in monthlyClose.ts */
+.cover__strip { height: 6pt; background: var(--entity-color, ${accentColor}); width: 100%; flex-shrink: 0; }
+.cover__body { flex: 1; padding: 36pt 40pt 24pt; display: flex; flex-direction: column; gap: 14pt; overflow: hidden; }
+.cover__logo-wrap { margin-bottom: 4pt; }
+.cover__logo { height: 48pt; max-width: 220pt; object-fit: contain; filter: brightness(0) invert(1); display: block; }
+.cover__logo-text { display: inline-flex; align-items: center; justify-content: center; width: 52pt; height: 52pt; border-radius: 8pt; font-size: 22pt; font-weight: 700; color: #fff; }
+.cover__eyebrow { font-size: 7.5pt; letter-spacing: 0.12em; color: #94a3b8; text-transform: uppercase; }
+.cover__period { font-size: 32pt; font-weight: 300; letter-spacing: -0.02em; line-height: 1.1; font-family: Georgia,'Times New Roman',serif; color: #f1f5f9; }
+.cover__subtitle { font-size: 11pt; color: #94a3b8; }
+.cover__divider { border: none; border-top: 1px solid #334155; margin: 4pt 0; }
+.cover__meta { display: grid; grid-template-columns: 1fr 1fr; gap: 12pt 24pt; margin-top: 8pt; }
+.cover__meta-item {}
+.cover__meta-label { font-size: 6.5pt; letter-spacing: 0.10em; color: #64748b; text-transform: uppercase; margin-bottom: 2pt; }
 .cover__meta-value { font-size: 9.5pt; color: #e2e8f0; }
-.cover__footer-bar { padding: 14pt 36pt; font-size: 8pt; color: #64748b; border-top: 0.5pt solid #334155; margin-top: auto; }
+/* Logo strip for portfolio cover */
+.cover__entity-strip { display: flex; gap: 16pt; align-items: center; flex-wrap: wrap; margin-top: 8pt; }
+.cover__entity-logo { height: 24pt; max-width: 80pt; object-fit: contain; filter: brightness(0) invert(1) opacity(0.7); }
+.cover__entity-badge { display: inline-flex; align-items: center; justify-content: center; padding: 3pt 8pt; border-radius: 3pt; font-size: 7.5pt; font-weight: 700; color: #fff; opacity: 0.85; }
+.cover__footer { padding: 12pt 40pt; font-size: 7.5pt; color: #475569; font-style: italic; border-top: 1px solid #1e293b; flex-shrink: 0; }
 
 /* ── Page header — logo left, report name right, rule below ── */
 .page-hdr { display: flex; align-items: center; justify-content: space-between; padding: 14pt 0 10pt; border-bottom: 0.75pt solid #e5e7eb; margin-bottom: 22pt; }

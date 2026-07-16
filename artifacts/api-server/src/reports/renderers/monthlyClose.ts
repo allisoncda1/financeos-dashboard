@@ -365,21 +365,55 @@ function wrapPage(content: string): string {
 
 // ─── Cover ────────────────────────────────────────────────────────────────────
 
-function buildCover(report: BuiltReport): string {
+function buildCover(report: BuiltReport, isPortfolio: boolean): string {
   const { branding, period, generatedAt } = report;
   const primary = branding.primaryEntity;
-  const entityName = primary?.name ?? "Portfolio";
+  const prepared = new Date(generatedAt).toLocaleDateString("en-US", { year: "numeric", month: "long", day: "numeric" });
+
+  if (isPortfolio) {
+    // Portfolio cover: FinanceOS identity + entity logo strip
+    const fineosLogoSrc = embedLogoPath("/branding/financeos-lockup-light.png");
+    const fineosLogoEl = fineosLogoSrc
+      ? `<img class="cover__logo" src="${fineosLogoSrc}" alt="FinanceOS" />`
+      : `<div class="cover__logo-text" style="background:${BRAND.accent}">FO</div>`;
+
+    const entityLogoStrip = branding.entities.map((e) => {
+      const src = embedLogoPath(e.logoPath ?? null);
+      const color = entityColor(e.slug);
+      return src
+        ? `<img class="cover__entity-logo" src="${src}" alt="${escHtml(e.name)}" title="${escHtml(e.name)}" />`
+        : `<span class="cover__entity-badge" style="background:${escHtml(color)}">${escHtml(e.name.slice(0, 2).toUpperCase())}</span>`;
+    }).join("");
+
+    return `<div class="cover" style="--entity-color:${BRAND.accent}">
+  <div class="cover__strip"></div>
+  <div class="cover__body">
+    <div class="cover__logo-wrap">${fineosLogoEl}</div>
+    <div class="cover__eyebrow">PORTFOLIO MONTHLY CLOSE REPORT</div>
+    <div class="cover__period">${escHtml(period)}</div>
+    <div class="cover__subtitle">Financial Results and Month-End Close Detail — All Entities</div>
+    <div class="cover__divider"></div>
+    <div class="cover__entity-strip">${entityLogoStrip}</div>
+    <div class="cover__meta">
+      <div class="cover__meta-item"><div class="cover__meta-label">REPORTING PERIOD</div><div class="cover__meta-value">${escHtml(period)}</div></div>
+      <div class="cover__meta-item"><div class="cover__meta-label">PREPARED</div><div class="cover__meta-value">${escHtml(prepared)}</div></div>
+      <div class="cover__meta-item"><div class="cover__meta-label">ENTITIES COVERED</div><div class="cover__meta-value">${escHtml(branding.entities.map((e) => e.name).join(", "))}</div></div>
+      <div class="cover__meta-item"><div class="cover__meta-label">DATA SOURCE</div><div class="cover__meta-value">QuickBooks Online via FinanceOS</div></div>
+    </div>
+  </div>
+  <div class="cover__footer">Confidential — For Internal Management Use Only</div>
+</div>`;
+  }
+
+  // Single-entity cover
+  const entityName = primary?.name ?? branding.entities[0]?.name ?? "Report";
   const accentColor = primary?.primaryColor ?? BRAND.accent;
-  const logoSrc = embedLogoPath(primary?.logoPath ?? null);
+  const logoPath = primary?.logoPath ?? branding.entities[0]?.logoPath ?? null;
+  const logoSrc = embedLogoPath(logoPath);
 
   const logoEl = logoSrc
     ? `<img class="cover__logo" src="${logoSrc}" alt="${escHtml(entityName)}" />`
-    : `<div class="cover__logo-text" style="background:${escHtml(accentColor)}">${escHtml(entityName.slice(0, 2).toUpperCase())}</div>`;
-
-  const prepared = new Date(generatedAt).toLocaleDateString("en-US", { year: "numeric", month: "long", day: "numeric" });
-  const entitiesStr = branding.mode === "consolidated"
-    ? branding.entities.map((e) => e.name).join(", ")
-    : entityName;
+    : `<!-- MISSING LOGO: ${escHtml(logoPath ?? "no path")} --><div class="cover__logo-text" style="background:${escHtml(accentColor)}">${escHtml(entityName.slice(0, 2).toUpperCase())}</div>`;
 
   return `<div class="cover" style="--entity-color:${escHtml(accentColor)}">
   <div class="cover__strip"></div>
@@ -392,7 +426,7 @@ function buildCover(report: BuiltReport): string {
     <div class="cover__meta">
       <div class="cover__meta-item"><div class="cover__meta-label">REPORTING PERIOD</div><div class="cover__meta-value">${escHtml(period)}</div></div>
       <div class="cover__meta-item"><div class="cover__meta-label">PREPARED</div><div class="cover__meta-value">${escHtml(prepared)}</div></div>
-      <div class="cover__meta-item"><div class="cover__meta-label">ENTITIES COVERED</div><div class="cover__meta-value">${escHtml(entitiesStr)}</div></div>
+      <div class="cover__meta-item"><div class="cover__meta-label">ENTITY</div><div class="cover__meta-value">${escHtml(entityName)}</div></div>
       <div class="cover__meta-item"><div class="cover__meta-label">DATA SOURCE</div><div class="cover__meta-value">QuickBooks Online via FinanceOS</div></div>
     </div>
   </div>
@@ -1133,21 +1167,21 @@ export function renderMonthlyClose(report: BuiltReport): string {
     .filter((e): e is NonNullable<typeof e> => e !== null);
 
   const primary = report.branding.primaryEntity;
-  const primaryLogoPath = primary?.logoPath ?? null;
-  const primaryName = primary?.name ?? entities[0]?.m.entity ?? "Report";
-  const primaryColor = primary?.primaryColor ?? BRAND.accent;
   const isPortfolio = report.branding.mode === "consolidated" && entities.length > 1;
+  const headerLogoPath = isPortfolio ? "/branding/financeos-lockup-light.png" : (primary?.logoPath ?? null);
+  const primaryName = isPortfolio ? "FinanceOS Portfolio" : (primary?.name ?? entities[0]?.m.entity ?? "Report");
+  const primaryColor = isPortfolio ? BRAND.accent : (primary?.primaryColor ?? BRAND.accent);
   const focusEntities = isPortfolio ? entities : entities.slice(0, 1);
 
   if (focusEntities.length === 0) {
     return `<!DOCTYPE html><html><body><p>No entity data available.</p></body></html>`;
   }
 
-  const headerFn: HeaderFn = (title) => refPageHeader(primaryLogoPath, primaryName, title, primaryColor);
+  const headerFn: HeaderFn = (title) => refPageHeader(headerLogoPath, primaryName, title, primaryColor);
   const accent = primaryColor;
 
   const pages: string[] = [
-    buildCover(report),
+    buildCover(report, isPortfolio),
     buildExecSummaryPage(report, focusEntities, headerFn),
     buildExecInsightsPage(report, focusEntities, alerts, headerFn),
     buildTOC(report, isPortfolio, headerFn),
@@ -1169,24 +1203,6 @@ export function renderMonthlyClose(report: BuiltReport): string {
   ];
 
   const extraStyles = `
-    .cover {
-      position: relative; width: 100%; min-height: 100vh;
-      background: ${BRAND.coverBg}; color: #ffffff;
-      display: flex; flex-direction: column; page-break-after: always;
-    }
-    .cover__strip { height: 6pt; background: var(--entity-color, ${accent}); width: 100%; }
-    .cover__body { flex: 1; padding: 36pt 40pt 24pt; display: flex; flex-direction: column; gap: 14pt; }
-    .cover__logo-wrap { margin-bottom: 8pt; }
-    .cover__logo { height: 48pt; max-width: 220pt; object-fit: contain; filter: brightness(0) invert(1); }
-    .cover__logo-text { display: inline-flex; align-items: center; justify-content: center; width: 56pt; height: 56pt; border-radius: 8pt; font-size: 24pt; font-weight: 700; color: #fff; }
-    .cover__eyebrow { font-size: 8pt; letter-spacing: 0.12em; color: #94a3b8; font-family: Arial,Helvetica,sans-serif; text-transform: uppercase; }
-    .cover__period { font-size: 34pt; font-weight: 300; letter-spacing: -0.02em; line-height: 1.1; font-family: Georgia,'Times New Roman',serif; color: #f1f5f9; }
-    .cover__subtitle { font-size: 12pt; color: #94a3b8; font-family: Arial,Helvetica,sans-serif; }
-    .cover__divider { border: none; border-top: 1px solid #334155; margin: 8pt 0; }
-    .cover__meta { display: grid; grid-template-columns: 1fr 1fr; gap: 14pt 24pt; margin-top: 12pt; }
-    .cover__meta-label { font-size: 7pt; letter-spacing: 0.10em; color: #64748b; text-transform: uppercase; margin-bottom: 3pt; font-family: Arial,Helvetica,sans-serif; }
-    .cover__meta-value { font-size: 10pt; color: #e2e8f0; font-family: Arial,Helvetica,sans-serif; }
-    .cover__footer { padding: 12pt 40pt; font-size: 8pt; color: #475569; font-style: italic; border-top: 1px solid #1e293b; font-family: Arial,Helvetica,sans-serif; }
     .page-section { padding: 22pt 0 16pt; page-break-before: always; }
     .toc-list { margin: 8pt 0 16pt; }
     .toc-entry { display: flex; align-items: baseline; gap: 4pt; padding: 5pt 0; border-bottom: 1px solid #f3f4f6; }
@@ -1199,7 +1215,7 @@ export function renderMonthlyClose(report: BuiltReport): string {
 <html lang="en">
 <head>
 <meta charset="utf-8" />
-<title>${escHtml(primaryName)} — ${escHtml(report.period)} Monthly Close Report</title>
+<title>${escHtml(isPortfolio ? "FinanceOS Portfolio" : primaryName)} — ${escHtml(report.period)} Monthly Close Report</title>
 <style>
 ${buildBaseStyles(accent)}
 ${extraStyles}
