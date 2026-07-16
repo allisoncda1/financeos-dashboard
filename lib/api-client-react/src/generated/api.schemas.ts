@@ -133,6 +133,57 @@ export interface ReportGenerateRequest {
   format: ReportGenerateRequestFormat;
 }
 
+export type ReportHistoryEntryFormat = typeof ReportHistoryEntryFormat[keyof typeof ReportHistoryEntryFormat];
+
+
+export const ReportHistoryEntryFormat = {
+  json: 'json',
+  pdf: 'pdf',
+  excel: 'excel',
+  html: 'html',
+} as const;
+
+export type ReportHistoryEntryStatus = typeof ReportHistoryEntryStatus[keyof typeof ReportHistoryEntryStatus];
+
+
+export const ReportHistoryEntryStatus = {
+  queued: 'queued',
+  processing: 'processing',
+  completed: 'completed',
+  failed: 'failed',
+} as const;
+
+export type ReportHistoryEntrySource = typeof ReportHistoryEntrySource[keyof typeof ReportHistoryEntrySource] | null;
+
+
+export const ReportHistoryEntrySource = {
+  live: 'live',
+  cache: 'cache',
+  mock: 'mock',
+  db: 'db',
+} as const;
+
+/**
+ * A single persisted report generation record
+ */
+export interface ReportHistoryEntry {
+  id: string;
+  template: string;
+  title: string;
+  period: string;
+  format: ReportHistoryEntryFormat;
+  entitySlugs: string[];
+  status: ReportHistoryEntryStatus;
+  source?: ReportHistoryEntrySource;
+  dataFreshness?: string | null;
+  entityCount?: number | null;
+  confidenceScore?: number | null;
+  requestedBy?: string | null;
+  errorMessage?: string | null;
+  completedAt?: string | null;
+  createdAt: string;
+}
+
 export type AiAnalyzeRequestEntitiesItem = typeof AiAnalyzeRequestEntitiesItem[keyof typeof AiAnalyzeRequestEntitiesItem];
 
 
@@ -205,6 +256,36 @@ export type ServerErrorResponse = ErrorResponse;
  * Fiscal year (defaults to current calendar year when omitted)
  */
 export type YearQueryParameter = number;
+
+export type GetModelHistoryParams = {
+/**
+ * Comma-separated entity slugs to include (defaults to all).
+ */
+slugs?: string;
+};
+
+export type GetModelCashflowParams = {
+/**
+ * Comma-separated entity slugs to include (defaults to all).
+ */
+slugs?: string;
+};
+
+export type ListReportHistoryParams = {
+/**
+ * Entity slug to filter history by (e.g. `cardealer_ai`)
+ */
+slug?: string;
+/**
+ * @minimum 1
+ * @maximum 200
+ */
+limit?: number;
+/**
+ * @minimum 0
+ */
+offset?: number;
+};
 
 export type GetBudgetPortfolioParams = {
 /**

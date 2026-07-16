@@ -62,3 +62,9 @@ service-account*.json
 # Python
 __pycache__/
 *.pyc
+
+# Excel workbooks — tracked separately, not in git
+*.xlsx
+*.xlsm
+~$*.xlsx
+~$*.xlsm

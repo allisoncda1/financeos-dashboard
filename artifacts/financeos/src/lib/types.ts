@@ -240,6 +240,38 @@ export type FinancialsData = {
   cash_flow?: CashFlowStatement | null;
 };
 
+/** GET /api/model/cashflow — one entity's contribution to the consolidated
+ * portfolio statement of cash flows (summed server-side, never in React). */
+export type ConsolidatedCashFlowEntity = {
+  slug: EntitySlug;
+  entity: string;
+  as_of: string;
+  operating: number;
+  investing: number;
+  financing: number;
+  net_change: number;
+  beginning_cash: number;
+  ending_cash: number;
+};
+
+/** GET /api/model/cashflow — consolidated (portfolio) statement of cash flows
+ * across the selected entities. All totals are computed on the backend from
+ * published Neon rows; the frontend only renders them. */
+export type ConsolidatedCashFlow = {
+  available: boolean;
+  partial: boolean;
+  as_of: string | null;
+  operating: number;
+  investing: number;
+  financing: number;
+  net_change: number;
+  beginning_cash: number;
+  ending_cash: number;
+  entities: ConsolidatedCashFlowEntity[];
+  missing: EntitySlug[];
+  reason: string | null;
+};
+
 /** GET /api/model/:slug/history — real prior-fiscal-year financial history */
 export type PriorYearBalanceSheetSummary = {
   as_of: string;
@@ -269,6 +301,62 @@ export type MetricSnapshot = {
 };
 
 export type MetricSnapshotsData = Record<EntitySlug, MetricSnapshot[]>;
+
+/** GET /api/model/history — consolidated monthly history. All aggregation and
+ * month-over-month math is computed server-side; the frontend renders verbatim. */
+export type HistoryStatus =
+  | "available"
+  | "partial"
+  | "unavailable"
+  | "incompatible_periods";
+
+export type HistoryMonthlyPoint = {
+  period: string;
+  period_start: string;
+  period_end: string;
+  revenue: number | null;
+  net_income: number | null;
+  by_entity: Record<string, { revenue: number | null; net_income: number | null }>;
+  /** true when some — but not all — contributing entities reported this period. */
+  partial: boolean;
+  /** Contributing entity slugs that reported an authoritative row this period. */
+  contributing: string[];
+  /** Contributing entity slugs that had no row this period. */
+  missing: string[];
+};
+
+export type HistoryChange = {
+  period: string;
+  revenue_change: number | null;
+  revenue_change_pct: number | null;
+  net_income_change: number | null;
+  net_income_change_pct: number | null;
+};
+
+export type HistorySnapshotRow = {
+  entity: string;
+  slug: string;
+  period: string;
+  revenue: number | null;
+  net_income: number | null;
+};
+
+export type HistoryHealthPoint = { period: string; score: number | null };
+
+export type HistoryResponse = {
+  available: boolean;
+  status: HistoryStatus;
+  entities: string[];
+  period_start: string | null;
+  period_end: string | null;
+  generated_at: string;
+  monthly: HistoryMonthlyPoint[];
+  changes: HistoryChange[];
+  snapshots: HistorySnapshotRow[];
+  health_score_history: HistoryHealthPoint[] | null;
+  health_score_available: boolean;
+  health_score_unavailable_reason?: string;
+};
 
 export type BankAccount = {
   id: string;

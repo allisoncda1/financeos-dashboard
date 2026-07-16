@@ -9,8 +9,9 @@
  * DataFreshness) so nothing downstream (routes, AI, rules, reports, frontend)
  * needs to change. All reads are read-only; this module never writes.
  */
-import { and, desc, eq, sql } from "drizzle-orm";
+import { and, desc, eq, inArray, sql } from "drizzle-orm";
 import { ENTITY_SLUGS } from "./types";
+import { getMetricSnapshots } from "./snapshotStore";
 import {
   db,
   entitiesTable,
@@ -47,6 +48,9 @@ import type {
   Vendor,
   BankAccount,
   BankTransaction,
+  CashFlowStatement,
+  ConsolidatedCashFlow,
+  ConsolidatedCashFlowEntity,
 } from "./types";
 import { computeEntityHealthScore } from "./health";
 import { computePipelineMetrics } from "./pipelineMetrics";
@@ -623,23 +627,376 @@ function toMonthlyPl(r: PeriodRow): MonthlyPL {
 }
 
 /**
+ * Parse and validate raw JSONB from the `sections` column into a typed
+ * CashFlowStatement. Returns null if the shape is invalid or any field
+ * violates the published-data contract.
+ *
+ * This is the authoritative contract between the Python writer
+ * (financeos_core build_semantic_layer.py) and the TypeScript reader.
+ * Every field constraint here corresponds to a validation rule on the write side.
+ *
+ * Rules enforced (published-data reader — all totals must be finite):
+ * - as_of must be a string
+ * - sections must be a non-empty array (at least one section)
+ * - Each section: name=string, net_cash=finite number, lines=array
+ * - Each line: label=string, amount=finite number (null NOT accepted),
+ *   is_subtotal=boolean
+ * - Missing optional lines are acceptable (they are simply absent from the array)
+ * - net_cash_change must be a finite number (null/undefined/NaN/Inf all rejected:
+ *   a published row always has a reconciled net change)
+ * - cash_at_end must be a finite number (same reasoning as net_cash_change)
+ */
+export function parseCashFlowSectionsJson(raw: unknown): CashFlowStatement | null {
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return null;
+  const obj = raw as Record<string, unknown>;
+
+  if (typeof obj.as_of !== "string") return null;
+  if (!Array.isArray(obj.sections) || obj.sections.length === 0) return null;
+
+  // net_cash_change and cash_at_end must be finite numbers for published rows.
+  // null, undefined, NaN, and Infinity are all invalid here.
+  const netCashChange = obj.net_cash_change;
+  if (!Number.isFinite(netCashChange)) return null;
+
+  const cashAtEnd = obj.cash_at_end;
+  if (!Number.isFinite(cashAtEnd)) return null;
+
+  const sections: import("./types").CashFlowSection[] = [];
+  for (const s of obj.sections) {
+    if (!s || typeof s !== "object" || Array.isArray(s)) return null;
+    const sec = s as Record<string, unknown>;
+    if (typeof sec.name !== "string") return null;
+    if (!Number.isFinite(sec.net_cash)) return null;
+    if (!Array.isArray(sec.lines)) return null;
+
+    const lines: import("./types").CashFlowLine[] = [];
+    for (const l of sec.lines) {
+      if (!l || typeof l !== "object" || Array.isArray(l)) return null;
+      const line = l as Record<string, unknown>;
+      if (typeof line.label !== "string") return null;
+      // amount must be a finite number — null is not valid per TypeScript type
+      if (!Number.isFinite(line.amount)) return null;
+      if (typeof line.is_subtotal !== "boolean") return null;
+      lines.push({
+        label:       line.label,
+        amount:      line.amount as number,
+        is_subtotal: line.is_subtotal,
+      });
+    }
+    sections.push({ name: sec.name, lines, net_cash: sec.net_cash as number });
+  }
+
+  return {
+    as_of:           obj.as_of,
+    sections,
+    net_cash_change: netCashChange as number,
+    cash_at_end:     cashAtEnd as number,
+  };
+}
+
+/**
+ * Latest Cash Flow statement for an entity, read from cash_flow_statements.
+ * Returns null if no statement has been published for this entity yet,
+ * or if the stored JSONB does not pass contract validation.
+ *
+ * Eligible rows must have:
+ *   validation_status = 'passed'   — all 15 Python validation checks passed
+ *   publication_status = 'published' — publication gate cleared
+ * Invalid, blocked, skipped, or unpublished rows are never returned.
+ *
+ * The most recent eligible statement (by period_end DESC) is selected.
+ */
+export async function getCashFlowFromNeon(entityId: string): Promise<CashFlowStatement | null> {
+  const rows = await db
+    .select()
+    .from(cashFlowStatementsTable)
+    .where(
+      and(
+        eq(cashFlowStatementsTable.entityId, entityId),
+        eq(cashFlowStatementsTable.validationStatus, "passed"),
+        eq(cashFlowStatementsTable.publicationStatus, "published"),
+      ),
+    )
+    .orderBy(desc(cashFlowStatementsTable.periodEnd))
+    .limit(1);
+
+  if (rows.length === 0) return null;
+
+  return parseCashFlowSectionsJson(rows[0].sections);
+}
+
+/**
+ * Classify a published section name into one of the three GAAP activity
+ * buckets. Section names arrive title-cased ("Operating Activities", …); match
+ * on the leading keyword so minor label variations still bucket correctly.
+ * Unrecognized sections are ignored for the operating/investing/financing
+ * split (their effect is still reflected in the statement's own net_change).
+ */
+function classifyActivity(name: string): "operating" | "investing" | "financing" | null {
+  const n = name.toLowerCase();
+  if (n.includes("operating")) return "operating";
+  if (n.includes("investing")) return "investing";
+  if (n.includes("financing")) return "financing";
+  return null;
+}
+
+/**
+ * Consolidated (portfolio) statement of cash flows across the selected
+ * entities. Reuses getCashFlowFromNeon per entity — only rows that are
+ * validation_status='passed' AND publication_status='published' are eligible,
+ * and each entity contributes its single latest eligible statement.
+ *
+ * ALL summation happens here (never in the frontend). Rules:
+ *   - operating/investing/financing are summed from each statement's section
+ *     net_cash values, bucketed by activity.
+ *   - net_change sums each statement's net_cash_change; ending_cash sums
+ *     cash_at_end; beginning_cash is the authoritative stored column value
+ *     (validated by CF-12) — never derived or fabricated.
+ *   - Negatives and legitimate zeros are preserved (Smile_More carries a
+ *     negative cash position).
+ *   - If NO selected entity has an eligible statement → available=false,
+ *     reason="no_published_statements".
+ *   - If the contributing statements report DIFFERENT period end-dates
+ *     (as_of), the periods are incompatible → available=false,
+ *     reason="incompatible_periods" (mismatched periods are never summed).
+ *   - If SOME selected entities are missing an eligible statement, the result
+ *     is partial=true and covers only the entities that had one; `missing`
+ *     lists the rest. Nothing is fabricated for the missing entities.
+ */
+/**
+ * Authoritative per-entity figures for the consolidated cash flow reducer.
+ * All six financial values are read directly from cash_flow_statements
+ * dedicated columns (validated by Python Core's CF-12 check); nothing is
+ * derived or recomputed. When ANY value is null/non-finite for a given entity
+ * that entity is treated as having no eligible statement — it is excluded from
+ * the consolidation and listed in `missing`.
+ */
+export type CashFlowEntry = {
+  slug: EntitySlug;
+  entity: string;
+  /** null means this entity has no passed+published statement (or a non-finite column). */
+  figures: {
+    as_of: string;
+    operating: number;
+    investing: number;
+    financing: number;
+    net_change: number;
+    beginning_cash: number;
+    ending_cash: number;
+  } | null;
+};
+
+/**
+ * Pure consolidation reducer — no I/O. Given each selected entity's latest
+ * eligible published statement figures (or null), produce the portfolio roll-up.
+ * Exported so the summation contract (negatives/zeros preserved, no
+ * fabrication, honest partial/unavailable states) is unit-testable without a
+ * database. See ConsolidatedCashFlow for the state semantics.
+ *
+ * All six financial fields (beginning_cash, operating, investing, financing,
+ * net_change, ending_cash) come directly from cash_flow_statements dedicated
+ * columns. NO derivation formula is used — beginning_cash is the authoritative
+ * stored value validated by CF-12, not ending_cash minus net_change.
+ */
+export function consolidateCashFlow(
+  slugs: EntitySlug[],
+  entries: CashFlowEntry[],
+): ConsolidatedCashFlow {
+  const empty = (reason: string, missing: EntitySlug[]): ConsolidatedCashFlow => ({
+    available: false,
+    partial: false,
+    as_of: null,
+    operating: 0,
+    investing: 0,
+    financing: 0,
+    net_change: 0,
+    beginning_cash: 0,
+    ending_cash: 0,
+    entities: [],
+    missing,
+    reason,
+  });
+
+  if (slugs.length === 0) return empty("no_entities_selected", slugs);
+
+  const contributing = entries.filter(
+    (e): e is CashFlowEntry & { figures: NonNullable<CashFlowEntry["figures"]> } =>
+      e.figures !== null,
+  );
+  const missing = entries.filter((e) => e.figures === null).map((e) => e.slug);
+
+  if (contributing.length === 0) return empty("no_published_statements", missing);
+
+  // Incompatible periods: contributing statements must share the same period
+  // end-date (as_of). Mismatched periods are never summed.
+  const periods = new Set(contributing.map((e) => e.figures.as_of));
+  if (periods.size > 1) return empty("incompatible_periods", missing);
+
+  const entities: ConsolidatedCashFlowEntity[] = contributing.map((e) => ({
+    slug: e.slug,
+    entity: e.entity,
+    as_of: e.figures.as_of,
+    operating: e.figures.operating,
+    investing: e.figures.investing,
+    financing: e.figures.financing,
+    net_change: e.figures.net_change,
+    beginning_cash: e.figures.beginning_cash,
+    ending_cash: e.figures.ending_cash,
+  }));
+
+  const sum = (pick: (x: ConsolidatedCashFlowEntity) => number) =>
+    entities.reduce((s, x) => s + pick(x), 0);
+
+  return {
+    available: true,
+    partial: missing.length > 0,
+    as_of: entities[0]!.as_of,
+    operating: sum((x) => x.operating),
+    investing: sum((x) => x.investing),
+    financing: sum((x) => x.financing),
+    net_change: sum((x) => x.net_change),
+    beginning_cash: sum((x) => x.beginning_cash),
+    ending_cash: sum((x) => x.ending_cash),
+    entities,
+    missing,
+    reason: null,
+  };
+}
+
+/**
+ * Consolidated (portfolio) statement of cash flows across the selected
+ * entities. Reads the six dedicated numeric columns from cash_flow_statements
+ * directly — these are the authoritative values written by FinanceOS Core and
+ * validated by CF-12. Nothing is derived or recomputed.
+ *
+ * Eligible rows: validation_status='passed' AND publication_status='published'.
+ * One query fetches all eligible rows for ALL selected entities; the latest
+ * row per entity (by period_end DESC) is kept in memory. An entity is excluded
+ * (added to `missing`) when:
+ *   - no eligible row exists for it, OR
+ *   - any of the six financial columns is null or non-finite.
+ */
+export async function getConsolidatedCashFlowFromNeon(
+  slugs: EntitySlug[],
+): Promise<ConsolidatedCashFlow> {
+  if (slugs.length === 0) return consolidateCashFlow(slugs, []);
+
+  // Resolve entity ids + display names for the requested dashboard slugs.
+  const idRows = await db
+    .select({ id: entitiesTable.id, slug: entitiesTable.slug, displayName: entitiesTable.displayName })
+    .from(entitiesTable);
+  const bySlug = new Map<string, { id: string; displayName: string }>();
+  for (const r of idRows) bySlug.set(r.slug.toLowerCase(), { id: r.id, displayName: r.displayName });
+
+  // Build the set of entity ids we care about.
+  const entityIdToSlug = new Map<string, EntitySlug>();
+  const entityIdToName = new Map<string, string>();
+  for (const slug of slugs) {
+    const meta = bySlug.get(slug.toLowerCase());
+    if (meta) {
+      entityIdToSlug.set(meta.id, slug);
+      entityIdToName.set(meta.id, meta.displayName);
+    }
+  }
+
+  // One query: all passed+published rows for the selected entities.
+  // Read the six dedicated numeric columns — NOT the sections JSONB.
+  const cfRows = await db
+    .select({
+      entityId:      cashFlowStatementsTable.entityId,
+      periodEnd:     cashFlowStatementsTable.periodEnd,
+      beginningCash: cashFlowStatementsTable.beginningCash,
+      netOperating:  cashFlowStatementsTable.netOperating,
+      netInvesting:  cashFlowStatementsTable.netInvesting,
+      netFinancing:  cashFlowStatementsTable.netFinancing,
+      netChange:     cashFlowStatementsTable.netChange,
+      endingCash:    cashFlowStatementsTable.endingCash,
+    })
+    .from(cashFlowStatementsTable)
+    .where(
+      and(
+        eq(cashFlowStatementsTable.validationStatus, "passed"),
+        eq(cashFlowStatementsTable.publicationStatus, "published"),
+      ),
+    )
+    .orderBy(desc(cashFlowStatementsTable.periodEnd));
+
+  // Keep only the most-recent eligible row per selected entity.
+  const latestByEntityId = new Map<string, (typeof cfRows)[number]>();
+  for (const row of cfRows) {
+    if (!entityIdToSlug.has(row.entityId)) continue;
+    if (!latestByEntityId.has(row.entityId)) latestByEntityId.set(row.entityId, row);
+  }
+
+  // Build CashFlowEntry list. Validate all six numeric columns are finite; if
+  // ANY is null or non-finite, the entity is treated as missing (no fallback).
+  const entries: CashFlowEntry[] = slugs.map((slug) => {
+    const meta = bySlug.get(slug.toLowerCase());
+    if (!meta) return { slug, entity: slug, figures: null };
+
+    const row = latestByEntityId.get(meta.id);
+    if (!row) return { slug, entity: meta.displayName, figures: null };
+
+    const beginning_cash = num(row.beginningCash);
+    const operating      = num(row.netOperating);
+    const investing      = num(row.netInvesting);
+    const financing      = num(row.netFinancing);
+    const net_change     = num(row.netChange);
+    const ending_cash    = num(row.endingCash);
+
+    // num() returns 0 for null/non-finite inputs. Re-check the raw values so
+    // a genuinely null column (missing data) excludes the entity rather than
+    // silently substituting 0. Legitimate zeros written by Core are non-null.
+    const rawValues = [
+      row.beginningCash,
+      row.netOperating,
+      row.netInvesting,
+      row.netFinancing,
+      row.netChange,
+      row.endingCash,
+    ];
+    if (rawValues.some((v) => v === null || v === undefined)) {
+      return { slug, entity: meta.displayName, figures: null };
+    }
+
+    // as_of: use period_end as the statement date (matches getCashFlowFromNeon
+    // behaviour which reads as_of from the sections JSONB; both reflect the
+    // same statement period).
+    const as_of = dateStr(row.periodEnd);
+
+    return {
+      slug,
+      entity: meta.displayName,
+      figures: { as_of, operating, investing, financing, net_change, beginning_cash, ending_cash },
+    };
+  });
+
+  return consolidateCashFlow(slugs, entries);
+}
+
+/**
  * Current-year financials for an entity, read from financial_periods:
  *   - monthly_pl  : the current fiscal year's `monthly` rows (asc by period)
  *   - ytd_summary : the current `ytd` row (read directly, NOT re-summed)
  *   - balance_sheet: aggregate totals from the same `ytd` row
- * `financial_periods` stores only balance-sheet TOTALS (no line-item split) and
- * no cash-flow statement, so the detailed BalanceSheet sub-lines are 0 and
- * cash_flow is null — the exact same typed shape the Drive path produced.
+ *   - cash_flow   : latest published Cash Flow statement from cash_flow_statements
  */
 export async function getEntityFinancialsFromNeon(
   slug: EntitySlug,
   asOf: string,
 ): Promise<FinancialsData> {
   const coreSlug = slug.toLowerCase();
-  const rows = await fetchEntityPeriods(coreSlug);
+  const [rows, entityRows] = await Promise.all([
+    fetchEntityPeriods(coreSlug),
+    db.select({ id: entitiesTable.id })
+      .from(entitiesTable)
+      .where(eq(entitiesTable.slug, coreSlug))
+      .limit(1),
+  ]);
   if (rows.length === 0) {
     throw new Error(`Neon has no financial_periods for "${slug}" (core slug "${coreSlug}")`);
   }
+  const entityId = entityRows[0]?.id ?? null;
 
   // The authoritative current-period roll-up. Pick the latest ytd row by
   // period_end (Core may retain more than one over time).
@@ -692,34 +1049,7 @@ export async function getEntityFinancialsFromNeon(
     },
   };
 
-  // Read the most recent passed+published cash flow statement from RC-016.
-  // ONLY rows with validation_status='passed' AND publication_status='published'
-  // may reach the UI — invalid/unpublished rows are silently skipped.
-  const entityId = await getCachedEntityId(coreSlug);
-  let cash_flow: import("./types").CashFlowStatement | null = null;
-  if (entityId) {
-    const [cfRow] = await db
-      .select()
-      .from(cashFlowStatementsTable)
-      .where(
-        and(
-          eq(cashFlowStatementsTable.entityId, entityId),
-          eq(cashFlowStatementsTable.validationStatus, "passed"),
-          eq(cashFlowStatementsTable.publicationStatus, "published"),
-        ),
-      )
-      .orderBy(desc(cashFlowStatementsTable.publishedAt))
-      .limit(1);
-
-    if (cfRow) {
-      // sections is stored as the full CashFlowStatement JSON in the jsonb column.
-      // The pipeline writes: { as_of, sections, net_cash_change, cash_at_end }
-      const raw = cfRow.sections as import("./types").CashFlowStatement | null;
-      if (raw && typeof raw === "object" && Array.isArray(raw.sections)) {
-        cash_flow = raw;
-      }
-    }
-  }
+  const cash_flow = entityId ? await getCashFlowFromNeon(entityId) : null;
 
   return {
     entity_slug: slug,
@@ -779,6 +1109,328 @@ export async function getEntityHistoryFromNeon(slug: EntitySlug): Promise<Entity
     });
 
   return { entity_slug: slug, prior_years };
+}
+
+// ---------------------------------------------------------------------------
+// RC-017: consolidated monthly history for /analyze/history.
+//
+// Serves the History page's revenue/net-income time series, month-over-month
+// changes, entity-period snapshots, and health-score trend from authoritative
+// data. Monthly P&L comes from financial_periods (period_type='monthly'); the
+// health-score trend comes from the metric_snapshots runtime table (one row per
+// entity per month, archived server-side from live pipeline metrics).
+//
+// ALL aggregation and MoM arithmetic happens in the pure buildHistoryResponse
+// reducer below (unit-testable, no I/O). Missing values are null, never 0;
+// negatives and legitimate zeros are preserved.
+// ---------------------------------------------------------------------------
+
+/** One entity's monthly P&L rows for the history reducer. `revenue`/`net_income`
+ * are null only when the underlying financial_periods column was null. */
+export type HistoryEntityMonth = {
+  period: string; // YYYY-MM
+  period_start: string; // ISO date
+  period_end: string; // ISO date
+  revenue: number | null;
+  net_income: number | null;
+};
+
+/** Per-entity input to the reducer: the entity's display name and its monthly
+ * rows (already filtered to period_type='monthly'). An entity with an empty
+ * `months` array contributes nothing and is reported as missing. */
+export type HistoryEntityInput = {
+  slug: EntitySlug;
+  entity: string;
+  months: HistoryEntityMonth[];
+};
+
+/** Per-entity monthly health scores (from metric_snapshots), keyed by YYYY-MM. */
+export type HistoryHealthInput = {
+  slug: EntitySlug;
+  scoresByMonth: Map<string, number | null>;
+};
+
+/** NUMERIC-or-null → number|null. Preserves negatives and zero; only a genuinely
+ * null/non-finite column collapses to null (never silently to 0). */
+function numOrNull(v: string | number | null | undefined): number | null {
+  if (v === null || v === undefined) return null;
+  const n = typeof v === "number" ? v : Number(v);
+  return Number.isFinite(n) ? n : null;
+}
+
+/** Sum a set of nullable values. Returns null only when EVERY contributor is
+ * null (i.e. no entity reported the value for that month); otherwise nulls are
+ * treated as "no contribution" and the finite values are summed. */
+function sumNullable(values: (number | null)[]): number | null {
+  let acc = 0;
+  let any = false;
+  for (const v of values) {
+    if (v !== null) {
+      acc += v;
+      any = true;
+    }
+  }
+  return any ? acc : null;
+}
+
+/** MoM percentage change per the contract: (current - prior) / |prior| * 100.
+ * Returns null when prior is null or zero, or when current is null. */
+function pctChange(current: number | null, prior: number | null): number | null {
+  if (current === null || prior === null || prior === 0) return null;
+  return ((current - prior) / Math.abs(prior)) * 100;
+}
+
+/** Dollar change per the contract: current - prior. Null if either is null. */
+function dollarChange(current: number | null, prior: number | null): number | null {
+  if (current === null || prior === null) return null;
+  return current - prior;
+}
+
+/**
+ * Pure consolidation reducer for the History page — no I/O. Given each selected
+ * entity's monthly P&L rows (revenue/net_income, already scoped to monthly
+ * periods) and optional health-score series, produce the full HistoryResponse.
+ *
+ * Rules:
+ *   - Aggregate across entities per period (sum revenue, sum net_income),
+ *     preserving negatives and zeros; a period nobody reported is null.
+ *   - MoM dollar change = current - prior; pct = (current-prior)/|prior|*100,
+ *     null when prior is null or zero.
+ *   - Duplicate (entity, period) rows are collapsed to the LAST one seen so a
+ *     month is never double-counted.
+ *   - status: 'unavailable' when no entity has any monthly data;
+ *     'partial' when some selected entities have none; else 'available'.
+ *   - Health score is available iff at least one health point is present.
+ */
+export function buildHistoryResponse(
+  entities: HistoryEntityInput[],
+  health: HistoryHealthInput[],
+  generatedAt: string = new Date().toISOString(),
+): import("./types").HistoryResponse {
+  type Pt = import("./types").HistoryMonthlyPoint;
+
+  // De-duplicate (entity, period) rows: last row wins. Collect all periods.
+  const periodMeta = new Map<string, { start: string; end: string }>();
+  const perEntity = new Map<EntitySlug, Map<string, HistoryEntityMonth>>();
+  const contributing: HistoryEntityInput[] = [];
+  const missing: EntitySlug[] = [];
+
+  for (const e of entities) {
+    if (e.months.length === 0) {
+      missing.push(e.slug);
+      continue;
+    }
+    contributing.push(e);
+    const byPeriod = new Map<string, HistoryEntityMonth>();
+    for (const m of e.months) {
+      byPeriod.set(m.period, m); // last write wins → dedupe
+      const meta = periodMeta.get(m.period);
+      if (!meta) periodMeta.set(m.period, { start: m.period_start, end: m.period_end });
+    }
+    perEntity.set(e.slug, byPeriod);
+  }
+
+  const periods = [...periodMeta.keys()].sort();
+  const entityNames = entities.map((e) => e.entity);
+
+  const status: import("./types").HistoryStatus =
+    contributing.length === 0
+      ? "unavailable"
+      : missing.length > 0
+        ? "partial"
+        : "available";
+
+  const monthly: Pt[] = periods.map((period) => {
+    const meta = periodMeta.get(period)!;
+    const by_entity: Pt["by_entity"] = {};
+    const revenues: (number | null)[] = [];
+    const netIncomes: (number | null)[] = [];
+    // Per-period provenance: which contributing entities actually had an
+    // authoritative row for this period vs. which were missing it. A period is
+    // period-level `partial` when some (but not all) contributing entities
+    // reported — the totals below still sum only the entities that did, never
+    // treating a missing entity as zero.
+    const periodContributing: string[] = [];
+    const periodMissing: string[] = [];
+    for (const e of contributing) {
+      const row = perEntity.get(e.slug)?.get(period);
+      const revenue = row ? row.revenue : null;
+      const net_income = row ? row.net_income : null;
+      by_entity[e.slug] = { revenue, net_income };
+      revenues.push(revenue);
+      netIncomes.push(net_income);
+      if (row) periodContributing.push(e.slug);
+      else periodMissing.push(e.slug);
+    }
+    return {
+      period,
+      period_start: meta.start,
+      period_end: meta.end,
+      revenue: sumNullable(revenues),
+      net_income: sumNullable(netIncomes),
+      by_entity,
+      partial: periodContributing.length > 0 && periodMissing.length > 0,
+      contributing: periodContributing,
+      missing: periodMissing,
+    };
+  });
+
+  const changes: import("./types").HistoryChange[] = monthly.slice(1).map((curr, i) => {
+    const prev = monthly[i]!;
+    return {
+      period: curr.period,
+      revenue_change: dollarChange(curr.revenue, prev.revenue),
+      revenue_change_pct: pctChange(curr.revenue, prev.revenue),
+      net_income_change: dollarChange(curr.net_income, prev.net_income),
+      net_income_change_pct: pctChange(curr.net_income, prev.net_income),
+    };
+  });
+
+  // Entity-period snapshot rows: one per (contributing entity, period), sorted
+  // by entity display order then chronologically.
+  const snapshots: import("./types").HistorySnapshotRow[] = [];
+  for (const e of contributing) {
+    const byPeriod = perEntity.get(e.slug)!;
+    for (const period of periods) {
+      const row = byPeriod.get(period);
+      if (!row) continue;
+      snapshots.push({
+        entity: e.entity,
+        slug: e.slug,
+        period,
+        revenue: row.revenue,
+        net_income: row.net_income,
+      });
+    }
+  }
+
+  // Health-score trend: a point per financial period, null when no snapshot exists
+  // for that month. Coverage counts how many of the 19 financial periods have an
+  // authoritative score — only 1/19 having a score is "partial", not "available".
+  const health_score_history: import("./types").HistoryHealthPoint[] = periods.map((period) => {
+    const scores = health.map((h) => h.scoresByMonth.get(period) ?? null);
+    return { period, score: sumNullable(scores) };
+  });
+  const health_score_available = health_score_history.some((p) => p.score !== null);
+  const missingMonths = health_score_history
+    .filter((p) => p.score === null)
+    .map((p) => p.period);
+  const availablePeriods = periods.length - missingMonths.length;
+  const coverageStatus: import("./types").HealthScoreCoverage["status"] =
+    availablePeriods === 0 ? "none" : availablePeriods === periods.length ? "full" : "partial";
+  const health_score_coverage: import("./types").HealthScoreCoverage = {
+    status: coverageStatus,
+    available_periods: availablePeriods,
+    total_periods: periods.length,
+    missing_periods: missingMonths.length,
+    missing_months: missingMonths,
+  };
+
+  return {
+    available: status === "available" || status === "partial",
+    status,
+    entities: entityNames,
+    period_start: periods[0] ?? null,
+    period_end: periods.at(-1) ?? null,
+    generated_at: generatedAt,
+    monthly,
+    changes,
+    snapshots,
+    health_score_history: health_score_available ? health_score_history : null,
+    health_score_available,
+    health_score_coverage,
+    ...(health_score_available
+      ? {}
+      : { health_score_unavailable_reason: "no_historical_health_scores_persisted" }),
+  };
+}
+
+/**
+ * Consolidated monthly history for the selected entities, read from Neon.
+ *   - Monthly revenue/net_income come from financial_periods (period_type =
+ *     'monthly') for the requested entities — ONE query for all of them.
+ *   - Health scores come from the metric_snapshots runtime table via the shared
+ *     snapshotStore reader; each snapshot's health_score is recomputed by
+ *     withHealth() from its stored metrics (never fabricated).
+ * All aggregation/MoM is delegated to buildHistoryResponse. Read-only.
+ */
+export async function getHistoryFromNeon(
+  slugs: EntitySlug[],
+): Promise<import("./types").HistoryResponse> {
+  if (slugs.length === 0) return buildHistoryResponse([], []);
+
+  // Resolve display names + core (lower-cased) slugs for the requested entities.
+  const idRows = await db
+    .select({ slug: entitiesTable.slug, displayName: entitiesTable.displayName })
+    .from(entitiesTable);
+  const metaBySlug = new Map<string, { displayName: string }>();
+  for (const r of idRows) metaBySlug.set(r.slug.toLowerCase(), { displayName: r.displayName });
+
+  const coreSlugs = slugs.map((s) => s.toLowerCase());
+
+  // ONE query: all monthly financial_periods rows for the selected entities.
+  const monthlyRows = await db
+    .select({
+      slug: entitiesTable.slug,
+      periodStart: financialPeriodsTable.periodStart,
+      periodEnd: financialPeriodsTable.periodEnd,
+      revenue: financialPeriodsTable.revenue,
+      netIncome: financialPeriodsTable.netIncome,
+    })
+    .from(financialPeriodsTable)
+    .innerJoin(entitiesTable, eq(entitiesTable.id, financialPeriodsTable.entityId))
+    .where(
+      and(
+        eq(financialPeriodsTable.periodType, "monthly"),
+        inArray(sql`lower(${entitiesTable.slug})`, coreSlugs),
+      ),
+    );
+
+  const rowsByCoreSlug = new Map<string, HistoryEntityMonth[]>();
+  for (const r of monthlyRows) {
+    const key = r.slug.toLowerCase();
+    const list = rowsByCoreSlug.get(key) ?? [];
+    list.push({
+      period: monthLabel(r.periodStart),
+      period_start: dateStr(r.periodStart),
+      period_end: dateStr(r.periodEnd),
+      revenue: numOrNull(r.revenue),
+      net_income: numOrNull(r.netIncome),
+    });
+    rowsByCoreSlug.set(key, list);
+  }
+
+  const entities: HistoryEntityInput[] = slugs.map((slug) => {
+    const core = slug.toLowerCase();
+    const meta = metaBySlug.get(core);
+    const months = (rowsByCoreSlug.get(core) ?? []).sort((a, b) =>
+      a.period.localeCompare(b.period),
+    );
+    return { slug, entity: meta?.displayName ?? slug, months };
+  });
+
+  // Health-score history from the metric_snapshots runtime table. A snapshot
+  // read failure (e.g. table not yet created) must not fail the whole history
+  // response — it degrades to "health score unavailable".
+  let snapshots: import("./types").MetricSnapshotsData | null = null;
+  try {
+    snapshots = await getMetricSnapshots();
+  } catch (err) {
+    console.warn("[neonSource] metric_snapshots unavailable for history health trend:", err);
+  }
+  const requested = new Set<EntitySlug>(slugs);
+  const health: HistoryHealthInput[] = slugs.map((slug) => {
+    const scoresByMonth = new Map<string, number | null>();
+    if (requested.has(slug) && snapshots) {
+      for (const s of snapshots[slug] ?? []) {
+        const score = s.metrics.health_score;
+        scoresByMonth.set(s.month, typeof score === "number" ? score : null);
+      }
+    }
+    return { slug, scoresByMonth };
+  });
+
+  return buildHistoryResponse(entities, health);
 }
 
 // ---------------------------------------------------------------------------

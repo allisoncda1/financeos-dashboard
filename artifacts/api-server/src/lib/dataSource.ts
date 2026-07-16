@@ -23,6 +23,8 @@ import {
   getEntityCustomersFromNeon,
   getEntityVendorsFromNeon,
   getEntityBankingFromNeon,
+  getConsolidatedCashFlowFromNeon,
+  getHistoryFromNeon,
 } from "./neonSource";
 import type {
   PortfolioSummary,
@@ -36,6 +38,8 @@ import type {
   CustomersData,
   VendorsData,
   BankingData,
+  ConsolidatedCashFlow,
+  HistoryResponse,
 } from "./types";
 import { ENTITY_SLUGS } from "./types";
 
@@ -365,6 +369,43 @@ export async function getEntityFinancials(
 }
 
 /**
+ * Consolidated (portfolio) statement of cash flows for the selected entities,
+ * read from FinanceOS Core's published cash_flow_statements via Neon. All
+ * summation is performed in getConsolidatedCashFlowFromNeon; this wrapper only
+ * tags the data source. There is deliberately NO mock/Drive fallback: when Neon
+ * is unreachable the consolidated statement reports available=false rather than
+ * fabricating cash flow figures.
+ */
+export async function getConsolidatedCashFlow(
+  slugs: EntitySlug[],
+): Promise<{ data: ConsolidatedCashFlow; source: DataSourceKind }> {
+  return trackSource(async () => {
+    try {
+      const data = await getConsolidatedCashFlowFromNeon(slugs);
+      reportSource("db");
+      return data;
+    } catch (err) {
+      console.warn("[dataSource] Neon consolidated cash flow unavailable:", err);
+      reportSource("mock");
+      return {
+        available: false,
+        partial: false,
+        as_of: null,
+        operating: 0,
+        investing: 0,
+        financing: 0,
+        net_change: 0,
+        beginning_cash: 0,
+        ending_cash: 0,
+        entities: [],
+        missing: slugs,
+        reason: "source_unavailable",
+      } satisfies ConsolidatedCashFlow;
+    }
+  });
+}
+
+/**
  * Real prior-period history for an entity, derived from the pipeline's
  * archived prior-year exports on Drive (pnl_prior_year.csv +
  * balance_sheet_prior_year.csv). There is deliberately NO mock fallback with
@@ -396,6 +437,45 @@ export async function getEntityHistory(
     }
     reportSource("mock");
     return { entity_slug: slug, prior_years: [] };
+  });
+}
+
+/**
+ * RC-017: consolidated monthly history for the selected entities, read from
+ * FinanceOS Core's financial_periods (monthly rows) via Neon, with the
+ * health-score trend from the metric_snapshots runtime table. All aggregation
+ * and month-over-month math happens in getHistoryFromNeon/buildHistoryResponse.
+ *
+ * There is deliberately NO mock/Drive fallback: when Neon is unreachable the
+ * response reports status='unavailable' rather than fabricating history.
+ */
+export async function getHistory(
+  slugs: EntitySlug[],
+): Promise<{ data: HistoryResponse; source: DataSourceKind }> {
+  return trackSource(async () => {
+    try {
+      const data = await getHistoryFromNeon(slugs);
+      reportSource("db");
+      return data;
+    } catch (err) {
+      console.warn("[dataSource] Neon history unavailable:", err);
+      reportSource("mock");
+      return {
+        available: false,
+        status: "unavailable",
+        entities: [],
+        period_start: null,
+        period_end: null,
+        generated_at: new Date().toISOString(),
+        monthly: [],
+        changes: [],
+        snapshots: [],
+        health_score_history: null,
+        health_score_available: false,
+        health_score_coverage: { status: "none", available_periods: 0, total_periods: 0, missing_periods: 0, missing_months: [] },
+        health_score_unavailable_reason: "source_unavailable",
+      } satisfies HistoryResponse;
+    }
   });
 }
 

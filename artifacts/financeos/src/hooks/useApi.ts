@@ -2,8 +2,8 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import { api } from '@/lib/api';
 import { getMockData, getFinancials, getCustomers, getVendors, getBanking } from '@/lib/mock';
 import { ENTITY_SLUGS } from '@/lib/entities';
-import type { DashboardData, FinancialsData, CustomersData, VendorsData, BankingData, EntitySlug, BriefingResponse, Alert, ValidationMatrixData, EntityHistoryData, MetricSnapshotsData, EntityBudget, BvsAData, PortfolioBudget, BudgetPeriodInput } from '@/lib/types';
-import type { ReportTemplateSummary, ReportGenerateRequest, BuiltReport } from '@/lib/reportTypes';
+import type { DashboardData, FinancialsData, CustomersData, VendorsData, BankingData, EntitySlug, BriefingResponse, Alert, ValidationMatrixData, EntityHistoryData, MetricSnapshotsData, EntityBudget, BvsAData, PortfolioBudget, BudgetPeriodInput, ConsolidatedCashFlow, HistoryResponse } from '@/lib/types';
+import type { ReportTemplateSummary, ReportGenerateRequest, BuiltReport, ReportHistoryEntry } from '@/lib/reportTypes';
 import type { AIStatus } from '@/lib/aiTypes';
 import type { PipelineStatus } from '@/lib/pipelineTypes';
 import {
@@ -164,6 +164,41 @@ export function useHealthSnapshots(): FetchState<MetricSnapshotsData> {
   return useTrackedFetch('healthSnapshots', () => api.historySnapshots(), null, []);
 }
 
+/**
+ * useConsolidatedCashFlow — fetches the portfolio statement of cash flows for
+ * the given selected entities from GET /api/model/cashflow. ALL summation is
+ * performed server-side from published Neon rows; this hook and its consumers
+ * only render the returned totals. Re-fetches when the selection changes. No
+ * mock fallback: when Core has published nothing the endpoint returns an honest
+ * unavailable/partial state.
+ */
+export function useConsolidatedCashFlow(slugs: EntitySlug[]): FetchState<ConsolidatedCashFlow> {
+  const key = slugs.join(',');
+  return useTrackedFetch(
+    `consolidatedCashFlow:${key}`,
+    () => api.consolidatedCashFlow(slugs),
+    null,
+    [key],
+  );
+}
+
+/**
+ * useHistory — fetches the consolidated monthly history for the selected
+ * entities from GET /api/model/history. ALL aggregation and month-over-month
+ * math is performed server-side; this hook and its consumers only render the
+ * returned values. Re-fetches when the selection changes. No mock fallback:
+ * when Neon has published nothing the endpoint returns status='unavailable'.
+ */
+export function useHistory(slugs: EntitySlug[]): FetchState<HistoryResponse> {
+  const key = slugs.join(',');
+  return useTrackedFetch(
+    `history:${key}`,
+    () => api.history(slugs),
+    null,
+    [key],
+  );
+}
+
 export function useEntityCustomers(slug: EntitySlug): FetchState<CustomersData> {
   return useTrackedFetch(
     `entityCustomers:${slug}`,
@@ -258,6 +293,23 @@ export function useBriefing(): FetchState<BriefingResponse> {
  */
 export function useReportTemplates(): FetchState<ReportTemplateSummary[]> {
   return useTrackedFetch('reportTemplates', () => api.reportTemplates(), null, []);
+}
+
+/**
+ * useReportHistory — fetches the persisted report generation history from
+ * GET /api/reports/history. Pass a slug to scope to a single entity.
+ * No mock fallback: returns null source="unavailable" when the endpoint fails
+ * so the UI can show an empty state rather than fabricated data.
+ * The refreshKey param can be incremented to force a re-fetch after generation.
+ */
+export function useReportHistory(slug?: string, refreshKey?: number): FetchState<ReportHistoryEntry[]> {
+  return useTrackedFetch(
+    `reportHistory:${slug ?? 'all'}`,
+    () => api.reportHistory(slug),
+    null,
+    [slug, refreshKey],
+    false,
+  );
 }
 
 /**

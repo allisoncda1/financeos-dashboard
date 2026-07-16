@@ -10,37 +10,54 @@
  *   validation_status = 'passed' AND publication_status = 'published'
  * Invalid or unverified rows must never reach the UI.
  */
-
 import {
-  pgTable, uuid, text, date, numeric, timestamp, jsonb,
+  pgTable,
+  uuid,
+  text,
+  date,
+  numeric,
+  jsonb,
+  timestamp,
+  check,
 } from "drizzle-orm/pg-core";
-import { entitiesTable } from "./entities";
-import { syncRunsTable } from "./syncRuns";
+import { sql } from "drizzle-orm";
 
-export const cashFlowStatementsTable = pgTable("cash_flow_statements", {
-  id:                uuid("id").primaryKey().defaultRandom(),
-  entityId:          uuid("entity_id").notNull().references(() => entitiesTable.id),
-  periodStart:       date("period_start").notNull(),
-  periodEnd:         date("period_end").notNull(),
-  qboId:             text("qbo_id").notNull(),
-  sourceReportName:  text("source_report_name"),
-  sourceReportDate:  date("source_report_date"),
-  /** Full CashFlowStatement JSON: { as_of, sections, net_cash_change, cash_at_end } */
-  sections:          jsonb("sections").notNull(),
-  beginningCash:     numeric("beginning_cash"),
-  netOperating:      numeric("net_operating"),
-  netInvesting:      numeric("net_investing"),
-  netFinancing:      numeric("net_financing"),
-  netChange:         numeric("net_change"),
-  endingCash:        numeric("ending_cash"),
-  validationStatus:  text("validation_status").notNull().default("pending"),
-  validationDetails: jsonb("validation_details"),
-  publicationStatus: text("publication_status").notNull().default("pending"),
-  parserVersion:     text("parser_version").notNull().default("0"),
-  validatedAt:       timestamp("validated_at", { withTimezone: true }),
-  publishedAt:       timestamp("published_at", { withTimezone: true }),
-  fetchedAt:         timestamp("fetched_at", { withTimezone: true }).notNull().defaultNow(),
-  syncRunId:         uuid("sync_run_id").references(() => syncRunsTable.id),
-});
+export const cashFlowStatementsTable = pgTable(
+  "cash_flow_statements",
+  {
+    id:                 uuid("id").primaryKey().defaultRandom(),
+    entityId:           uuid("entity_id").notNull(),
+    periodStart:        date("period_start").notNull(),
+    periodEnd:          date("period_end").notNull(),
+    qboId:              text("qbo_id").notNull(),
+    sourceReportName:   text("source_report_name"),
+    sourceReportDate:   date("source_report_date"),
+    sections:           jsonb("sections").notNull(),
+    beginningCash:      numeric("beginning_cash"),
+    netOperating:       numeric("net_operating"),
+    netInvesting:       numeric("net_investing"),
+    netFinancing:       numeric("net_financing"),
+    netChange:          numeric("net_change"),
+    endingCash:         numeric("ending_cash"),
+    validationStatus:   text("validation_status").notNull().default("failed"),
+    validationDetails:  jsonb("validation_details"),
+    publicationStatus:  text("publication_status").notNull().default("blocked"),
+    parserVersion:      text("parser_version").notNull().default("2.0"),
+    validatedAt:        timestamp("validated_at", { withTimezone: true }),
+    publishedAt:        timestamp("published_at", { withTimezone: true }),
+    fetchedAt:          timestamp("fetched_at", { withTimezone: true }).notNull().defaultNow(),
+    syncRunId:          uuid("sync_run_id"),
+  },
+  (t) => ({
+    validationStatusCheck: check(
+      "validation_status_check",
+      sql`${t.validationStatus} IN ('passed', 'failed')`,
+    ),
+    publicationStatusCheck: check(
+      "publication_status_check",
+      sql`${t.publicationStatus} IN ('published', 'blocked', 'skipped')`,
+    ),
+  }),
+);
 
 export type CashFlowStatementRow = typeof cashFlowStatementsTable.$inferSelect;

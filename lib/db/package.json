@@ -5,7 +5,9 @@
   "type": "module",
   "exports": {
     ".": "./src/index.ts",
-    "./schema": "./src/schema/index.ts"
+    "./schema": "./src/schema/index.ts",
+    "./schema/ops": "./src/schema/ops.ts",
+    "./schema/reportHistory": "./src/schema/reportHistory.ts"
   },
   "scripts": {
     "generate": "drizzle-kit generate --config ./drizzle.config.ts",
@@ -13,7 +15,8 @@
     "seed": "tsx src/seed.ts",
     "seed-budget": "tsx src/seed-budget.ts",
     "push": "drizzle-kit push --config ./drizzle.config.ts",
-    "push-force": "drizzle-kit push --force --config ./drizzle.config.ts"
+    "push-force": "drizzle-kit push --force --config ./drizzle.config.ts",
+    "push:ops": "drizzle-kit push --config ./drizzle.ops.config.ts"
   },
   "dependencies": {
     "drizzle-orm": "catalog:",

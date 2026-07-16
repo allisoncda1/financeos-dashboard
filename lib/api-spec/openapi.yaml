@@ -242,6 +242,57 @@ components:
           enum: [json, pdf, excel, html]
       required: [template, period, format, entities]
 
+    ReportHistoryEntry:
+      type: object
+      description: A single persisted report generation record
+      properties:
+        id:
+          type: string
+          format: uuid
+        template:
+          type: string
+        title:
+          type: string
+        period:
+          type: string
+        format:
+          type: string
+          enum: [json, pdf, excel, html]
+        entitySlugs:
+          type: array
+          items:
+            type: string
+        status:
+          type: string
+          enum: [queued, processing, completed, failed]
+        source:
+          type: string
+          nullable: true
+          enum: [live, cache, mock, db]
+        dataFreshness:
+          type: string
+          nullable: true
+        entityCount:
+          type: integer
+          nullable: true
+        confidenceScore:
+          type: integer
+          nullable: true
+        requestedBy:
+          type: string
+          nullable: true
+        errorMessage:
+          type: string
+          nullable: true
+        completedAt:
+          type: string
+          format: date-time
+          nullable: true
+        createdAt:
+          type: string
+          format: date-time
+      required: [id, template, title, period, format, entitySlugs, status, createdAt]
+
     # AI
     AiAnalyzeRequest:
       type: object
@@ -543,6 +594,72 @@ paths:
       responses:
         "200":
           description: Metric snapshot history
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiEnvelope"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "500":
+          $ref: "#/components/responses/ServerError"
+
+  /model/history:
+    get:
+      operationId: getModelHistory
+      tags: [model]
+      summary: Consolidated monthly history across the selected entities
+      description: |
+        Revenue / net-income monthly time series, month-over-month changes,
+        entity-period snapshots, and the health-score trend, aggregated
+        server-side from Neon's monthly `financial_periods` rows (Core) plus
+        the `metric_snapshots` runtime table (Dashboard ops DB). Registered
+        before `/model/{slug}` so the literal path segment `history` is never
+        interpreted as an entity slug. Optional `?slugs=A,B,C` selects entities
+        (defaults to all). Unknown slugs are ignored.
+      security:
+        - sessionCookie: []
+      parameters:
+        - name: slugs
+          in: query
+          required: false
+          description: Comma-separated entity slugs to include (defaults to all).
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Consolidated monthly history
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiEnvelope"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "500":
+          $ref: "#/components/responses/ServerError"
+
+  /model/cashflow:
+    get:
+      operationId: getModelCashflow
+      tags: [model]
+      summary: Consolidated (portfolio) statement of cash flows
+      description: |
+        Portfolio statement of cash flows summed server-side from published
+        Neon `cash_flow_statements` rows across the selected entities.
+        Registered before `/model/{slug}` so `cashflow` is never interpreted
+        as an entity slug. Optional `?slugs=A,B,C` selects entities (defaults
+        to all).
+      security:
+        - sessionCookie: []
+      parameters:
+        - name: slugs
+          in: query
+          required: false
+          description: Comma-separated entity slugs to include (defaults to all).
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Consolidated cash flow
           content:
             application/json:
               schema:
@@ -894,6 +1011,57 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ApiEnvelope"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "500":
+          $ref: "#/components/responses/ServerError"
+
+  /reports/history:
+    get:
+      operationId: listReportHistory
+      tags: [reports]
+      summary: List report generation history
+      description: |
+        Returns persisted report generation records from the Dashboard operational
+        database, ordered newest-first. Optionally filter to a single entity with
+        `?slug=`. Supports pagination via `limit` and `offset`.
+      security:
+        - sessionCookie: []
+      parameters:
+        - name: slug
+          in: query
+          required: false
+          schema:
+            type: string
+          description: Entity slug to filter history by (e.g. `cardealer_ai`)
+        - name: limit
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 200
+            default: 50
+        - name: offset
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 0
+            default: 0
+      responses:
+        "200":
+          description: Report history list
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiEnvelope"
+        "400":
+          description: Invalid slug
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
         "401":
           $ref: "#/components/responses/Unauthorized"
         "500":
