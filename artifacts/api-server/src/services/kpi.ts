@@ -46,6 +46,34 @@ export function budgetHealthStatus(attainmentPct: number): "on-track" | "at-risk
   return "behind";
 }
 
+/**
+ * Standard DSO (Days Sales Outstanding) = (openAr / revenue) * periodDays.
+ *
+ * Source contract:
+ *   openAr    — Summary-sourced open AR from financial_periods.open_ar or
+ *               entity_snapshots.arap.open_ar (the same YTD snapshot value).
+ *   revenue   — YTD revenue from financial_periods.revenue for the same period.
+ *   periodDays— Calendar days in the YTD period (periodEnd - periodStart + 1),
+ *               typically 181 days for H1, 365 for a full year.
+ *
+ * The pipeline also publishes a weighted-days-overdue figure per customer
+ * (entity_snapshots.arap.dso_days). That is a DIFFERENT metric — it weights
+ * each customer's outstanding balance by how many days past due their invoices
+ * are — and should be labelled "Weighted AR Days Overdue" wherever it appears.
+ * This function computes the standard (turnover-based) DSO only.
+ *
+ * Returns null when revenue ≤ 0, either input is not finite, or periodDays ≤ 0.
+ */
+export function computeStandardDso(
+  openAr: number,
+  revenue: number,
+  periodDays: number,
+): number | null {
+  if (!Number.isFinite(openAr) || !Number.isFinite(revenue) || revenue <= 0) return null;
+  if (!Number.isFinite(periodDays) || periodDays <= 0) return null;
+  return (openAr / revenue) * periodDays;
+}
+
 export function computeCashRunwayMonths(cashOnHand: number, opex: number): number | null {
   if (!Number.isFinite(cashOnHand) || cashOnHand <= 0) return null;
   if (!Number.isFinite(opex) || opex <= 0) return null;

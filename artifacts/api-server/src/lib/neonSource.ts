@@ -145,6 +145,15 @@ export async function getPortfolioSummaryFromNeon(): Promise<PortfolioSummary> {
     .sort((a, b) => slugRank(a.slug) - slugRank(b.slug))
     .map((r) => r.displayName);
 
+  // Most recent financial_periods row by generated_at — used as the pipeline_run
+  // timestamp when no portfolio_snapshot is present. Better than new Date() which
+  // would fabricate a "live" timestamp for data that may be days old.
+  const latestGeneratedAt = ytdRows.reduce<Date | null>((best, r) => {
+    const t = r.generatedAt instanceof Date ? r.generatedAt : null;
+    if (t === null) return best;
+    return best === null || t > best ? t : best;
+  }, null);
+
   // Compute server-side health scores from each entity's YTD metrics so the
   // portfolio average uses the same penalty formula as individual entity pages.
   const healthScores: number[] = [];
@@ -169,8 +178,8 @@ export async function getPortfolioSummaryFromNeon(): Promise<PortfolioSummary> {
     : null;
 
   return {
-    as_of: snapshot ? snapshot.asOf : new Date().toISOString().slice(0, 10),
-    pipeline_run: snapshot ? snapshot.pipelineRun.toISOString() : new Date().toISOString(),
+    as_of: snapshot ? snapshot.asOf : (latestGeneratedAt?.toISOString().slice(0, 10) ?? "unknown"),
+    pipeline_run: snapshot ? snapshot.pipelineRun.toISOString() : (latestGeneratedAt?.toISOString() ?? "unknown"),
     entities,
     entity_count: ytdRows.length,
     portfolio_revenue_ytd: revenue,
@@ -329,15 +338,24 @@ export async function getDataFreshnessFromNeon(): Promise<DataFreshness> {
     throw new Error("Neon has no sync_runs or portfolio_snapshots for freshness");
   }
 
-  const pipelineRun =
+  // Resolve the pipeline run timestamp from authoritative sources only — never
+  // fabricate a timestamp with new Date(). If latestSync has neither completedAt
+  // nor startedAt (a half-initialised row), surface "unknown" so the UI can show
+  // an honest stale/error state rather than a misleadingly fresh timestamp.
+  const pipelineRunDate =
     snapshot?.pipelineRun ??
     latestSync?.completedAt ??
-    latestSync?.startedAt ??
-    new Date();
+    latestSync?.startedAt;
+  const pipeline_run = pipelineRunDate ? pipelineRunDate.toISOString() : "unknown";
+
+  // data_as_of = the date the pipeline's model snapshot was published. Falls back
+  // to the sync completion date (not today) when no portfolio snapshot exists.
+  const syncDate = latestSync?.completedAt ?? latestSync?.startedAt;
+  const data_as_of = snapshot?.asOf ?? syncDate?.toISOString().slice(0, 10) ?? "unknown";
 
   return {
-    pipeline_run: pipelineRun.toISOString(),
-    data_as_of: snapshot ? snapshot.asOf : new Date().toISOString().slice(0, 10),
+    pipeline_run,
+    data_as_of,
     entities_built: entitiesBuilt,
     qbo_connection: latestSync?.status === "success" ? "healthy" : (latestSync?.status ?? "unknown"),
     phase2_extraction: latestSync?.status === "success" ? "complete" : (latestSync?.status ?? "unknown"),

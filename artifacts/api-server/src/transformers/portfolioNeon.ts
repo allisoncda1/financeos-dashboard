@@ -35,7 +35,10 @@ export async function transformPortfolioNeon(): Promise<PortfolioSummary> {
 
   if (!agg) throw new Error(`No portfolio YTD data in Neon for year=${year}`);
 
-  const asOf = latestPeriod?.periodEnd ?? new Date().toISOString().slice(0, 10);
+  // Use "unknown" rather than new Date() when no period boundary is available,
+  // so the UI can show an honest stale/error state instead of a misleadingly
+  // fresh timestamp.
+  const asOf = latestPeriod?.periodEnd ?? "unknown";
 
   const netMarginPct     = computeNetMarginPct(agg.netIncome, agg.revenue);
   const cashRunwayMonths = computeCashRunwayMonths(agg.cashOnHand, agg.opex);
@@ -44,7 +47,11 @@ export async function transformPortfolioNeon(): Promise<PortfolioSummary> {
 
   return {
     as_of: asOf,
-    pipeline_run: new Date().toISOString(),
+    // Use the period end date as a conservative pipeline_run marker — this
+    // transformer has no access to snapshot.pipelineRun, so fabricating a
+    // current timestamp would be misleading. The primary data path (neonSource
+    // getPortfolioSummaryFromNeon) uses the real snapshot timestamp when available.
+    pipeline_run: asOf,
     entities: portfolioDefs.map((e) => e.displayName),
     entity_count: agg.entityCount,
     portfolio_revenue_ytd: agg.revenue,
