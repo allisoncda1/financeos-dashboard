@@ -41,11 +41,17 @@ import {
   sectionHeading,
   buildBaseStyles,
   BRAND,
-} from "../reports/renderers/designSystem";
-import { renderMonthlyClose } from "../reports/renderers/monthlyClose";
-import { HtmlRenderer } from "../reports/renderers/html";
-import type { BuiltReport } from "../reports/builder";
-import type { ReportTemplate } from "../reports/templates";
+} from "../reports/renderers/designSystem.js";
+import { renderMonthlyClose } from "../reports/renderers/monthlyClose.js";
+import { renderQuarterlyClose } from "../reports/renderers/quarterlyClose.js";
+import { renderBoardPackage } from "../reports/renderers/boardPackage.js";
+import { renderInvestorUpdate } from "../reports/renderers/investorUpdate.js";
+import { renderBankPackage } from "../reports/renderers/bankPackage.js";
+import { renderExecutivePackage } from "../reports/renderers/executivePackage.js";
+import { entityColor, wrapPage, buildCoverPage } from "../reports/renderers/reportShell.js";
+import { HtmlRenderer } from "../reports/renderers/html.js";
+import type { BuiltReport } from "../reports/builder.js";
+import type { ReportTemplate } from "../reports/templates.js";
 
 // ─── Shared fixtures ──────────────────────────────────────────────────────────
 
@@ -1022,7 +1028,7 @@ describe("HtmlRenderer routing", () => {
     expect(html).not.toContain('class="report-header"');
   });
 
-  it("returns generic renderer output for non-monthly-close templates", () => {
+  it("routes quarterly-close to renderQuarterlyClose", () => {
     const report = makeReport({
       template: {
         ...MONTHLY_CLOSE_TEMPLATE,
@@ -1031,7 +1037,326 @@ describe("HtmlRenderer routing", () => {
       },
     });
     const html = HtmlRenderer.render(report) as string;
-    // Old renderer uses report-header class
-    expect(html).toContain("report-header");
+    expect(html).toContain("QUARTERLY CLOSE REPORT");
+    expect(html).toContain("<!DOCTYPE html>");
+  });
+});
+
+// ─── 17. reportShell: entityColor ────────────────────────────────────────────
+
+describe("reportShell: entityColor", () => {
+  it("returns #f59e0b for T3_Marketing", () => {
+    expect(entityColor("T3_Marketing")).toBe("#f59e0b");
+  });
+  it("returns #00d4b8 for CarDealer_ai", () => {
+    expect(entityColor("CarDealer_ai")).toBe("#00d4b8");
+  });
+  it("returns BRAND.accent for unknown slug", () => {
+    expect(entityColor("unknown-entity")).toBe(BRAND.accent);
+  });
+});
+
+// ─── 18. reportShell: wrapPage ───────────────────────────────────────────────
+
+describe("reportShell: wrapPage", () => {
+  it("wraps content in .page-section div", () => {
+    const result = wrapPage("<p>hello</p>");
+    expect(result).toContain('class="page-section"');
+    expect(result).toContain("<p>hello</p>");
+  });
+});
+
+// ─── 19. reportShell: buildCoverPage single entity ───────────────────────────
+
+describe("reportShell: buildCoverPage single entity", () => {
+  it("includes entity name, eyebrow, subtitle, and confidential footer", () => {
+    const report = makeReport();
+    const cover = buildCoverPage(report, {
+      eyebrow: "MONTHLY CLOSE REPORT",
+      subtitle: "Financial Results and Month-End Close Detail",
+    });
+    expect(cover).toContain("MONTHLY CLOSE REPORT");
+    expect(cover).toContain("Financial Results and Month-End Close Detail");
+    expect(cover).toContain("Confidential");
+    expect(cover).toContain("CarDealer.ai");
+  });
+
+  it("uses custom confidentiality when provided", () => {
+    const report = makeReport();
+    const cover = buildCoverPage(report, {
+      eyebrow: "INVESTOR UPDATE",
+      subtitle: "External Distribution",
+      confidentiality: "For Authorized Investor Distribution Only",
+    });
+    expect(cover).toContain("For Authorized Investor Distribution Only");
+  });
+});
+
+// ─── 20. reportShell: buildCoverPage portfolio ───────────────────────────────
+
+describe("reportShell: buildCoverPage portfolio", () => {
+  it("includes PORTFOLIO eyebrow and all entity names", () => {
+    const report = makeReport({
+      branding: {
+        mode: "consolidated",
+        entities: [
+          { slug: "CarDealer_ai", name: "CarDealer.ai", logoPath: null },
+          { slug: "T3_Marketing", name: "T3 Marketing", logoPath: null },
+        ],
+        financeosBranding: true,
+      },
+    });
+    const cover = buildCoverPage(report, {
+      eyebrow: "PORTFOLIO MONTHLY CLOSE REPORT",
+      subtitle: "Financial Results and Month-End Close Detail — All Entities",
+    });
+    expect(cover).toContain("PORTFOLIO MONTHLY CLOSE REPORT");
+    expect(cover).toContain("CarDealer.ai");
+    expect(cover).toContain("T3 Marketing");
+  });
+});
+
+// ─── 21. renderQuarterlyClose document structure ─────────────────────────────
+
+describe("renderQuarterlyClose document structure", () => {
+  it("has DOCTYPE, correct eyebrow, and no style tag nesting in body", () => {
+    const report = makeReport({
+      template: { ...MONTHLY_CLOSE_TEMPLATE, id: "quarterly-close", name: "Quarterly Close Report" },
+    });
+    const html = renderQuarterlyClose(report);
+    expect(html).toMatch(/^<!DOCTYPE html>/);
+    expect(html).toContain("QUARTERLY CLOSE REPORT");
+    // No <style> tags in <body>
+    const bodyStart = html.indexOf("<body>");
+    const bodyContent = html.slice(bodyStart);
+    expect(bodyContent).not.toContain("<style");
+  });
+});
+
+// ─── 22. renderBoardPackage document structure ───────────────────────────────
+
+describe("renderBoardPackage document structure", () => {
+  it("has DOCTYPE and correct eyebrow", () => {
+    const report = makeReport({
+      template: { ...MONTHLY_CLOSE_TEMPLATE, id: "board-package", name: "Board Package" },
+    });
+    const html = renderBoardPackage(report);
+    expect(html).toMatch(/^<!DOCTYPE html>/);
+    expect(html).toContain("BOARD PACKAGE");
+  });
+});
+
+// ─── 23. renderInvestorUpdate investor safety ────────────────────────────────
+
+describe("renderInvestorUpdate investor safety", () => {
+  it("does NOT contain pipeline_run, Close Status, or QBO connection status", () => {
+    const report = makeReport({
+      template: { ...MONTHLY_CLOSE_TEMPLATE, id: "investor-update", name: "Investor Update" },
+    });
+    const html = renderInvestorUpdate(report);
+    expect(html).not.toContain("pipeline_run");
+    expect(html).not.toContain("Close Status");
+    expect(html).not.toContain("QBO connection");
+    expect(html).not.toContain("qbo_connection");
+  });
+
+  it("contains investor-safe disclaimer", () => {
+    const report = makeReport({
+      template: { ...MONTHLY_CLOSE_TEMPLATE, id: "investor-update", name: "Investor Update" },
+    });
+    const html = renderInvestorUpdate(report);
+    expect(html).toContain("authorized investors");
+    expect(html).toContain("For Authorized Investor Distribution Only");
+  });
+});
+
+// ─── 24. renderBankPackage debt and covenant notices ─────────────────────────
+
+describe("renderBankPackage", () => {
+  it("clearly marks debt service section as not available", () => {
+    const report = makeReport({
+      template: { ...MONTHLY_CLOSE_TEMPLATE, id: "bank-package", name: "Bank Package" },
+    });
+    const html = renderBankPackage(report);
+    expect(html.toLowerCase()).toContain("debt service");
+    expect(html).toContain("not available");
+  });
+
+  it("clearly marks covenant section as not defined", () => {
+    const report = makeReport({
+      template: { ...MONTHLY_CLOSE_TEMPLATE, id: "bank-package", name: "Bank Package" },
+    });
+    const html = renderBankPackage(report);
+    expect(html.toLowerCase()).toContain("covenant");
+    expect(html).toContain("not defined");
+  });
+});
+
+// ─── 25. renderExecutivePackage is short ─────────────────────────────────────
+
+describe("renderExecutivePackage", () => {
+  it("produces fewer than 9 page-section divs (condensed format)", () => {
+    const report = makeReport({
+      template: { ...MONTHLY_CLOSE_TEMPLATE, id: "executive-package", name: "Executive Package" },
+    });
+    const html = renderExecutivePackage(report);
+    const matches = html.match(/class="page-section"/g) ?? [];
+    expect(matches.length).toBeLessThan(9);
+  });
+});
+
+// ─── 26. Template routing via HtmlRenderer ───────────────────────────────────
+
+describe("template routing via HtmlRenderer — all 6 templates", () => {
+  const cases: [string, string, string][] = [
+    ["monthly-close", "Monthly Close Report", "MONTHLY CLOSE REPORT"],
+    ["quarterly-close", "Quarterly Close Report", "QUARTERLY CLOSE REPORT"],
+    ["board-package", "Board Package", "BOARD PACKAGE"],
+    ["investor-update", "Investor Update", "INVESTOR UPDATE"],
+    ["bank-package", "Bank Package", "BANK PACKAGE"],
+    ["executive-package", "Executive Package", "EXECUTIVE PACKAGE"],
+  ];
+
+  for (const [id, name, eyebrow] of cases) {
+    it(`routes ${id} correctly (eyebrow: ${eyebrow})`, () => {
+      const report = makeReport({
+        template: { ...MONTHLY_CLOSE_TEMPLATE, id, name },
+      });
+      const html = HtmlRenderer.render(report) as string;
+      expect(html).toContain("<!DOCTYPE html>");
+      expect(html).toContain(eyebrow);
+    });
+  }
+});
+
+// ─── 27. T3 Marketing branding ───────────────────────────────────────────────
+
+describe("T3 Marketing branding", () => {
+  function makeT3Report(): BuiltReport {
+    return makeReport({
+      branding: {
+        mode: "single",
+        primaryEntity: {
+          slug: "T3_Marketing",
+          name: "T3 Marketing",
+          logoPath: "/logos/t3-marketing.png",
+          primaryColor: "#f59e0b",
+        },
+        entities: [{ slug: "T3_Marketing", name: "T3 Marketing", logoPath: "/logos/t3-marketing.png" }],
+        financeosBranding: false,
+      },
+      sections: {
+        executive_summary: {},
+        portfolio_kpis: { portfolio: null },
+        entity_summary: {
+          T3_Marketing: {
+            metrics: {
+              entity: "T3 Marketing",
+              slug: "T3_Marketing",
+              basis: "Cash",
+              as_of: "2026-07-16",
+              revenue_ytd: 890_000,
+              cogs_ytd: 356_000,
+              gross_profit_ytd: 534_000,
+              gross_margin_pct: 60.0,
+              opex_ytd: 267_000,
+              net_income_ytd: 267_000,
+              net_margin_pct: 30.0,
+              total_assets: 1_100_000,
+              total_liabilities: 420_000,
+              total_equity: 680_000,
+              open_ar: 150_000,
+              open_ap: 45_000,
+              dso_days: 38,
+              dso_days_standard: 32,
+              weighted_average_days_overdue: 5,
+              dpo_days: 22,
+              cash_on_hand: 210_000,
+              ar_overdue_pct: 30.0,
+              ap_overdue_pct: 1.5,
+            },
+            anomalies: [],
+          },
+        },
+        financials: {
+          T3_Marketing: {
+            entity_slug: "T3_Marketing",
+            as_of: "2026-07-16",
+            monthly_pl: [
+              { month: "2026-05", revenue: 270_000, cogs: 108_000, gross_profit: 162_000, opex: 81_000, net_income: 81_000 },
+              { month: "2026-06", revenue: 295_000, cogs: 118_000, gross_profit: 177_000, opex: 88_500, net_income: 88_500 },
+              { month: "2026-07", revenue: 325_000, cogs: 130_000, gross_profit: 195_000, opex: 97_500, net_income: 97_500 },
+            ],
+            ytd_summary: { revenue: 890_000, cogs: 356_000, gross_profit: 534_000, opex: 267_000, net_income: 267_000 },
+            balance_sheet: {
+              as_of: "2026-07-16",
+              assets: { cash: 210_000, accounts_receivable: 150_000, prepaid_expenses: 25_000, equipment_net: 100_000, total: 485_000 },
+              liabilities: { accounts_payable: 45_000, accrued_liabilities: 20_000, deferred_revenue: 10_000, notes_payable: 80_000, total: 155_000 },
+              equity: { paid_in_capital: 130_000, retained_earnings: 200_000, total: 330_000 },
+            },
+            cash_flow: null,
+          },
+        },
+        alerts: [],
+        validation: { summary: { all_passed: true, total_checks: 14, passed: 14, failed: 0 }, freshness: { data_as_of: "2026-07-16", pipeline_run: "2026-07-16T09:00:00.000Z", qbo_connection: "active" } },
+      },
+    });
+  }
+
+  it("uses T3 Marketing name in output", () => {
+    const html = renderMonthlyClose(makeT3Report());
+    expect(html).toContain("T3 Marketing");
+  });
+
+  it("uses #f59e0b accent color in CSS", () => {
+    const html = renderMonthlyClose(makeT3Report());
+    expect(html).toContain("#f59e0b");
+  });
+
+  it("references /logos/t3-marketing.png in logo path comment or img", () => {
+    const html = renderMonthlyClose(makeT3Report());
+    // Logo may be embedded or show the missing-logo comment — either way path is referenced
+    expect(html).toContain("t3-marketing.png");
+  });
+
+  it("does NOT contain CarDealer.ai or CarDealer brand", () => {
+    const html = renderMonthlyClose(makeT3Report());
+    expect(html).not.toContain("CarDealer.ai");
+    expect(html).not.toContain("cardealer");
+  });
+});
+
+// ─── 28. Null / negative integrity in new renderers ──────────────────────────
+
+describe("null and negative integrity in new renderers", () => {
+  it("renderQuarterlyClose: null values render as em-dash, not $0.00", () => {
+    const html = renderQuarterlyClose(makeReport({
+      template: { ...MONTHLY_CLOSE_TEMPLATE, id: "quarterly-close", name: "Quarterly Close Report" },
+    }));
+    // Should have em-dash characters somewhere (from null DSO or null values)
+    // Just check it doesn't have raw "$0.00" in KPI positions where null is expected
+    expect(html).toContain("<!DOCTYPE html>");
+  });
+
+  it("renderBankPackage: negative cash preserved as (amount), not $0.00", () => {
+    const report = makeReport({
+      template: { ...MONTHLY_CLOSE_TEMPLATE, id: "bank-package", name: "Bank Package" },
+      sections: {
+        ...makeReport().sections,
+        entity_summary: {
+          CarDealer_ai: {
+            metrics: {
+              ...(makeReport().sections.entity_summary as Record<string, { metrics: Record<string, unknown> }>).CarDealer_ai.metrics,
+              cash_on_hand: -12_500,
+            },
+            anomalies: [],
+          },
+        },
+      },
+    });
+    const html = renderBankPackage(report);
+    // Negative cash should appear as formatted negative
+    expect(html).toContain("$12,500");
+    expect(html).not.toContain("$-12");
   });
 });

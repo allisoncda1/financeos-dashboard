@@ -74,7 +74,7 @@ export const REPORT_TEMPLATES: ReportTemplate[] = [
       section("appendix", "Appendix", false),
     ],
     defaultEntities: "all",
-    supportedFormats: ["json"],
+    supportedFormats: ["json", "html", "pdf"],
     enabled: true,
   },
   {
@@ -91,7 +91,7 @@ export const REPORT_TEMPLATES: ReportTemplate[] = [
       section("appendix", "Appendix", false),
     ],
     defaultEntities: "all",
-    supportedFormats: ["json"],
+    supportedFormats: ["json", "html", "pdf"],
     enabled: true,
   },
   {
@@ -105,7 +105,7 @@ export const REPORT_TEMPLATES: ReportTemplate[] = [
       section("recommendations", "Recommendations", false),
     ],
     defaultEntities: "all",
-    supportedFormats: ["json"],
+    supportedFormats: ["json", "html", "pdf"],
     enabled: true,
   },
   {
@@ -120,7 +120,7 @@ export const REPORT_TEMPLATES: ReportTemplate[] = [
       section("recommendations", "Recommendations", false),
     ],
     defaultEntities: "all",
-    supportedFormats: ["json"],
+    supportedFormats: ["json", "html", "pdf"],
     enabled: true,
   },
   {
@@ -135,7 +135,7 @@ export const REPORT_TEMPLATES: ReportTemplate[] = [
       section("appendix", "Appendix", false),
     ],
     defaultEntities: "all",
-    supportedFormats: ["json"],
+    supportedFormats: ["json", "html", "pdf"],
     enabled: true,
   },
 ];

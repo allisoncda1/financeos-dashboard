@@ -6,11 +6,9 @@
  * tables, left-border insight panels, Puppeteer A4 PDF.
  */
 
-import type { BuiltReport } from "../builder";
+import type { BuiltReport } from "../builder.js";
 import {
   BRAND,
-  buildBaseStyles,
-  embedLogoPath,
   escHtml,
   fmtCurrency,
   fmtPercent,
@@ -21,17 +19,24 @@ import {
   svgGroupedBars,
   svgHBarRef,
   svgLineRef,
-  refPageHeader,
   refSectionHeader,
   refKpiRow,
   refInsightPanel,
-  refRecommendationCallout,
   refNarrative,
   refSmallNote,
   refSubHeading,
   badge,
   emptyState,
-} from "./designSystem";
+} from "./designSystem.js";
+import {
+  entityColor,
+  wrapPage,
+  buildCoverPage,
+  buildReportHtml,
+  buildReportHeaderFn,
+  SHELL_EXTRA_STYLES,
+  type HeaderFn,
+} from "./reportShell.js";
 
 // ─── Local types ──────────────────────────────────────────────────────────────
 
@@ -355,84 +360,9 @@ function narrativeBS(bs: BalanceSheet | undefined): string[] {
   return [p1, p2];
 }
 
-// ─── Page wrappers ────────────────────────────────────────────────────────────
-
-type HeaderFn = (title: string) => string;
-
-function wrapPage(content: string): string {
-  return `<div class="page-section">${content}</div>`;
-}
-
-// ─── Cover ────────────────────────────────────────────────────────────────────
-
-function buildCover(report: BuiltReport, isPortfolio: boolean): string {
-  const { branding, period, generatedAt } = report;
-  const primary = branding.primaryEntity;
-  const prepared = new Date(generatedAt).toLocaleDateString("en-US", { year: "numeric", month: "long", day: "numeric" });
-
-  if (isPortfolio) {
-    // Portfolio cover: FinanceOS identity + entity logo strip
-    const fineosLogoSrc = embedLogoPath("/branding/financeos-lockup-light.png");
-    const fineosLogoEl = fineosLogoSrc
-      ? `<img class="cover__logo" src="${fineosLogoSrc}" alt="FinanceOS" />`
-      : `<div class="cover__logo-text" style="background:${BRAND.accent}">FO</div>`;
-
-    const entityLogoStrip = branding.entities.map((e) => {
-      const src = embedLogoPath(e.logoPath ?? null);
-      const color = entityColor(e.slug);
-      return src
-        ? `<img class="cover__entity-logo" src="${src}" alt="${escHtml(e.name)}" title="${escHtml(e.name)}" />`
-        : `<span class="cover__entity-badge" style="background:${escHtml(color)}">${escHtml(e.name.slice(0, 2).toUpperCase())}</span>`;
-    }).join("");
-
-    return `<div class="cover" style="--entity-color:${BRAND.accent}">
-  <div class="cover__strip"></div>
-  <div class="cover__body">
-    <div class="cover__logo-wrap">${fineosLogoEl}</div>
-    <div class="cover__eyebrow">PORTFOLIO MONTHLY CLOSE REPORT</div>
-    <div class="cover__period">${escHtml(period)}</div>
-    <div class="cover__subtitle">Financial Results and Month-End Close Detail — All Entities</div>
-    <div class="cover__divider"></div>
-    <div class="cover__entity-strip">${entityLogoStrip}</div>
-    <div class="cover__meta">
-      <div class="cover__meta-item"><div class="cover__meta-label">REPORTING PERIOD</div><div class="cover__meta-value">${escHtml(period)}</div></div>
-      <div class="cover__meta-item"><div class="cover__meta-label">PREPARED</div><div class="cover__meta-value">${escHtml(prepared)}</div></div>
-      <div class="cover__meta-item"><div class="cover__meta-label">ENTITIES COVERED</div><div class="cover__meta-value">${escHtml(branding.entities.map((e) => e.name).join(", "))}</div></div>
-      <div class="cover__meta-item"><div class="cover__meta-label">DATA SOURCE</div><div class="cover__meta-value">QuickBooks Online via FinanceOS</div></div>
-    </div>
-  </div>
-  <div class="cover__footer">Confidential — For Internal Management Use Only</div>
-</div>`;
-  }
-
-  // Single-entity cover
-  const entityName = primary?.name ?? branding.entities[0]?.name ?? "Report";
-  const accentColor = primary?.primaryColor ?? BRAND.accent;
-  const logoPath = primary?.logoPath ?? branding.entities[0]?.logoPath ?? null;
-  const logoSrc = embedLogoPath(logoPath);
-
-  const logoEl = logoSrc
-    ? `<img class="cover__logo" src="${logoSrc}" alt="${escHtml(entityName)}" />`
-    : `<!-- MISSING LOGO: ${escHtml(logoPath ?? "no path")} --><div class="cover__logo-text" style="background:${escHtml(accentColor)}">${escHtml(entityName.slice(0, 2).toUpperCase())}</div>`;
-
-  return `<div class="cover" style="--entity-color:${escHtml(accentColor)}">
-  <div class="cover__strip"></div>
-  <div class="cover__body">
-    <div class="cover__logo-wrap">${logoEl}</div>
-    <div class="cover__eyebrow">MONTHLY CLOSE REPORT</div>
-    <div class="cover__period">${escHtml(period)}</div>
-    <div class="cover__subtitle">Financial Results and Month-End Close Detail</div>
-    <div class="cover__divider"></div>
-    <div class="cover__meta">
-      <div class="cover__meta-item"><div class="cover__meta-label">REPORTING PERIOD</div><div class="cover__meta-value">${escHtml(period)}</div></div>
-      <div class="cover__meta-item"><div class="cover__meta-label">PREPARED</div><div class="cover__meta-value">${escHtml(prepared)}</div></div>
-      <div class="cover__meta-item"><div class="cover__meta-label">ENTITY</div><div class="cover__meta-value">${escHtml(entityName)}</div></div>
-      <div class="cover__meta-item"><div class="cover__meta-label">DATA SOURCE</div><div class="cover__meta-value">QuickBooks Online via FinanceOS</div></div>
-    </div>
-  </div>
-  <div class="cover__footer">Confidential — For Internal Management Use Only</div>
-</div>`;
-}
+// ─── Page wrappers — now imported from reportShell ────────────────────────────
+// wrapPage, entityColor, buildCoverPage, buildReportHtml, SHELL_EXTRA_STYLES,
+// HeaderFn, buildReportHeaderFn are all imported from ./reportShell.js above.
 
 // ─── P1: Executive Financial Summary ─────────────────────────────────────────
 
@@ -1141,13 +1071,6 @@ function buildAppendixPage(report: BuiltReport, headerFn: HeaderFn): string {
   `);
 }
 
-// ─── Entity color map ─────────────────────────────────────────────────────────
-
-function entityColor(slug: string): string {
-  const map: Record<string, string> = { CarDealer_ai: "#00d4b8", T3_Marketing: "#f59e0b", TopMrktr: "#8b5cf6", Smile_More: "#ec4899" };
-  return map[slug] ?? BRAND.accent;
-}
-
 // ─── Main render ──────────────────────────────────────────────────────────────
 
 export function renderMonthlyClose(report: BuiltReport): string {
@@ -1165,22 +1088,21 @@ export function renderMonthlyClose(report: BuiltReport): string {
     })
     .filter((e): e is NonNullable<typeof e> => e !== null);
 
-  const primary = report.branding.primaryEntity;
-  const isPortfolio = report.branding.mode === "consolidated" && entities.length > 1;
-  const headerLogoPath = isPortfolio ? "/branding/financeos-lockup-light.png" : (primary?.logoPath ?? null);
-  const primaryName = isPortfolio ? "FinanceOS Portfolio" : (primary?.name ?? entities[0]?.m.entity ?? "Report");
-  const primaryColor = isPortfolio ? BRAND.accent : (primary?.primaryColor ?? BRAND.accent);
+  const { headerFn, primaryName, primaryColor, isPortfolio } = buildReportHeaderFn(report);
   const focusEntities = isPortfolio ? entities : entities.slice(0, 1);
+  const accent = primaryColor;
 
   if (focusEntities.length === 0) {
     return `<!DOCTYPE html><html><body><p>No entity data available.</p></body></html>`;
   }
 
-  const headerFn: HeaderFn = (title) => refPageHeader(headerLogoPath, primaryName, title, primaryColor);
-  const accent = primaryColor;
-
   const pages: string[] = [
-    buildCover(report, isPortfolio),
+    buildCoverPage(report, {
+      eyebrow: isPortfolio ? "PORTFOLIO MONTHLY CLOSE REPORT" : "MONTHLY CLOSE REPORT",
+      subtitle: isPortfolio
+        ? "Financial Results and Month-End Close Detail — All Entities"
+        : "Financial Results and Month-End Close Detail",
+    }),
     buildExecSummaryPage(report, focusEntities, headerFn),
     buildExecInsightsPage(report, focusEntities, alerts, headerFn),
     buildTOC(report, isPortfolio, headerFn),
@@ -1201,27 +1123,10 @@ export function renderMonthlyClose(report: BuiltReport): string {
     buildAppendixPage(report, headerFn),
   ];
 
-  const extraStyles = `
-    .page-section { padding: 22pt 0 16pt; page-break-before: always; }
-    .toc-list { margin: 8pt 0 16pt; }
-    .toc-entry { display: flex; align-items: baseline; gap: 4pt; padding: 5pt 0; border-bottom: 1px solid #f3f4f6; }
-    .toc-entry__title { font-size: 9.5pt; color: #1e293b; min-width: 200pt; }
-    .toc-entry__dots { flex: 1; border-bottom: 1px dotted #d1d5db; margin: 0 6pt; height: 0; position: relative; top: -4pt; }
-    .toc-entry__page { font-size: 9pt; color: #6b7280; min-width: 20pt; text-align: right; }
-  `;
-
-  // buildBaseStyles() already wraps its output in <style>…</style>.
-  // extraStyles goes in a separate <style> block — never nest style tags.
-  return `<!DOCTYPE html>
-<html lang="en">
-<head>
-<meta charset="utf-8" />
-<title>${escHtml(isPortfolio ? "FinanceOS Portfolio" : primaryName)} — ${escHtml(report.period)} Monthly Close Report</title>
-${buildBaseStyles(accent)}
-<style>${extraStyles}</style>
-</head>
-<body>
-${pages.join("\n")}
-</body>
-</html>`;
+  return buildReportHtml({
+    title: `${isPortfolio ? "FinanceOS Portfolio" : primaryName} — ${report.period} Monthly Close Report`,
+    accent,
+    pages,
+    extraStyles: SHELL_EXTRA_STYLES,
+  });
 }
