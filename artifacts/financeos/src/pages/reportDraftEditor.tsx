@@ -135,7 +135,12 @@ export default function ReportDraftEditor() {
         api.getDraftPreview(draftId).catch(() => null),
       ]);
       setDraft(d);
-      const ec = (d.editableContent as EditableContent) ?? { sectionOverrides: {}, includedSections: [] };
+      const raw = (d.editableContent as Partial<EditableContent>) ?? {};
+      const ec: EditableContent = {
+        sectionOverrides: raw.sectionOverrides ?? {},
+        includedSections: raw.includedSections ?? [],
+        reportTitle: raw.reportTitle,
+      };
       setEditableContent(ec);
       if (preview) setPreviewHtml(preview.html);
 
@@ -299,7 +304,8 @@ export default function ReportDraftEditor() {
     try {
       const updated = await api.restoreDraftVersion(draftId, versionNumber);
       setDraft(updated);
-      setEditableContent((updated.editableContent as EditableContent) ?? { sectionOverrides: {}, includedSections: [] });
+      const r2 = (updated.editableContent as Partial<EditableContent>) ?? {};
+      setEditableContent({ sectionOverrides: r2.sectionOverrides ?? {}, includedSections: r2.includedSections ?? [], reportTitle: r2.reportTitle });
       setShowVersions(false);
       setUnsavedChanges(false);
       await refreshPreview();
