@@ -33,10 +33,6 @@ const EDITOR_ROLES: Role[] = ["admin", "cfo", "controller"];
 // Roles that can approve drafts
 const APPROVER_ROLES: Role[] = ["admin", "cfo"];
 
-function requireRole(roles: Role[]) {
-  return requirePermission("reports") as ReturnType<typeof requirePermission>;
-}
-
 function userCanEdit(role: Role): boolean {
   return EDITOR_ROLES.includes(role);
 }
@@ -281,7 +277,7 @@ router.post("/drafts/commentary/reorder", requirePermission("reports"), async (r
 router.post("/drafts/commentary/:id/approve", requirePermission("reports"), async (req, res) => {
   const user = req.session.user!;
   if (!userCanApprove(user.role)) {
-    res.status(403).json({ ok: false, error: "Only admin and cfo roles can approve commentary.", ts: new Date().toISOString() });
+    res.status(403).json({ ok: false, error: "Only admin or cfo roles can approve commentary.", ts: new Date().toISOString() });
     return;
   }
 
