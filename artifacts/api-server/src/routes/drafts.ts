@@ -13,13 +13,17 @@
 import { Router, type IRouter } from "express";
 import { REPORT_TEMPLATES } from "../reports/templates.js";
 import { buildReport } from "../reports/builder.js";
+import { getRenderer } from "../reports/renderer.js";
 import { HtmlRenderer } from "../reports/renderers/html.js";
 import { generateAnalysis, buildDataFingerprint } from "../reports/analysis.js";
 import { buildNarrativeContext } from "../reports/narrativeContext.js";
 import { CommentaryService, DraftService } from "../db/reportDrafts.js";
+import { ReportHistoryService } from "../db/index.js";
+import { sanitizeErrorMessage } from "./reports.js";
 import { requirePermission } from "../auth/permissions.js";
 import type { Role } from "../auth/types.js";
 import type { CommentaryType } from "../db/reportDrafts.js";
+import type { ReportOutputFormat } from "../reports/templates.js";
 
 const router: IRouter = Router();
 
@@ -493,6 +497,226 @@ router.get("/drafts/:id/preview", requirePermission("reports"), async (req, res)
     });
   } catch (err) {
     res.status(500).json({ ok: false, error: String(err), ts: new Date().toISOString() });
+  }
+});
+
+// ─── POST /api/drafts/:id/generate — Final generation from approved draft ──────
+//
+// This is the ONLY path that should be used to generate a final report from an
+// approved draft. It enforces all server-side invariants and never accepts
+// approval metadata, financial values, or narrative source labels from the client.
+//
+// Preconditions (all enforced server-side):
+//   1. Draft exists and is owned by a known template.
+//   2. status === "approved"
+//   3. isStale === false
+//   4. approvedBy and approvedAt are non-null (set by the server at approval time).
+//   5. Live data fingerprint matches the stored fingerprint (data didn't change
+//      between approval and generation).
+//
+// On success:
+//   - Renders the report with the approved narrative context (same path as preview).
+//   - Persists a Report History row with full draft linkage metadata.
+//   - Transitions draft status to "generated".
+//   - Returns the rendered file as an attachment (pdf/html) or JSON envelope.
+router.post("/drafts/:id/generate", requirePermission("reports"), async (req, res) => {
+  const user = req.session.user!;
+  if (!userCanEdit(user.role)) {
+    res.status(403).json({ ok: false, error: "Your role cannot generate final reports.", ts: new Date().toISOString() });
+    return;
+  }
+
+  const draftId = paramStr(req.params["id"]);
+
+  const body = req.body as { format?: unknown };
+  const format = body.format;
+  if (format !== "json" && format !== "pdf" && format !== "html") {
+    res.status(400).json({
+      ok: false,
+      error: '`format` must be one of "json", "pdf", "html"',
+      ts: new Date().toISOString(),
+    });
+    return;
+  }
+
+  try {
+    // ── 1. Load draft ────────────────────────────────────────────────────────
+    const draft = await DraftService.getDraft(draftId);
+    if (!draft) {
+      res.status(404).json({ ok: false, error: "Draft not found", ts: new Date().toISOString() });
+      return;
+    }
+
+    // ── 2. Require approved status ────────────────────────────────────────────
+    if (draft.status !== "approved") {
+      res.status(400).json({
+        ok: false,
+        error: `Draft must be approved before generating. Current status: ${draft.status}`,
+        ts: new Date().toISOString(),
+      });
+      return;
+    }
+
+    // ── 3. Reject stale drafts ────────────────────────────────────────────────
+    if (draft.isStale) {
+      res.status(400).json({
+        ok: false,
+        error: "Draft is stale — underlying financial data changed after approval. Recreate and re-approve before generating.",
+        ts: new Date().toISOString(),
+      });
+      return;
+    }
+
+    // ── 4. Require approval metadata (server-set at approval time) ───────────
+    if (!draft.approvedBy || !draft.approvedAt) {
+      res.status(400).json({
+        ok: false,
+        error: "Draft is missing approval metadata. It may not have completed the approval workflow.",
+        ts: new Date().toISOString(),
+      });
+      return;
+    }
+
+    // ── 5. Verify template is still known ─────────────────────────────────────
+    const tmpl = REPORT_TEMPLATES.find((t) => t.id === draft.templateId);
+    if (!tmpl) {
+      res.status(400).json({
+        ok: false,
+        error: `Draft references unknown template "${draft.templateId}"`,
+        ts: new Date().toISOString(),
+      });
+      return;
+    }
+
+    // ── 6. Rebuild authoritative financial data from Core ─────────────────────
+    const report = await buildReport({
+      template: draft.templateId,
+      entities: draft.entitySlugs as any,
+      period:   draft.reportingPeriod,
+      format:   format as ReportOutputFormat,
+    });
+
+    // ── 7. Recompute fingerprint and reject if data changed since approval ────
+    const liveFingerprint = buildDataFingerprint(report);
+    if (draft.dataFingerprint && liveFingerprint !== draft.dataFingerprint) {
+      // Mark stale so the UI shows the warning on next load
+      await DraftService.markStaleIfChanged({
+        draftId,
+        newFingerprint: liveFingerprint,
+        staleReason:    "Financial data changed between approval and generation.",
+      });
+      res.status(400).json({
+        ok: false,
+        error: "Financial data changed between approval and generation. The draft has been marked stale. Recreate and re-approve before generating.",
+        ts: new Date().toISOString(),
+      });
+      return;
+    }
+
+    // ── 8. Load commentary and build narrative context (identical to preview) ─
+    const entitySlug = draft.entitySlugs[0] ?? "portfolio";
+    const dbCommentary = await CommentaryService.getCommentaryByScope({
+      entitySlug,
+      reportingPeriod: draft.reportingPeriod,
+      templateId:      draft.templateId,
+    });
+
+    const narrativeCtx = buildNarrativeContext({
+      draftId:          draft.id,
+      draftVersion:     draft.currentVersion,
+      approvalStatus:   draft.status,
+      approvedBy:       draft.approvedBy,
+      approvedAt:       draft.approvedAt,
+      editableContent:  draft.editableContent,
+      dbEntries:        dbCommentary,
+      generatedAnalysis: (draft.generatedAnalysis ?? []) as any,
+    });
+
+    // ── 9. Attach narrative context to report (same side-channel as preview) ──
+    (report as any).__narrativeContext = narrativeCtx;
+
+    // ── 10. Render the selected format ─────────────────────────────────────────
+    const renderer = getRenderer(format as ReportOutputFormat);
+    const output = await renderer.render(report);
+
+    // ── 11. Persist Report History with full draft linkage ────────────────────
+    // Commentary version = max version among included commentary rows
+    const includedCommentary = dbCommentary.filter((c) => c.included);
+    const commentaryVersion = includedCommentary.length > 0
+      ? Math.max(...includedCommentary.map((c) => c.version))
+      : 0;
+
+    const historyRow = await ReportHistoryService.insertReportHistory({
+      template:          report.template.id,
+      title:             report.template.name,
+      period:            report.period,
+      format,
+      entitySlugs:       draft.entitySlugs,
+      status:            "completed",
+      source:            report.source,
+      dataFreshness:     report.metadata.dataFreshness,
+      entityCount:       report.metadata.entityCount,
+      confidenceScore:   report.metadata.confidenceScore,
+      requestedBy:       user.email,
+      completedAt:       new Date(),
+      draftId:           draft.id,
+      draftVersion:      draft.currentVersion,
+      approvalStatus:    "approved",
+      approvedBy:        draft.approvedBy,
+      approvedAt:        new Date(draft.approvedAt),
+      dataFingerprint:   draft.dataFingerprint ?? liveFingerprint,
+      commentaryVersion,
+    });
+
+    // ── 12. Mark draft as generated ────────────────────────────────────────────
+    await DraftService.markGenerated(draftId, user.email);
+
+    // ── 13. Return file or JSON ────────────────────────────────────────────────
+    if (format === "json") {
+      res.json({
+        ok: true,
+        data: {
+          reportId:     report.id,
+          template:     report.template,
+          generatedAt:  report.generatedAt,
+          branding:     report.branding,
+          sections:     report.sections,
+          metadata:     report.metadata,
+          historyId:    historyRow.id,
+          draftId:      draft.id,
+          draftVersion: draft.currentVersion,
+          approvedBy:   draft.approvedBy,
+          approvedAt:   draft.approvedAt,
+        },
+        source: report.source,
+        ts: new Date().toISOString(),
+      });
+      return;
+    }
+
+    const titleSlug = (report.template.name ?? report.template.id)
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, "-")
+      .replace(/^-+|-+$/g, "")
+      .slice(0, 60) || "report";
+    const filename = `financeos-${titleSlug}-${draft.reportingPeriod.replace(/\s+/g, "-").replace(/[^a-z0-9-]/gi, "").toLowerCase()}`;
+
+    const contentType: Record<string, string> = {
+      html: "text/html; charset=utf-8",
+      pdf:  "application/pdf",
+    };
+    res.setHeader("Content-Type", contentType[format] ?? "application/octet-stream");
+    res.setHeader("Content-Disposition", `attachment; filename="${filename}.${format}"`);
+    res.setHeader("X-Report-Source",   report.source);
+    res.setHeader("X-Draft-Id",        draft.id);
+    res.setHeader("X-Draft-Version",   String(draft.currentVersion));
+    res.setHeader("X-Approved-By",     draft.approvedBy);
+    res.setHeader("X-History-Id",      historyRow.id);
+    res.send(output);
+  } catch (err) {
+    const errorMessage = sanitizeErrorMessage(err);
+    req.log?.error({ err }, "Draft final generation failed");
+    res.status(500).json({ ok: false, error: errorMessage, ts: new Date().toISOString() });
   }
 });
 

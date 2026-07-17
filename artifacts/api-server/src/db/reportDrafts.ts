@@ -515,7 +515,13 @@ export const DraftService = {
     await db
       .update(reportHistory)
       .set({
-        ...(opts as any),
+        draftId:           opts.draftId,
+        draftVersion:      opts.draftVersion,
+        approvalStatus:    opts.approvalStatus,
+        approvedBy:        opts.approvedBy,
+        approvedAt:        opts.approvedAt,
+        dataFingerprint:   opts.dataFingerprint,
+        commentaryVersion: opts.commentaryVersion,
       })
       .where(eq(reportHistory.id, opts.historyId));
   },

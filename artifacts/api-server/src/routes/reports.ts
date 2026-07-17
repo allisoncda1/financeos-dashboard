@@ -131,7 +131,20 @@ router.post("/reports/generate", requirePermission("reports"), async (req, res) 
     entities?: unknown;
     period?: unknown;
     format?: unknown;
+    draftId?: unknown;
   };
+
+  // Reject draftId explicitly — the caller must use the dedicated endpoint.
+  // Silently ignoring draftId was the live blocker: the report was generated
+  // without the approved narrative and history was written with NULL draft_id.
+  if (body.draftId !== undefined) {
+    res.status(400).json({
+      ok: false,
+      error: "This endpoint does not accept `draftId`. To generate a final report from an approved draft, use POST /api/drafts/:id/generate",
+      ts: new Date().toISOString(),
+    });
+    return;
+  }
 
   // Validate inputs upfront. Failures here produce no history row because
   // we don't yet have a complete set of validated fields to record.

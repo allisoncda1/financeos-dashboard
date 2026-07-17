@@ -19,7 +19,7 @@ import {
   ChevronLeft, Info, Loader2, AlertTriangle, Pencil,
   Shield, Sparkles, MessageSquare, Zap, Plus, Trash2,
   RotateCcw, Send, Check, EyeOff, GripVertical,
-  RefreshCw, History as HistoryIcon,
+  RefreshCw, History as HistoryIcon, Download,
 } from "lucide-react";
 import { api, type ReportDraft, type CommentaryEntry, type ReportDraftVersion } from "@/lib/api";
 
@@ -316,6 +316,30 @@ export default function ReportDraftEditor() {
     }
   }
 
+  async function handleGenerate(format: "pdf" | "html") {
+    if (!draftId) return;
+    setActionLoading("generate");
+    setActionError(null);
+    try {
+      const { blob, filename } = await api.downloadDraft(draftId, format);
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = filename;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+      // Reload draft so UI reflects "generated" status
+      const updated = await api.getDraft(draftId);
+      setDraft(updated);
+    } catch (e) {
+      setActionError(e instanceof Error ? e.message : "Generate failed");
+    } finally {
+      setActionLoading(null);
+    }
+  }
+
   // ── Derived state ─────────────────────────────────────────────────────────
 
   const sectionKeys = [
@@ -331,6 +355,7 @@ export default function ReportDraftEditor() {
   const canEdit = draft?.status === "draft" || draft?.status === "ready_for_review";
   const canSubmit = draft?.status === "draft";
   const canApprove = draft?.status === "ready_for_review";
+  const canGenerate = draft?.status === "approved" && !draft?.isStale;
   const statusCfg = draft ? STATUS_CONFIG[draft.status] : null;
 
   // ── Loading / error ───────────────────────────────────────────────────────
@@ -465,6 +490,29 @@ export default function ReportDraftEditor() {
               {actionLoading === "approve" ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Check className="w-3.5 h-3.5" />}
               Approve
             </button>
+          )}
+
+          {/* Generate Final Report — only when approved and not stale */}
+          {canGenerate && (
+            <div className="flex items-center gap-1">
+              <button
+                onClick={() => handleGenerate("pdf")}
+                disabled={actionLoading === "generate"}
+                className="flex items-center gap-1.5 px-3 py-1.5 text-[11px] font-semibold rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white disabled:opacity-50 transition-colors"
+                title="Download final PDF using the approved narrative"
+              >
+                {actionLoading === "generate" ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Download className="w-3.5 h-3.5" />}
+                Generate PDF
+              </button>
+              <button
+                onClick={() => handleGenerate("html")}
+                disabled={actionLoading === "generate"}
+                className="flex items-center gap-1.5 px-3 py-1.5 text-[11px] font-semibold rounded-lg border border-indigo-300 hover:border-indigo-400 text-indigo-700 bg-white disabled:opacity-50 transition-colors"
+                title="Download final HTML using the approved narrative"
+              >
+                HTML
+              </button>
+            </div>
           )}
         </div>
       </div>

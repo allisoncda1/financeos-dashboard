@@ -27,6 +27,7 @@ import type {
   BudgetAnnualInput,
   BudgetPeriodInput,
   CreateDraftBody,
+  DraftGenerateRequest,
   ErrorResponse,
   ForbiddenResponse,
   GetBudgetPortfolioParams,
@@ -4149,6 +4150,82 @@ export function useGetDraftPreview<TData = Awaited<ReturnType<typeof getDraftPre
 
 
 
+
+export const getGenerateDraftReportUrl = (draftId: string,) => {
+
+
+
+
+  return `/api/drafts/${draftId}/generate`
+}
+
+/**
+ * Builds a final PDF/HTML/JSON report using the approved narrative from the
+ * specified draft. The server reloads all financial data from authoritative
+ * FinanceOS sources, recomputes the data fingerprint, and rejects generation
+ * if the data changed since approval. Approval metadata, financial values,
+ * fingerprints, and narrative source labels are never accepted from the client.
+ * @summary Generate a final report from an approved draft
+ */
+export const generateDraftReport = async (draftId: string,
+    draftGenerateRequest: DraftGenerateRequest, options?: RequestInit): Promise<ApiEnvelope | Blob | string> => {
+
+  return customFetch<ApiEnvelope | Blob | string>(getGenerateDraftReportUrl(draftId),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(draftGenerateRequest)
+  }
+);}
+
+
+
+
+export const getGenerateDraftReportMutationOptions = <TError = ErrorType<ApiEnvelope | UnauthorizedResponse | NotFoundResponse | ServerErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof generateDraftReport>>, TError,{draftId: string;data: BodyType<DraftGenerateRequest>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof generateDraftReport>>, TError,{draftId: string;data: BodyType<DraftGenerateRequest>}, TContext> => {
+
+const mutationKey = ['generateDraftReport'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof generateDraftReport>>, {draftId: string;data: BodyType<DraftGenerateRequest>}> = (props) => {
+          const {draftId,data} = props ?? {};
+
+          return  generateDraftReport(draftId,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type GenerateDraftReportMutationResult = NonNullable<Awaited<ReturnType<typeof generateDraftReport>>>
+    export type GenerateDraftReportMutationBody = BodyType<DraftGenerateRequest>
+    export type GenerateDraftReportMutationError = ErrorType<ApiEnvelope | UnauthorizedResponse | NotFoundResponse | ServerErrorResponse>
+
+    /**
+ * @summary Generate a final report from an approved draft
+ */
+export const useGenerateDraftReport = <TError = ErrorType<ApiEnvelope | UnauthorizedResponse | NotFoundResponse | ServerErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof generateDraftReport>>, TError,{draftId: string;data: BodyType<DraftGenerateRequest>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof generateDraftReport>>,
+        TError,
+        {draftId: string;data: BodyType<DraftGenerateRequest>},
+        TContext
+      > => {
+      return useMutation(getGenerateDraftReportMutationOptions(options));
+    }
 
 export const getGetCommentaryUrl = (params: GetCommentaryParams,) => {
   const normalizedParams = new URLSearchParams();

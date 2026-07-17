@@ -291,7 +291,48 @@ components:
         createdAt:
           type: string
           format: date-time
+        draftId:
+          type: string
+          format: uuid
+          nullable: true
+          description: The approved draft this report was generated from, or null for direct generation.
+        draftVersion:
+          type: integer
+          nullable: true
+          description: The draft version at time of generation.
+        approvalStatus:
+          type: string
+          nullable: true
+          enum: [not_required, approved, auto_approved]
+          description: Approval workflow status at generation time.
+        approvedBy:
+          type: string
+          nullable: true
+          description: Email of the approver, or null for direct generation.
+        approvedAt:
+          type: string
+          format: date-time
+          nullable: true
+          description: Timestamp of draft approval.
+        dataFingerprint:
+          type: string
+          nullable: true
+          description: SHA-256 fingerprint of the financial data used at generation time.
+        commentaryVersion:
+          type: integer
+          nullable: true
+          description: Max version number of the included commentary entries.
       required: [id, template, title, period, format, entitySlugs, status, createdAt]
+
+    DraftGenerateRequest:
+      type: object
+      description: Request body for POST /drafts/{draftId}/generate
+      properties:
+        format:
+          type: string
+          enum: [json, pdf, html]
+          description: Output format. Excel is not supported for draft-generated reports (narrative context is not available to the Excel renderer).
+      required: [format]
 
     # AI
     AiAnalyzeRequest:
@@ -1793,6 +1834,85 @@ paths:
           $ref: "#/components/responses/Unauthorized"
         "404":
           $ref: "#/components/responses/NotFound"
+
+  /drafts/{draftId}/generate:
+    post:
+      operationId: generateDraftReport
+      tags: [ReportDrafts]
+      summary: Generate a final report from an approved draft
+      description: |
+        Builds a final PDF/HTML/JSON report using the approved narrative from the
+        specified draft. The server reloads all financial data from authoritative
+        FinanceOS sources, recomputes the data fingerprint, and rejects generation
+        if the data changed since approval. Approval metadata, financial values,
+        fingerprints, and narrative source labels are never accepted from the client.
+      security:
+        - sessionCookie: []
+      parameters:
+        - name: draftId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/DraftGenerateRequest"
+      responses:
+        "200":
+          description: |
+            For format=json: JSON envelope with report data and Report History linkage.
+            For format=pdf: application/pdf binary attachment.
+            For format=html: text/html attachment.
+          headers:
+            X-Draft-Id:
+              schema:
+                type: string
+              description: The draft ID used for generation (pdf/html only).
+            X-Draft-Version:
+              schema:
+                type: string
+              description: The draft version at generation time (pdf/html only).
+            X-Approved-By:
+              schema:
+                type: string
+              description: Email of the approver (pdf/html only).
+            X-History-Id:
+              schema:
+                type: string
+              description: The new Report History row ID (pdf/html only).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiEnvelope"
+            application/pdf:
+              schema:
+                type: string
+                format: binary
+            text/html:
+              schema:
+                type: string
+        "400":
+          description: Draft is not approved, is stale, format is invalid, or fingerprint changed.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiEnvelope"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          description: The authenticated user's role cannot generate final reports.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiEnvelope"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "500":
+          $ref: "#/components/responses/ServerError"
 
   # ── Commentary ───────────────────────────────────────────────────────────────
 

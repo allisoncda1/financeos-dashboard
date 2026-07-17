@@ -189,6 +189,15 @@ export const api = {
   // ── Report Drafts ────────────────────────────────────────────────────────
   createDraft: (opts: { template: string; entities: string[] | "all"; period: string }) =>
     post<ReportDraft>("/drafts", opts),
+  generateDraft: (id: string, format: "json" | "pdf" | "html") =>
+    format === "json"
+      ? post<{ reportId: string; historyId: string; draftId: string; draftVersion: number; approvedBy: string; approvedAt: string }>(
+          `/drafts/${id}/generate`,
+          { format },
+        )
+      : Promise.reject(new Error("Use downloadDraft for pdf/html formats")),
+  downloadDraft: (id: string, format: "pdf" | "html") =>
+    postForBlob(`/drafts/${id}/generate`, { format }),
   getDraft: (id: string) =>
     get<ReportDraft>(`/drafts/${id}`),
   listDrafts: (template: string, period: string) =>

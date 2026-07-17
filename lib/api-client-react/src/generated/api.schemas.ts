@@ -164,6 +164,18 @@ export const ReportHistoryEntrySource = {
 } as const;
 
 /**
+ * Approval workflow status at generation time.
+ */
+export type ReportHistoryEntryApprovalStatus = typeof ReportHistoryEntryApprovalStatus[keyof typeof ReportHistoryEntryApprovalStatus] | null;
+
+
+export const ReportHistoryEntryApprovalStatus = {
+  not_required: 'not_required',
+  approved: 'approved',
+  auto_approved: 'auto_approved',
+} as const;
+
+/**
  * A single persisted report generation record
  */
 export interface ReportHistoryEntry {
@@ -182,6 +194,40 @@ export interface ReportHistoryEntry {
   errorMessage?: string | null;
   completedAt?: string | null;
   createdAt: string;
+  /** The approved draft this report was generated from, or null for direct generation. */
+  draftId?: string | null;
+  /** The draft version at time of generation. */
+  draftVersion?: number | null;
+  /** Approval workflow status at generation time. */
+  approvalStatus?: ReportHistoryEntryApprovalStatus;
+  /** Email of the approver, or null for direct generation. */
+  approvedBy?: string | null;
+  /** Timestamp of draft approval. */
+  approvedAt?: string | null;
+  /** SHA-256 fingerprint of the financial data used at generation time. */
+  dataFingerprint?: string | null;
+  /** Max version number of the included commentary entries. */
+  commentaryVersion?: number | null;
+}
+
+/**
+ * Output format. Excel is not supported for draft-generated reports (narrative context is not available to the Excel renderer).
+ */
+export type DraftGenerateRequestFormat = typeof DraftGenerateRequestFormat[keyof typeof DraftGenerateRequestFormat];
+
+
+export const DraftGenerateRequestFormat = {
+  json: 'json',
+  pdf: 'pdf',
+  html: 'html',
+} as const;
+
+/**
+ * Request body for POST /drafts/{draftId}/generate
+ */
+export interface DraftGenerateRequest {
+  /** Output format. Excel is not supported for draft-generated reports (narrative context is not available to the Excel renderer). */
+  format: DraftGenerateRequestFormat;
 }
 
 export type AiAnalyzeRequestEntitiesItem = typeof AiAnalyzeRequestEntitiesItem[keyof typeof AiAnalyzeRequestEntitiesItem];
