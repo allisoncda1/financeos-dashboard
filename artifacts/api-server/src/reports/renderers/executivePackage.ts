@@ -27,6 +27,12 @@ import {
   SHELL_EXTRA_STYLES,
   type HeaderFn,
 } from "./reportShell.js";
+import {
+  getCtxParagraphs,
+  getCtxHeading,
+  getCtxTitle,
+  renderApprovalBadge,
+} from "./narrativeRendering.js";
 
 // ─── Local types ──────────────────────────────────────────────────────────────
 
@@ -131,10 +137,14 @@ function buildExecOverviewPage(
       )
     : "";
 
+  const execNarrative = getCtxParagraphs(report, "executive_summary", narrative);
+  const execHeading   = getCtxHeading(report, "executive_summary", "Executive Overview");
+
   return wrapPage(`
     ${headerFn(`${report.period} Executive Package`)}
-    ${refSectionHeader(1, "EXECUTIVE OVERVIEW", "Executive Overview")}
-    ${refNarrative(...narrative)}
+    ${renderApprovalBadge(report)}
+    ${refSectionHeader(1, "EXECUTIVE OVERVIEW", execHeading)}
+    ${refNarrative(...execNarrative)}
     ${kpis}
     ${chartHtml ? `<div style="margin:12pt 0 8pt;">${chartHtml}</div>` : ""}
   `);
@@ -312,7 +322,7 @@ export function renderExecutivePackage(report: BuiltReport): string {
   ];
 
   return buildReportHtml({
-    title: `${primaryName} — ${report.period} Executive Package`,
+    title: getCtxTitle(report, `${primaryName} — ${report.period} Executive Package`),
     accent,
     pages,
     extraStyles: SHELL_EXTRA_STYLES,

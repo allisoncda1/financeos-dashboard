@@ -323,3 +323,58 @@ export type GetEntityAnnualBudgetParams = {
 year?: YearQueryParameter;
 };
 
+export type CreateDraftBody = {
+  template: string;
+  period: string;
+  entities: 'all' | string[];
+};
+
+export type ListDraftsParams = {
+template: string;
+period: string;
+};
+
+export type SaveDraftEditsBodyEditableContent = { [key: string]: unknown };
+
+export type SaveDraftEditsBody = {
+  editableContent: SaveDraftEditsBodyEditableContent;
+  changeSummary?: string;
+};
+
+export type RestoreDraftVersionBody = {
+  versionNumber: number;
+};
+
+export type GetCommentaryParams = {
+entity: string;
+period: string;
+template: string;
+};
+
+export type SaveCommentaryBodyCommentaryType = typeof SaveCommentaryBodyCommentaryType[keyof typeof SaveCommentaryBodyCommentaryType];
+
+
+export const SaveCommentaryBodyCommentaryType = {
+  management_commentary: 'management_commentary',
+  recommended_action: 'recommended_action',
+} as const;
+
+export type SaveCommentaryBody = {
+  entitySlug: string;
+  reportingPeriod: string;
+  templateId: string;
+  sectionKey: string;
+  commentaryType: SaveCommentaryBodyCommentaryType;
+  content: string;
+  sortOrder?: number;
+  existingId?: string;
+};
+
+export type ReorderCommentaryBody = {
+  ids: string[];
+};
+
+export type ToggleCommentaryBody = {
+  included: boolean;
+};
+

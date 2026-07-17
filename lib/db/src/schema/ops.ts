@@ -5,7 +5,8 @@
  * `pnpm --filter db push:ops`. It must contain ONLY tables that belong
  * to the Dashboard's writable Replit operational database.
  *
- * ✅ Included: session, metric_snapshots, budgets, report_history
+ * ✅ Included: session, metric_snapshots, budgets, report_history,
+ *             report_commentary, report_drafts, report_draft_versions
  * ❌ Excluded: ALL FinanceOS Core tables (entities, financial_periods,
  *             entity_snapshots, portfolio_snapshots, qbo_raw, accounts,
  *             invoices, bills, transactions, customers, vendors,
@@ -18,8 +19,14 @@
 export { sessionTable, metricSnapshotsTable } from "./runtimeTables";
 export { budgets }                             from "./budget";
 export { reportHistory }                       from "./reportHistory";
+export { reportCommentary, reportDrafts, reportDraftVersions } from "./reportCommentary";
 
 // Re-export types so API-server code can import them from this entry point.
 export type { MetricSnapshotRow }                    from "./runtimeTables";
 export type { Budget, InsertBudget }                 from "./budget";
 export type { ReportHistoryRow, InsertReportHistory } from "./reportHistory";
+export type {
+  ReportCommentaryRow,  InsertReportCommentary,
+  ReportDraftRow,       InsertReportDraft,
+  ReportDraftVersionRow, InsertReportDraftVersion,
+} from "./reportCommentary";

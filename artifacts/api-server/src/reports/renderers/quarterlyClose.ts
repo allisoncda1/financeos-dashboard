@@ -32,6 +32,12 @@ import {
   SHELL_EXTRA_STYLES,
   type HeaderFn,
 } from "./reportShell.js";
+import {
+  getCtxParagraphs,
+  getCtxHeading,
+  getCtxTitle,
+  renderApprovalBadge,
+} from "./narrativeRendering.js";
 
 // ─── Local types ──────────────────────────────────────────────────────────────
 
@@ -107,10 +113,14 @@ function buildQExecSummary(
 
   const p1 = `${first.m.entity} closed the quarter with ${fmtCurrency(first.m.revenue_ytd)} in year-to-date revenue and ${first.m.net_income_ytd < 0 ? `a net loss of (${fmtCurrency(Math.abs(first.m.net_income_ytd))})` : `net income of ${fmtCurrency(first.m.net_income_ytd)}`} on a ${first.m.basis}-basis. Gross margin was ${fmtPercent(first.m.gross_margin_pct)}.`;
 
+  const execNarrative = getCtxParagraphs(report, "executive_summary", [p1]);
+  const execHeading   = getCtxHeading(report, "executive_summary", "Executive Financial Summary");
+
   return wrapPage(`
     ${headerFn(`${report.period} Quarterly Close Report`)}
-    ${refSectionHeader(null, "EXECUTIVE SUMMARY", "Executive Financial Summary")}
-    ${refNarrative(p1)}
+    ${renderApprovalBadge(report)}
+    ${refSectionHeader(null, "EXECUTIVE SUMMARY", execHeading)}
+    ${refNarrative(...execNarrative)}
     ${kpis}
     <div style="margin:16pt 0 8pt;">${chartHtml}</div>
   `);
@@ -330,16 +340,20 @@ function buildQRisksPage(
 }
 
 function buildQRecommendationsPage(report: BuiltReport, headerFn: HeaderFn): string {
+  const defaultRecs = [
+    "The following recommendations are based on the quarterly close analysis. Review priorities with the owner before the next quarter begins.",
+    "1. Confirm all bank accounts are reconciled in QuickBooks Online.",
+    "2. Review AR aging and escalate overdue accounts to direct outreach.",
+    "3. Confirm operating expense run rates are within budget for the upcoming quarter.",
+    "4. Archive this quarterly close package for audit readiness.",
+  ];
+  const recs    = getCtxParagraphs(report, "recommended_actions", defaultRecs);
+  const heading = getCtxHeading(report, "recommended_actions", "Management Recommendations");
+
   return wrapPage(`
     ${headerFn(`${report.period} Quarterly Close Report`)}
-    ${refSectionHeader(7, "RECOMMENDATIONS", "Management Recommendations")}
-    ${refNarrative(
-      "The following recommendations are based on the quarterly close analysis. Review priorities with the owner before the next quarter begins.",
-      "1. Confirm all bank accounts are reconciled in QuickBooks Online.",
-      "2. Review AR aging and escalate overdue accounts to direct outreach.",
-      "3. Confirm operating expense run rates are within budget for the upcoming quarter.",
-      "4. Archive this quarterly close package for audit readiness.",
-    )}
+    ${refSectionHeader(7, "RECOMMENDATIONS", heading)}
+    ${refNarrative(...recs)}
   `);
 }
 
@@ -399,7 +413,7 @@ export function renderQuarterlyClose(report: BuiltReport): string {
   ].filter(Boolean) as string[];
 
   return buildReportHtml({
-    title: `${primaryName} — ${report.period} Quarterly Close Report`,
+    title: getCtxTitle(report, `${primaryName} — ${report.period} Quarterly Close Report`),
     accent,
     pages,
     extraStyles: SHELL_EXTRA_STYLES,

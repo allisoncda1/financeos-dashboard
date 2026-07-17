@@ -68,6 +68,34 @@ async function put<T>(path: string, body: unknown): Promise<T> {
   return json.data as T;
 }
 
+async function patch<T>(path: string, body: unknown): Promise<T> {
+  const res = await fetch(`${BASE}${path}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    credentials: "include",
+    body: JSON.stringify(body),
+  });
+  if (res.status === 401) {
+    handleUnauthorized();
+    throw new Error("Session expired");
+  }
+  const json = await res.json().catch(() => ({ ok: false, error: `API ${path} → ${res.status}` }));
+  if (!res.ok || !json.ok) throw new Error(json.error ?? `API ${path} → ${res.status}`);
+  return json.data as T;
+}
+
+async function del(path: string): Promise<void> {
+  const res = await fetch(`${BASE}${path}`, { method: "DELETE", credentials: "include" });
+  if (res.status === 401) {
+    handleUnauthorized();
+    throw new Error("Session expired");
+  }
+  if (!res.ok) {
+    const json = await res.json().catch(() => null);
+    throw new Error(json?.error ?? `API ${path} → ${res.status}`);
+  }
+}
+
 async function post<T>(path: string, body: unknown): Promise<T> {
   const res = await fetch(`${BASE}${path}`, {
     method: "POST",
@@ -157,4 +185,98 @@ export const api = {
     put<BudgetPeriodInput>(`/budget/${slug}/period`, data),
   upsertAnnualBudget:   (slug: string, data: { year: number } & Partial<BudgetPeriodInput>) =>
     put<BudgetPeriodInput>(`/budget/${slug}/annual`, data),
+
+  // ── Report Drafts ────────────────────────────────────────────────────────
+  createDraft: (opts: { template: string; entities: string[] | "all"; period: string }) =>
+    post<ReportDraft>("/drafts", opts),
+  getDraft: (id: string) =>
+    get<ReportDraft>(`/drafts/${id}`),
+  listDrafts: (template: string, period: string) =>
+    get<ReportDraft[]>(`/drafts?template=${encodeURIComponent(template)}&period=${encodeURIComponent(period)}`),
+  saveDraftEdits: (id: string, editableContent: unknown, changeSummary?: string) =>
+    patch<ReportDraft>(`/drafts/${id}/edits`, { editableContent, changeSummary }),
+  getDraftVersions: (id: string) =>
+    get<ReportDraftVersion[]>(`/drafts/${id}/versions`),
+  restoreDraftVersion: (id: string, versionNumber: number) =>
+    post<ReportDraft>(`/drafts/${id}/restore`, { versionNumber }),
+  submitDraftForReview: (id: string) =>
+    post<ReportDraft>(`/drafts/${id}/submit`, {}),
+  approveDraft: (id: string) =>
+    post<ReportDraft>(`/drafts/${id}/approve`, {}),
+  getDraftPreview: (id: string) =>
+    get<{ html: string; draft: ReportDraft; narrativeSectionKeys: string[]; isStale: boolean; staleReason: string | null }>(`/drafts/${id}/preview`),
+
+  // ── Commentary ───────────────────────────────────────────────────────────
+  getCommentary: (entity: string, period: string, template: string) =>
+    get<CommentaryEntry[]>(`/drafts/commentary?entity=${encodeURIComponent(entity)}&period=${encodeURIComponent(period)}&template=${encodeURIComponent(template)}`),
+  saveCommentary: (data: {
+    entitySlug: string; reportingPeriod: string; templateId: string;
+    sectionKey: string; commentaryType: "management_commentary" | "recommended_action";
+    content: string; sortOrder?: number; existingId?: string;
+  }) => post<CommentaryEntry>("/drafts/commentary", data),
+  toggleCommentary: (id: string, included: boolean) =>
+    patch<CommentaryEntry>(`/drafts/commentary/${id}/toggle`, { included }),
+  deleteCommentary: (id: string) =>
+    del(`/drafts/commentary/${id}`),
+  approveCommentary: (id: string) =>
+    post<CommentaryEntry>(`/drafts/commentary/${id}/approve`, {}),
+  reorderCommentary: (ids: string[]) =>
+    post<void>("/drafts/commentary/reorder", { ids }),
+};
+
+// ── Frontend-side draft types ───────────────────────────────────────────────
+
+export type CommentaryType = "financeos_analysis" | "management_commentary" | "recommended_action";
+export type CommentaryStatus = "draft" | "approved" | "superseded" | "waived";
+export type DraftStatus = "draft" | "ready_for_review" | "approved" | "superseded" | "generated";
+
+export type CommentaryEntry = {
+  id: string;
+  entitySlug: string;
+  reportingPeriod: string;
+  templateId: string;
+  sectionKey: string;
+  commentaryType: CommentaryType;
+  content: string;
+  provenance: unknown;
+  status: CommentaryStatus;
+  version: number;
+  included: boolean;
+  sortOrder: number;
+  createdBy: string | null;
+  updatedBy: string | null;
+  approvedBy: string | null;
+  createdAt: string;
+  updatedAt: string;
+  approvedAt: string | null;
+};
+
+export type ReportDraft = {
+  id: string;
+  templateId: string;
+  reportingPeriod: string;
+  entitySlugs: string[];
+  status: DraftStatus;
+  currentVersion: number;
+  generatedAnalysis: unknown;
+  editableContent: unknown;
+  dataFingerprint: string | null;
+  isStale: boolean;
+  staleReason: string | null;
+  createdBy: string | null;
+  updatedBy: string | null;
+  approvedBy: string | null;
+  createdAt: string;
+  updatedAt: string;
+  approvedAt: string | null;
+};
+
+export type ReportDraftVersion = {
+  id: string;
+  reportDraftId: string;
+  versionNumber: number;
+  contentSnapshot: unknown;
+  changeSummary: string | null;
+  createdBy: string | null;
+  createdAt: string;
 };

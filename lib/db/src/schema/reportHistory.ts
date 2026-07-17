@@ -33,10 +33,27 @@ export const reportHistory = pgTable(
     errorMessage:    text("error_message"),
     completedAt:     timestamp("completed_at", { withTimezone: true }),
     createdAt:       timestamp("created_at",   { withTimezone: true }).notNull().defaultNow(),
+
+    // ── Draft linkage (nullable — pre-draft rows remain readable) ────────────
+    /** UUID of the report draft used to generate this report, if any. */
+    draftId:           uuid("draft_id"),
+    /** Version number of the draft snapshot used. */
+    draftVersion:      integer("draft_version"),
+    /** Approval status at generation time: approved | auto_approved | null */
+    approvalStatus:    text("approval_status"),
+    /** Email of the user who approved the draft. */
+    approvedBy:        text("approved_by"),
+    /** When the draft was approved. */
+    approvedAt:        timestamp("approved_at", { withTimezone: true }),
+    /** SHA-256 fingerprint of financial data at draft creation time. */
+    dataFingerprint:   text("data_fingerprint"),
+    /** Commentary version number at generation time. */
+    commentaryVersion: integer("commentary_version"),
   },
   (t) => [
     index("idx_report_history_created").on(t.createdAt),
     index("idx_report_history_template").on(t.template, t.createdAt),
+    index("idx_report_history_draft").on(t.draftId),
     check("chk_report_history_status", sql`${t.status} IN ('queued', 'processing', 'completed', 'failed')`),
     check("chk_report_history_format", sql`${t.format} IN ('json', 'pdf', 'excel', 'html')`),
   ],

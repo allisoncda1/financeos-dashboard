@@ -1,16 +1,18 @@
 
 import { useState, useMemo, useCallback } from "react";
+import { useLocation } from "wouter";
 import { motion } from "framer-motion";
 import {
   FileText, Download, Eye, Calendar, Building2,
   BarChart3, TrendingUp, Users, Landmark, Briefcase,
   Package, Clock, CheckCircle2, ChevronRight,
   FileSpreadsheet, Sparkles, AlertTriangle, Loader2,
-  XCircle, History,
+  XCircle, History, Pencil,
 } from "lucide-react";
 import { ENTITY_CONFIG, ENTITY_SLUGS, ENTITY_META } from "@/lib/entities";
 import { EntityLogo } from "@/components/ui/EntityLogo";
 import { useReportTemplates, useReportGenerator, useReportDownload, useReportHistory } from "@/hooks/useApi";
+import { api } from "@/lib/api";
 import type { EntitySlug } from "@/lib/types";
 
 // ── Template definitions ───────────────────────────────────────────────────
@@ -137,6 +139,9 @@ export default function ReportCenterPage() {
   const [previewOpen, setPreviewOpen]   = useState(false);
   const [resultOpen, setResultOpen]     = useState(false);
   const [historyRefreshKey, setHistoryRefreshKey] = useState(0);
+  const [creatingDraft, setCreatingDraft] = useState(false);
+  const [draftError, setDraftError] = useState<string | null>(null);
+  const [, navigate] = useLocation();
 
   const { data: liveTemplatesData, source: templatesSource } = useReportTemplates();
   const liveTemplates = liveTemplatesData ?? [];
@@ -173,6 +178,23 @@ export default function ReportCenterPage() {
       setHistoryRefreshKey((k) => k + 1);
     }
   }, [generate, selectedTemplate, selectedEntities, period]);
+
+  const handleCreateDraft = useCallback(async () => {
+    setCreatingDraft(true);
+    setDraftError(null);
+    try {
+      const draft = await api.createDraft({
+        template: selectedTemplate,
+        entities: selectedEntities.length === ENTITY_SLUGS.length ? "all" : (selectedEntities as EntitySlug[]),
+        period,
+      });
+      navigate(`/reports/draft/${draft.id}`);
+    } catch (e) {
+      setDraftError(e instanceof Error ? e.message : "Failed to create draft");
+    } finally {
+      setCreatingDraft(false);
+    }
+  }, [selectedTemplate, selectedEntities, period, navigate]);
 
   const handleDownload = async (downloadFormat: "pdf" | "excel" | "html") => {
     try {
@@ -563,6 +585,31 @@ export default function ReportCenterPage() {
                   <p className="text-[10px] text-red-700 leading-relaxed">{downloadError}</p>
                 </div>
               )}
+
+              {/* Draft / Preview & Edit */}
+              <div className="border-t border-gray-100 pt-2 mt-1">
+                <button
+                  onClick={handleCreateDraft}
+                  disabled={creatingDraft}
+                  className="w-full flex items-center justify-center gap-2 py-2.5 bg-violet-50 hover:bg-violet-100 border border-violet-200 text-violet-700 text-[12px] font-semibold rounded-xl transition-colors disabled:opacity-50"
+                >
+                  {creatingDraft ? (
+                    <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                  ) : (
+                    <Pencil className="w-3.5 h-3.5" />
+                  )}
+                  {creatingDraft ? "Creating Draft…" : "Preview & Edit Draft"}
+                </button>
+                {draftError && (
+                  <div className="mt-2 flex items-start gap-2 p-2.5 bg-red-50 border border-red-200 rounded-lg">
+                    <AlertTriangle className="w-3.5 h-3.5 text-red-500 flex-shrink-0 mt-0.5" />
+                    <p className="text-[10px] text-red-700">{draftError}</p>
+                  </div>
+                )}
+                <p className="mt-1.5 text-[9px] text-gray-400 text-center">
+                  Review, edit narrative, and approve before generating the final report.
+                </p>
+              </div>
 
               <p className="text-[10px] text-gray-400 text-center leading-relaxed">
                 Powered by the Report Engine · JSON, PDF, Excel &amp; HTML output.
