@@ -14,6 +14,8 @@ import {
   getEntityMetrics,
   getEntityAnomalies,
   getEntityFinancials,
+  getEntityCustomers,
+  getEntityVendors,
 } from "../lib/dataSource";
 import { RulesEngine } from "../rules/engine";
 import { generateBriefing } from "../ai/briefing";
@@ -122,7 +124,9 @@ export async function buildReport(request: ReportRequest): Promise<BuiltReport> 
   const freshnessResult = await getDataFreshness();
   const freshness = freshnessResult.data;
 
-  const [portfolioResult, validationResult, briefing, alertsResult, metricsResults, anomaliesResults, financialsResults] =
+  const needsArAp = hasSection(template, "ar_ap");
+
+  const [portfolioResult, validationResult, briefing, alertsResult, metricsResults, anomaliesResults, financialsResults, customersResults, vendorsResults] =
     await Promise.all([
       getPortfolioSummary(),
       getValidationSummary(),
@@ -131,6 +135,12 @@ export async function buildReport(request: ReportRequest): Promise<BuiltReport> 
       Promise.all(resolvedEntities.map((slug) => getEntityMetrics(slug))),
       Promise.all(resolvedEntities.map((slug) => getEntityAnomalies(slug))),
       Promise.all(resolvedEntities.map((slug) => getEntityFinancials(slug, freshness.data_as_of))),
+      needsArAp
+        ? Promise.all(resolvedEntities.map((slug) => getEntityCustomers(slug, freshness.data_as_of)))
+        : Promise.resolve(resolvedEntities.map(() => ({ data: null, source: "cache" as const }))),
+      needsArAp
+        ? Promise.all(resolvedEntities.map((slug) => getEntityVendors(slug, freshness.data_as_of)))
+        : Promise.resolve(resolvedEntities.map(() => ({ data: null, source: "cache" as const }))),
     ]);
 
   const portfolio = portfolioResult.data;
@@ -139,6 +149,8 @@ export async function buildReport(request: ReportRequest): Promise<BuiltReport> 
   const metricsList = metricsResults.map((r) => r.data);
   const anomaliesList = anomaliesResults.map((r) => r.data);
   const financialsList = financialsResults.map((r) => r.data);
+  const customersList = customersResults.map((r) => r.data);
+  const vendorsList = vendorsResults.map((r) => r.data);
 
   const source = combineSources([
     freshnessResult.source,
@@ -148,6 +160,8 @@ export async function buildReport(request: ReportRequest): Promise<BuiltReport> 
     ...metricsResults.map((r) => r.source),
     ...anomaliesResults.map((r) => r.source),
     ...financialsResults.map((r) => r.source),
+    ...(needsArAp ? customersResults.map((r) => r.source) : []),
+    ...(needsArAp ? vendorsResults.map((r) => r.source) : []),
   ]);
 
   const entitySet = new Set<string>(resolvedEntities);
@@ -184,6 +198,15 @@ export async function buildReport(request: ReportRequest): Promise<BuiltReport> 
   if (hasSection(template, "financials")) {
     sections["financials"] = Object.fromEntries(
       resolvedEntities.map((slug, i) => [slug, financialsList[i]]),
+    );
+  }
+
+  if (hasSection(template, "ar_ap")) {
+    sections["ar_ap"] = Object.fromEntries(
+      resolvedEntities.map((slug, i) => [
+        slug,
+        { customers: customersList[i] ?? null, vendors: vendorsList[i] ?? null },
+      ]),
     );
   }
 

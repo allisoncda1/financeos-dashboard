@@ -24,6 +24,12 @@ import type {
 import type { BriefingResponse } from "../../lib/types";
 import type { Alert } from "../../rules/evaluator";
 import { normalizeValidationSummary } from "./validationView";
+import { renderMonthlyClose } from "./monthlyClose.js";
+import { renderQuarterlyClose } from "./quarterlyClose.js";
+import { renderBoardPackage } from "./boardPackage.js";
+import { renderInvestorUpdate } from "./investorUpdate.js";
+import { renderBankPackage } from "./bankPackage.js";
+import { renderExecutivePackage } from "./executivePackage.js";
 
 // ─── shared formatting helpers (also used by pdf.ts) ───────────────────────
 
@@ -438,6 +444,16 @@ export const HtmlRenderer: Renderer = {
   format: "html",
 
   render(report: BuiltReport): string {
+    switch (report.template.id) {
+      case "monthly-close": return renderMonthlyClose(report);
+      case "quarterly-close": return renderQuarterlyClose(report);
+      case "board-package": return renderBoardPackage(report);
+      case "investor-update": return renderInvestorUpdate(report);
+      case "bank-package": return renderBankPackage(report);
+      case "executive-package": return renderExecutivePackage(report);
+      default: break;
+    }
+
     const primaryColor =
       report.branding.mode === "single" && report.branding.primaryEntity
         ? report.branding.primaryEntity.primaryColor

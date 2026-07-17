@@ -12,6 +12,7 @@ export type ReportSectionType =
   | "portfolio_kpis"
   | "entity_summary"
   | "financials"
+  | "ar_ap"
   | "alerts"
   | "recommendations"
   | "validation"
@@ -50,11 +51,12 @@ export const REPORT_TEMPLATES: ReportTemplate[] = [
       section("portfolio_kpis", "Portfolio KPIs", false),
       section("entity_summary", "Entity Summary"),
       section("financials", "Financials"),
+      section("ar_ap", "AR & AP"),
       section("alerts", "Alerts"),
       section("validation", "Validation", false),
     ],
     defaultEntities: "all",
-    supportedFormats: ["json"],
+    supportedFormats: ["json", "html", "pdf"],
     enabled: true,
   },
   {
@@ -72,7 +74,7 @@ export const REPORT_TEMPLATES: ReportTemplate[] = [
       section("appendix", "Appendix", false),
     ],
     defaultEntities: "all",
-    supportedFormats: ["json"],
+    supportedFormats: ["json", "html", "pdf"],
     enabled: true,
   },
   {
@@ -89,7 +91,7 @@ export const REPORT_TEMPLATES: ReportTemplate[] = [
       section("appendix", "Appendix", false),
     ],
     defaultEntities: "all",
-    supportedFormats: ["json"],
+    supportedFormats: ["json", "html", "pdf"],
     enabled: true,
   },
   {
@@ -103,7 +105,7 @@ export const REPORT_TEMPLATES: ReportTemplate[] = [
       section("recommendations", "Recommendations", false),
     ],
     defaultEntities: "all",
-    supportedFormats: ["json"],
+    supportedFormats: ["json", "html", "pdf"],
     enabled: true,
   },
   {
@@ -118,7 +120,7 @@ export const REPORT_TEMPLATES: ReportTemplate[] = [
       section("recommendations", "Recommendations", false),
     ],
     defaultEntities: "all",
-    supportedFormats: ["json"],
+    supportedFormats: ["json", "html", "pdf"],
     enabled: true,
   },
   {
@@ -133,7 +135,7 @@ export const REPORT_TEMPLATES: ReportTemplate[] = [
       section("appendix", "Appendix", false),
     ],
     defaultEntities: "all",
-    supportedFormats: ["json"],
+    supportedFormats: ["json", "html", "pdf"],
     enabled: true,
   },
 ];
