@@ -225,6 +225,8 @@ export const api = {
   }) => post<CommentaryEntry>("/drafts/commentary", data),
   toggleCommentary: (id: string, included: boolean) =>
     patch<CommentaryEntry>(`/drafts/commentary/${id}/toggle`, { included }),
+  updateCommentaryContent: (id: string, content: string) =>
+    patch<CommentaryEntry>(`/drafts/commentary/${id}/content`, { content }),
   deleteCommentary: (id: string) =>
     del(`/drafts/commentary/${id}`),
   approveCommentary: (id: string) =>

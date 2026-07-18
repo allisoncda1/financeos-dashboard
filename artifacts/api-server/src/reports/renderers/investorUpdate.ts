@@ -20,6 +20,7 @@ import {
   refKpiRow,
   refInsightPanel,
   refNarrative,
+  refNarrativeBlocks,
   refSmallNote,
   refSubHeading,
   emptyState,
@@ -35,9 +36,10 @@ import {
 } from "./reportShell.js";
 import {
   getCtxParagraphs,
+  getCtxBlocks,
   getCtxHeading,
   getCtxTitle,
-  renderApprovalBadge,
+  isPreviewMode,
 } from "./narrativeRendering.js";
 
 // ─── Local types ──────────────────────────────────────────────────────────────
@@ -116,7 +118,7 @@ function buildInvestorHighlightsPage(
     highlights.push(`Operating results for ${report.period} are presented in the sections below.`);
   }
 
-  const highlightNarrative = getCtxParagraphs(report, "executive_summary", [
+  const highlightBlocks  = getCtxBlocks(report, "executive_summary", [
     `${first.m.entity} presents the following performance highlights for ${report.period}.`,
     ...highlights,
   ]);
@@ -124,9 +126,8 @@ function buildInvestorHighlightsPage(
 
   return wrapPage(`
     ${headerFn(`${report.period} Investor Update`)}
-    ${renderApprovalBadge(report)}
     ${refSectionHeader(null, "HIGHLIGHTS", highlightHeading)}
-    ${refNarrative(...highlightNarrative)}
+    ${refNarrativeBlocks(highlightBlocks, isPreviewMode(report))}
     ${refKpiRow([
       { label: "Revenue YTD", value: fmtCurrency(first.m.revenue_ytd), change: "", changeClass: "neu" },
       { label: "Gross Margin", value: fmtPercent(first.m.gross_margin_pct), change: "", changeClass: "neu" },

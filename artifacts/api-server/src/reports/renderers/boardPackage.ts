@@ -20,6 +20,7 @@ import {
   refKpiRow,
   refInsightPanel,
   refNarrative,
+  refNarrativeBlocks,
   refSmallNote,
   refSubHeading,
   emptyState,
@@ -35,9 +36,10 @@ import {
 } from "./reportShell.js";
 import {
   getCtxParagraphs,
+  getCtxBlocks,
   getCtxHeading,
   getCtxTitle,
-  renderApprovalBadge,
+  isPreviewMode,
 } from "./narrativeRendering.js";
 
 // ─── Local types ──────────────────────────────────────────────────────────────
@@ -134,14 +136,13 @@ function buildBoardExecSummary(
 
   const p1 = `${first.m.entity} reports ${fmtCurrency(first.m.revenue_ytd)} in year-to-date revenue with ${fmtPercent(first.m.gross_margin_pct)} gross margin and ${first.m.net_income_ytd < 0 ? `a net loss of (${fmtCurrency(Math.abs(first.m.net_income_ytd))})` : `net income of ${fmtCurrency(first.m.net_income_ytd)}`} on a ${first.m.basis}-basis. Cash on hand is ${first.m.cash_on_hand < 0 ? `a deficit of (${fmtCurrency(Math.abs(first.m.cash_on_hand))})` : fmtCurrency(first.m.cash_on_hand)}.`;
 
-  const execNarrative = getCtxParagraphs(report, "executive_summary", [p1]);
-  const execHeading   = getCtxHeading(report, "executive_summary", "Executive Financial Summary");
+  const execBlocks  = getCtxBlocks(report, "executive_summary", [p1]);
+  const execHeading = getCtxHeading(report, "executive_summary", "Executive Financial Summary");
 
   return wrapPage(`
     ${headerFn(`${report.period} Board Package`)}
-    ${renderApprovalBadge(report)}
     ${refSectionHeader(null, "EXECUTIVE SUMMARY", execHeading)}
-    ${refNarrative(...execNarrative)}
+    ${refNarrativeBlocks(execBlocks, isPreviewMode(report))}
     ${kpis}
   `);
 }

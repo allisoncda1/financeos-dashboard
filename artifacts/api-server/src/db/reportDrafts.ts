@@ -221,6 +221,28 @@ export const CommentaryService = {
     return toCommentaryEntry(rows[0]!);
   },
 
+  /**
+   * Update the prose content of a user-authored commentary block.
+   * FinanceOS Analysis blocks are locked and cannot be updated here.
+   */
+  async updateContent(id: string, content: string, userEmail: string): Promise<CommentaryEntry> {
+    const existing = await db
+      .select({ commentaryType: reportCommentary.commentaryType })
+      .from(reportCommentary)
+      .where(eq(reportCommentary.id, id))
+      .limit(1);
+    if (!existing[0]) throw new Error(`Commentary ${id} not found`);
+    if (existing[0].commentaryType === "financeos_analysis") {
+      throw new Error("FinanceOS Analysis statements cannot be edited. Financial values are locked.");
+    }
+    const rows = await db
+      .update(reportCommentary)
+      .set({ content, updatedBy: userEmail, updatedAt: new Date() })
+      .where(eq(reportCommentary.id, id))
+      .returning();
+    return toCommentaryEntry(rows[0]!);
+  },
+
   /** Toggle a commentary block's included state. */
   async toggleIncluded(id: string, included: boolean, userEmail: string): Promise<CommentaryEntry> {
     const rows = await db

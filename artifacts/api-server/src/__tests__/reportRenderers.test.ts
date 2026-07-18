@@ -278,16 +278,13 @@ describe("narrativeRendering helpers — renderer integration (req 10 & 11)", ()
     expect(title.length).toBeGreaterThan(0);
   });
 
-  it("renderApprovalBadge() returns HTML containing 'Approved' when status=approved", () => {
-    const report = mockReport("approved", "cfo@test.com");
-    const badge = renderApprovalBadge(report);
-    expect(badge).toMatch(/Approved|approved/i);
-  });
-
-  it("renderApprovalBadge() returns empty string when status=draft", () => {
-    const report = mockReport("draft");
-    const badge = renderApprovalBadge(report);
-    expect(badge).toBe("");
+  it("renderApprovalBadge() returns empty string for all statuses — approval is operational metadata, not report content", () => {
+    // Approval message must NOT appear in any generated HTML or PDF.
+    // Approval data is preserved in draft metadata, Report History, and API responses.
+    const approvedReport = mockReport("approved", "cfo@test.com");
+    const draftReport    = mockReport("draft");
+    expect(renderApprovalBadge(approvedReport)).toBe("");
+    expect(renderApprovalBadge(draftReport)).toBe("");
   });
 
   it("same narrative context produces identical text regardless of how many times it's called", () => {

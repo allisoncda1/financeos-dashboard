@@ -18,12 +18,47 @@
  *                   – NEW SVGs: svgSimpleBars, svgGroupedBars, svgHBarRef, svgLineRef
  */
 
-import { readFileSync } from "fs";
+import { readFileSync, statSync } from "fs";
 import { resolve, join, sep, dirname } from "path";
 import { fileURLToPath } from "url";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname  = dirname(__filename);
+
+// ─── Logo root resolution (path-safe, env-overridable) ───────────────────────
+//
+// When esbuild bundles all modules into dist/index.mjs, import.meta.url
+// resolves to the bundle location (artifacts/api-server/dist/), not the
+// original source file. The "../../../../" path only works from the source
+// tree. We probe multiple candidate paths and use the first that exists on
+// disk. An env var override wins above all.
+
+function _findLogoRoot(): string {
+  if (process.env.FINANCEOS_PUBLIC_DIR) return process.env.FINANCEOS_PUBLIC_DIR;
+
+  const candidates = [
+    // ESM bundle at dist/index.mjs → artifacts/api-server/dist/ → ../../financeos/public
+    resolve(__dirname, "../../financeos/public"),
+    // Source: src/reports/renderers/ → ../../../../financeos/public
+    resolve(__dirname, "../../../../financeos/public"),
+    // Replit: workspace root may be different
+    resolve(__dirname, "../../../../../financeos/public"),
+    resolve(process.cwd(), "artifacts/financeos/public"),
+    resolve(process.cwd(), "financeos/public"),
+  ];
+
+  for (const candidate of candidates) {
+    try {
+      const st = statSync(candidate);
+      if (st.isDirectory()) return candidate;
+    } catch { /* not found */ }
+  }
+
+  // Return first candidate as fallback (will likely fail — logged at read time)
+  return candidates[0]!;
+}
+
+const _LOGO_ROOT = _findLogoRoot();
 
 // ─── Brand tokens ─────────────────────────────────────────────────────────────
 
@@ -80,9 +115,9 @@ export function embedLogoPath(logoPath: string | null): string | null {
   if (_LOGO_CACHE.has(logoPath)) return _LOGO_CACHE.get(logoPath) ?? null;
   try {
     const relative = logoPath.replace(/^\//, "");
-    const logoRoot = resolve(__dirname, "../../../../financeos/public");
-    const diskPath = resolve(join(logoRoot, relative));
-    if (!diskPath.startsWith(logoRoot + sep)) { _LOGO_CACHE.set(logoPath, null); return null; }
+    const diskPath = resolve(join(_LOGO_ROOT, relative));
+    // Path-traversal guard
+    if (!diskPath.startsWith(_LOGO_ROOT + sep)) { _LOGO_CACHE.set(logoPath, null); return null; }
     const bytes = readFileSync(diskPath);
     const ext = diskPath.split(".").pop()?.toLowerCase() ?? "png";
     const mime = ext === "svg" ? "image/svg+xml" : ext === "jpg" || ext === "jpeg" ? "image/jpeg" : "image/png";
@@ -1275,6 +1310,32 @@ export function refRecommendationCallout(label: string, body: string): string {
 /** Wrap paragraphs in a narrative div. */
 export function refNarrative(...paragraphs: string[]): string {
   return `<div class="narrative">${paragraphs.map((p) => `<p>${escHtml(p)}</p>`).join("")}</div>`;
+}
+
+/**
+ * Render narrative blocks with inline-edit markers for the draft preview.
+ * Blocks with commentaryType management_commentary or recommended_action
+ * receive data-editable="true" and data-block-id so the iframe editing
+ * script can make them click-to-edit. FinanceOS Analysis blocks are locked.
+ * In final generation (isPreview=false) all blocks render as plain <p> tags.
+ */
+export type NarrativeBlockSpec = {
+  id:   string | null;
+  text: string;
+  type: string;
+  editable: boolean;
+};
+
+export function refNarrativeBlocks(blocks: NarrativeBlockSpec[], isPreview: boolean): string {
+  if (blocks.length === 0) return "";
+  const items = blocks.map((b) => {
+    const p = `<p>${escHtml(b.text)}</p>`;
+    if (isPreview && b.editable && b.id) {
+      return `<div class="narrative-block" data-editable="true" data-block-id="${escHtml(b.id)}" data-block-type="${escHtml(b.type)}">${p}</div>`;
+    }
+    return `<div class="narrative-block">${p}</div>`;
+  });
+  return `<div class="narrative">${items.join("")}</div>`;
 }
 
 /** Small italic note paragraph. */

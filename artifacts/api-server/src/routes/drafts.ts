@@ -27,6 +27,87 @@ import type { ReportOutputFormat } from "../reports/templates.js";
 
 const router: IRouter = Router();
 
+/**
+ * Inject a small inline-editing script into preview HTML.
+ * When canEdit=false (approved/generated drafts) the script is omitted —
+ * the data attributes remain in the HTML but clicks produce no UI.
+ * The script is sandboxed inside the iframe and posts messages to the
+ * parent React component for save/cancel operations.
+ */
+function injectPreviewScript(html: string, canEdit: boolean): string {
+  const script = canEdit ? `
+<script>
+(function() {
+  var EDITABLE_SELECTOR = '[data-editable="true"]';
+  document.querySelectorAll(EDITABLE_SELECTOR).forEach(function(el) {
+    el.style.cursor = 'text';
+    el.setAttribute('title', 'Click to edit');
+    el.addEventListener('mouseenter', function() {
+      if (!el.classList.contains('fo-editing')) {
+        el.style.outline = '2px dashed rgba(109,40,217,0.35)';
+        el.style.borderRadius = '3px';
+      }
+    });
+    el.addEventListener('mouseleave', function() {
+      if (!el.classList.contains('fo-editing')) el.style.outline = '';
+    });
+    el.addEventListener('click', function(e) {
+      if (el.classList.contains('fo-editing')) return;
+      e.preventDefault();
+      startEdit(el);
+    });
+  });
+
+  function startEdit(el) {
+    el.classList.add('fo-editing');
+    el.style.outline = '2px solid rgba(109,40,217,0.6)';
+    el.style.borderRadius = '3px';
+    var blockId = el.getAttribute('data-block-id');
+    var orig = el.querySelector('p') ? el.querySelector('p').textContent : el.textContent;
+    el.innerHTML = '';
+
+    var ta = document.createElement('textarea');
+    ta.value = orig;
+    ta.style.cssText = 'width:100%;min-height:4em;font-size:inherit;font-family:inherit;line-height:1.6;border:1px solid rgba(109,40,217,0.3);border-radius:4px;padding:6px 8px;background:#faf9ff;resize:vertical;box-sizing:border-box;outline:none;';
+    ta.setAttribute('data-fo-editor', 'true');
+
+    var row = document.createElement('div');
+    row.style.cssText = 'display:flex;gap:8px;margin-top:6px;';
+
+    var saveBtn = document.createElement('button');
+    saveBtn.textContent = 'Save';
+    saveBtn.style.cssText = 'padding:3px 14px;font-size:11px;font-family:system-ui,Arial,sans-serif;background:#5b21b6;color:#fff;border:none;border-radius:4px;cursor:pointer;font-weight:600;';
+
+    var cancelBtn = document.createElement('button');
+    cancelBtn.textContent = 'Cancel';
+    cancelBtn.style.cssText = 'padding:3px 14px;font-size:11px;font-family:system-ui,Arial,sans-serif;background:#e5e7eb;color:#374151;border:none;border-radius:4px;cursor:pointer;';
+
+    row.appendChild(saveBtn);
+    row.appendChild(cancelBtn);
+    el.appendChild(ta);
+    el.appendChild(row);
+    ta.focus();
+
+    saveBtn.onclick = function() {
+      var text = ta.value.trim();
+      window.parent.postMessage({type:'fo-edit-save', blockId: blockId, text: text}, '*');
+      el.innerHTML = '<p>' + text.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;') + '</p>';
+      el.classList.remove('fo-editing');
+      el.style.outline = '';
+    };
+    cancelBtn.onclick = function() {
+      window.parent.postMessage({type:'fo-edit-cancel', blockId: blockId}, '*');
+      el.innerHTML = '<p>' + orig.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;') + '</p>';
+      el.classList.remove('fo-editing');
+      el.style.outline = '';
+    };
+  }
+})();
+</script>` : "";
+
+  return html.replace("</body>", `${script}\n</body>`);
+}
+
 /** Coerce Express 5 params (string | string[]) to a plain string. */
 function paramStr(v: string | string[] | undefined): string {
   return Array.isArray(v) ? (v[0] ?? "") : (v ?? "");
@@ -293,6 +374,26 @@ router.post("/drafts/commentary/:id/approve", requirePermission("reports"), asyn
   }
 });
 
+// PATCH /api/drafts/commentary/:id/content — inline-edit a management block
+router.patch("/drafts/commentary/:id/content", requirePermission("reports"), async (req, res) => {
+  const user = req.session.user!;
+  if (!userCanEdit(user.role)) {
+    res.status(403).json({ ok: false, error: "Only admin, cfo, or controller roles can edit commentary.", ts: new Date().toISOString() });
+    return;
+  }
+  const { content } = req.body as { content?: string };
+  if (typeof content !== "string" || !content.trim()) {
+    res.status(400).json({ ok: false, error: "content must be a non-empty string.", ts: new Date().toISOString() });
+    return;
+  }
+  try {
+    const entry = await CommentaryService.updateContent(paramStr(req.params["id"]), content.trim(), user.email);
+    res.json({ ok: true, data: entry, ts: new Date().toISOString() });
+  } catch (err) {
+    res.status(400).json({ ok: false, error: String(err), ts: new Date().toISOString() });
+  }
+});
+
 // ─── GET /api/drafts/:id — Get a single draft ─────────────────────────────────
 router.get("/drafts/:id", requirePermission("reports"), async (req, res) => {
   try {
@@ -460,7 +561,8 @@ router.get("/drafts/:id/preview", requirePermission("reports"), async (req, res)
       templateId:      draft.templateId,
     });
 
-    // Build narrative context with approved edits overlaid
+    // Build narrative context with approved edits overlaid.
+    // isPreview=true enables inline-edit data attributes on management blocks.
     const narrativeCtx = buildNarrativeContext({
       draftId:          draft.id,
       draftVersion:     draft.currentVersion,
@@ -471,11 +573,15 @@ router.get("/drafts/:id/preview", requirePermission("reports"), async (req, res)
       dbEntries:        dbCommentary,
       generatedAnalysis: (draft.generatedAnalysis ?? []) as any,
     });
+    narrativeCtx.isPreview = true;
 
     // Attach narrative context to the report for the renderer
     (report as any).__narrativeContext = narrativeCtx;
 
-    const html = HtmlRenderer.render(report) as string;
+    const rawHtml = HtmlRenderer.render(report) as string;
+    // Inject inline-editing script before </body>
+    const canEdit = draft.status === "draft" || draft.status === "ready_for_review";
+    const html = injectPreviewScript(rawHtml, canEdit);
 
     if (req.query["format"] === "html") {
       res.setHeader("Content-Type", "text/html; charset=utf-8");

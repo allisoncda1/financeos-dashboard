@@ -18,6 +18,7 @@ import {
   refKpiRow,
   refInsightPanel,
   refNarrative,
+  refNarrativeBlocks,
   refSmallNote,
   refSubHeading,
   emptyState,
@@ -33,9 +34,10 @@ import {
 } from "./reportShell.js";
 import {
   getCtxParagraphs,
+  getCtxBlocks,
   getCtxHeading,
   getCtxTitle,
-  renderApprovalBadge,
+  isPreviewMode,
 } from "./narrativeRendering.js";
 
 // ─── Local types ──────────────────────────────────────────────────────────────
@@ -89,16 +91,15 @@ function buildBankBorrowerPage(
     tr(td(m.entity), td(m.basis), tdRaw(ac(m.revenue_ytd), "right"), tdRaw(ac(m.total_assets), "right"), tdRaw(ac(m.total_liabilities), "right"), tdRaw(ac(m.total_equity), "right")),
   ).join("");
 
-  const borrowerNarrative = getCtxParagraphs(report, "executive_summary", [
+  const borrowerBlocks  = getCtxBlocks(report, "executive_summary", [
     `This package presents financial information for ${entities.map((e) => e.m.entity).join(", ")} as of the reporting date ${report.period}. All data is sourced from QuickBooks Online management accounts.`,
   ]);
   const borrowerHeading = getCtxHeading(report, "executive_summary", "Borrower Overview");
 
   return wrapPage(`
     ${headerFn(`${report.period} Bank Package`)}
-    ${renderApprovalBadge(report)}
     ${refSectionHeader(null, "BORROWER SUMMARY", borrowerHeading)}
-    ${refNarrative(...borrowerNarrative)}
+    ${refNarrativeBlocks(borrowerBlocks, isPreviewMode(report))}
     ${refTable(tr(th("Entity"), th("Basis"), th("Revenue YTD", "right"), th("Total Assets", "right"), th("Total Liabilities", "right"), th("Total Equity", "right")), rows)}
     ${refSmallNote("Management accounts. Not an audited financial statement.")}
   `);
