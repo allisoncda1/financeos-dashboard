@@ -291,7 +291,48 @@ components:
         createdAt:
           type: string
           format: date-time
+        draftId:
+          type: string
+          format: uuid
+          nullable: true
+          description: The approved draft this report was generated from, or null for direct generation.
+        draftVersion:
+          type: integer
+          nullable: true
+          description: The draft version at time of generation.
+        approvalStatus:
+          type: string
+          nullable: true
+          enum: [not_required, approved, auto_approved]
+          description: Approval workflow status at generation time.
+        approvedBy:
+          type: string
+          nullable: true
+          description: Email of the approver, or null for direct generation.
+        approvedAt:
+          type: string
+          format: date-time
+          nullable: true
+          description: Timestamp of draft approval.
+        dataFingerprint:
+          type: string
+          nullable: true
+          description: SHA-256 fingerprint of the financial data used at generation time.
+        commentaryVersion:
+          type: integer
+          nullable: true
+          description: Max version number of the included commentary entries.
       required: [id, template, title, period, format, entitySlugs, status, createdAt]
+
+    DraftGenerateRequest:
+      type: object
+      description: Request body for POST /drafts/{draftId}/generate
+      properties:
+        format:
+          type: string
+          enum: [json, pdf, html]
+          description: Output format. Excel is not supported for draft-generated reports (narrative context is not available to the Excel renderer).
+      required: [format]
 
     # AI
     AiAnalyzeRequest:
@@ -1489,3 +1530,594 @@ paths:
           $ref: "#/components/responses/NotFound"
         "500":
           $ref: "#/components/responses/ServerError"
+
+  # ── Report Drafts ────────────────────────────────────────────────────────────
+
+  /drafts:
+    post:
+      operationId: createDraft
+      tags: [ReportDrafts]
+      summary: Create a new report draft
+      description: Builds a live report, generates analysis, creates a draft, and persists commentary. Requires editor role (admin, cfo, controller).
+      security:
+        - sessionCookie: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [template, period, entities]
+              properties:
+                template:
+                  type: string
+                period:
+                  type: string
+                entities:
+                  oneOf:
+                    - type: string
+                      enum: [all]
+                    - type: array
+                      items:
+                        type: string
+      responses:
+        "201":
+          description: Draft created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiEnvelope"
+        "400":
+          description: Invalid input or unauthorized role
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
+    get:
+      operationId: listDrafts
+      tags: [ReportDrafts]
+      summary: List drafts for a template and period
+      security:
+        - sessionCookie: []
+      parameters:
+        - name: template
+          in: query
+          required: true
+          schema:
+            type: string
+        - name: period
+          in: query
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: List of drafts
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiEnvelope"
+        "400":
+          description: Missing required query params
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
+  /drafts/{draftId}:
+    get:
+      operationId: getDraft
+      tags: [ReportDrafts]
+      summary: Get a single draft by ID
+      security:
+        - sessionCookie: []
+      parameters:
+        - name: draftId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: Draft
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiEnvelope"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /drafts/{draftId}/edits:
+    patch:
+      operationId: saveDraftEdits
+      tags: [ReportDrafts]
+      summary: Save narrative edits to a draft
+      security:
+        - sessionCookie: []
+      parameters:
+        - name: draftId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [editableContent]
+              properties:
+                editableContent:
+                  type: object
+                changeSummary:
+                  type: string
+      responses:
+        "200":
+          description: Updated draft
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiEnvelope"
+        "400":
+          description: Invalid input or approved/superseded draft
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          description: Insufficient role
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /drafts/{draftId}/versions:
+    get:
+      operationId: getDraftVersions
+      tags: [ReportDrafts]
+      summary: Get version history for a draft
+      security:
+        - sessionCookie: []
+      parameters:
+        - name: draftId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: List of versions
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiEnvelope"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
+  /drafts/{draftId}/restore:
+    post:
+      operationId: restoreDraftVersion
+      tags: [ReportDrafts]
+      summary: Restore a prior version
+      security:
+        - sessionCookie: []
+      parameters:
+        - name: draftId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [versionNumber]
+              properties:
+                versionNumber:
+                  type: integer
+      responses:
+        "200":
+          description: Draft after restore
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiEnvelope"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /drafts/{draftId}/submit:
+    post:
+      operationId: submitDraftForReview
+      tags: [ReportDrafts]
+      summary: Submit draft for review (draft → ready_for_review)
+      security:
+        - sessionCookie: []
+      parameters:
+        - name: draftId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: Updated draft
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiEnvelope"
+        "400":
+          description: Invalid state transition
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
+  /drafts/{draftId}/approve:
+    post:
+      operationId: approveDraft
+      tags: [ReportDrafts]
+      summary: Approve a draft (admin or cfo only)
+      security:
+        - sessionCookie: []
+      parameters:
+        - name: draftId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: Approved draft
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiEnvelope"
+        "400":
+          description: Stale draft or invalid state
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          description: Insufficient role (requires admin or cfo)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /drafts/{draftId}/preview:
+    get:
+      operationId: getDraftPreview
+      tags: [ReportDrafts]
+      summary: Render draft HTML preview with narrative context
+      security:
+        - sessionCookie: []
+      parameters:
+        - name: draftId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: Preview data including HTML
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiEnvelope"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /drafts/{draftId}/generate:
+    post:
+      operationId: generateDraftReport
+      tags: [ReportDrafts]
+      summary: Generate a final report from an approved draft
+      description: |
+        Builds a final PDF/HTML/JSON report using the approved narrative from the
+        specified draft. The server reloads all financial data from authoritative
+        FinanceOS sources, recomputes the data fingerprint, and rejects generation
+        if the data changed since approval. Approval metadata, financial values,
+        fingerprints, and narrative source labels are never accepted from the client.
+      security:
+        - sessionCookie: []
+      parameters:
+        - name: draftId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/DraftGenerateRequest"
+      responses:
+        "200":
+          description: |
+            For format=json: JSON envelope with report data and Report History linkage.
+            For format=pdf: application/pdf binary attachment.
+            For format=html: text/html attachment.
+          headers:
+            X-Draft-Id:
+              schema:
+                type: string
+              description: The draft ID used for generation (pdf/html only).
+            X-Draft-Version:
+              schema:
+                type: string
+              description: The draft version at generation time (pdf/html only).
+            X-Approved-By:
+              schema:
+                type: string
+              description: Email of the approver (pdf/html only).
+            X-History-Id:
+              schema:
+                type: string
+              description: The new Report History row ID (pdf/html only).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiEnvelope"
+            application/pdf:
+              schema:
+                type: string
+                format: binary
+            text/html:
+              schema:
+                type: string
+        "400":
+          description: Draft is not approved, is stale, format is invalid, or fingerprint changed.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiEnvelope"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          description: The authenticated user's role cannot generate final reports.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiEnvelope"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "500":
+          $ref: "#/components/responses/ServerError"
+
+  # ── Commentary ───────────────────────────────────────────────────────────────
+
+  /drafts/commentary:
+    get:
+      operationId: getCommentary
+      tags: [ReportDrafts]
+      summary: Get commentary entries for an entity, period, and template
+      security:
+        - sessionCookie: []
+      parameters:
+        - name: entity
+          in: query
+          required: true
+          schema:
+            type: string
+        - name: period
+          in: query
+          required: true
+          schema:
+            type: string
+        - name: template
+          in: query
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Commentary entries
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiEnvelope"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
+    post:
+      operationId: saveCommentary
+      tags: [ReportDrafts]
+      summary: Create or update a commentary entry (management_commentary or recommended_action only)
+      security:
+        - sessionCookie: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [entitySlug, reportingPeriod, templateId, sectionKey, commentaryType, content]
+              properties:
+                entitySlug:
+                  type: string
+                reportingPeriod:
+                  type: string
+                templateId:
+                  type: string
+                sectionKey:
+                  type: string
+                commentaryType:
+                  type: string
+                  enum: [management_commentary, recommended_action]
+                content:
+                  type: string
+                sortOrder:
+                  type: integer
+                existingId:
+                  type: string
+                  format: uuid
+      responses:
+        "200":
+          description: Saved commentary entry
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiEnvelope"
+        "400":
+          description: Invalid input or forbidden type
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
+  /drafts/commentary/reorder:
+    post:
+      operationId: reorderCommentary
+      tags: [ReportDrafts]
+      summary: Reorder commentary entries
+      security:
+        - sessionCookie: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [ids]
+              properties:
+                ids:
+                  type: array
+                  items:
+                    type: string
+      responses:
+        "200":
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiEnvelope"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
+  /drafts/commentary/{commentaryId}/toggle:
+    patch:
+      operationId: toggleCommentary
+      tags: [ReportDrafts]
+      summary: Toggle whether a commentary block is included in the report
+      security:
+        - sessionCookie: []
+      parameters:
+        - name: commentaryId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [included]
+              properties:
+                included:
+                  type: boolean
+      responses:
+        "200":
+          description: Updated commentary entry
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiEnvelope"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /drafts/commentary/{commentaryId}:
+    delete:
+      operationId: deleteCommentary
+      tags: [ReportDrafts]
+      summary: Delete a commentary entry (management_commentary and recommended_action only)
+      security:
+        - sessionCookie: []
+      parameters:
+        - name: commentaryId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "204":
+          description: Deleted
+        "400":
+          description: Cannot delete FinanceOS analysis entries
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /drafts/commentary/{commentaryId}/approve:
+    post:
+      operationId: approveCommentary
+      tags: [ReportDrafts]
+      summary: Approve a commentary entry (admin or cfo only)
+      security:
+        - sessionCookie: []
+      parameters:
+        - name: commentaryId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: Approved commentary entry
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiEnvelope"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          description: Insufficient role
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          $ref: "#/components/responses/NotFound"

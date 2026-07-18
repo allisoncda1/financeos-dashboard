@@ -164,6 +164,18 @@ export const ReportHistoryEntrySource = {
 } as const;
 
 /**
+ * Approval workflow status at generation time.
+ */
+export type ReportHistoryEntryApprovalStatus = typeof ReportHistoryEntryApprovalStatus[keyof typeof ReportHistoryEntryApprovalStatus] | null;
+
+
+export const ReportHistoryEntryApprovalStatus = {
+  not_required: 'not_required',
+  approved: 'approved',
+  auto_approved: 'auto_approved',
+} as const;
+
+/**
  * A single persisted report generation record
  */
 export interface ReportHistoryEntry {
@@ -182,6 +194,40 @@ export interface ReportHistoryEntry {
   errorMessage?: string | null;
   completedAt?: string | null;
   createdAt: string;
+  /** The approved draft this report was generated from, or null for direct generation. */
+  draftId?: string | null;
+  /** The draft version at time of generation. */
+  draftVersion?: number | null;
+  /** Approval workflow status at generation time. */
+  approvalStatus?: ReportHistoryEntryApprovalStatus;
+  /** Email of the approver, or null for direct generation. */
+  approvedBy?: string | null;
+  /** Timestamp of draft approval. */
+  approvedAt?: string | null;
+  /** SHA-256 fingerprint of the financial data used at generation time. */
+  dataFingerprint?: string | null;
+  /** Max version number of the included commentary entries. */
+  commentaryVersion?: number | null;
+}
+
+/**
+ * Output format. Excel is not supported for draft-generated reports (narrative context is not available to the Excel renderer).
+ */
+export type DraftGenerateRequestFormat = typeof DraftGenerateRequestFormat[keyof typeof DraftGenerateRequestFormat];
+
+
+export const DraftGenerateRequestFormat = {
+  json: 'json',
+  pdf: 'pdf',
+  html: 'html',
+} as const;
+
+/**
+ * Request body for POST /drafts/{draftId}/generate
+ */
+export interface DraftGenerateRequest {
+  /** Output format. Excel is not supported for draft-generated reports (narrative context is not available to the Excel renderer). */
+  format: DraftGenerateRequestFormat;
 }
 
 export type AiAnalyzeRequestEntitiesItem = typeof AiAnalyzeRequestEntitiesItem[keyof typeof AiAnalyzeRequestEntitiesItem];
@@ -321,5 +367,60 @@ export type GetEntityAnnualBudgetParams = {
  * @maximum 2099
  */
 year?: YearQueryParameter;
+};
+
+export type CreateDraftBody = {
+  template: string;
+  period: string;
+  entities: 'all' | string[];
+};
+
+export type ListDraftsParams = {
+template: string;
+period: string;
+};
+
+export type SaveDraftEditsBodyEditableContent = { [key: string]: unknown };
+
+export type SaveDraftEditsBody = {
+  editableContent: SaveDraftEditsBodyEditableContent;
+  changeSummary?: string;
+};
+
+export type RestoreDraftVersionBody = {
+  versionNumber: number;
+};
+
+export type GetCommentaryParams = {
+entity: string;
+period: string;
+template: string;
+};
+
+export type SaveCommentaryBodyCommentaryType = typeof SaveCommentaryBodyCommentaryType[keyof typeof SaveCommentaryBodyCommentaryType];
+
+
+export const SaveCommentaryBodyCommentaryType = {
+  management_commentary: 'management_commentary',
+  recommended_action: 'recommended_action',
+} as const;
+
+export type SaveCommentaryBody = {
+  entitySlug: string;
+  reportingPeriod: string;
+  templateId: string;
+  sectionKey: string;
+  commentaryType: SaveCommentaryBodyCommentaryType;
+  content: string;
+  sortOrder?: number;
+  existingId?: string;
+};
+
+export type ReorderCommentaryBody = {
+  ids: string[];
+};
+
+export type ToggleCommentaryBody = {
+  included: boolean;
 };
 

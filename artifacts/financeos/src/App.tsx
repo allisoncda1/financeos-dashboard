@@ -24,6 +24,7 @@ import SettingsPage from "@/pages/control/settings";
 import ValidationPage from "@/pages/control/validation";
 import OperationsPage from "@/pages/operations";
 import ReportsPage from "@/pages/reports";
+import ReportDraftEditor from "@/pages/reportDraftEditor";
 import EntityPage from "@/pages/entity/dashboard";
 import EntityBankingPage from "@/pages/entity/banking";
 import EntityCustomersPage from "@/pages/entity/customers";
@@ -106,6 +107,7 @@ function AppRoutes() {
       <Route path="/control/validation" component={ValidationPage} />
       <Route path="/operations" component={OperationsPage} />
       <Route path="/reports" component={ReportsPage} />
+      <Route path="/reports/draft/:draftId" component={ReportDraftEditor} />
       <Route path="/entity/:slug" component={EntityPage} />
       <Route path="/entity/:slug/banking" component={EntityBankingPage} />
       <Route path="/entity/:slug/customers" component={EntityCustomersPage} />

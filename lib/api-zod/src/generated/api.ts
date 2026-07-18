@@ -741,3 +741,275 @@ export const UpsertEntityBudgetPeriodResponse = zod.object({
 }).describe('Standard JSON envelope returned by all successful responses')
 
 
+/**
+ * Builds a live report, generates analysis, creates a draft, and persists commentary. Requires editor role (admin, cfo, controller).
+ * @summary Create a new report draft
+ */
+export const CreateDraftBody = zod.object({
+  "template": zod.string(),
+  "period": zod.string(),
+  "entities": zod.union([zod.enum(['all']),zod.array(zod.string())])
+})
+
+export const CreateDraftResponse = zod.object({
+  "ok": zod.literal(true),
+  "data": zod.unknown().describe('Response payload (shape varies by endpoint)'),
+  "source": zod.enum(['live', 'mock', 'cache', 'db']).optional().describe('Where the data was sourced from'),
+  "ts": zod.coerce.date().describe('Server timestamp (ISO 8601)')
+}).describe('Standard JSON envelope returned by all successful responses')
+
+
+/**
+ * @summary List drafts for a template and period
+ */
+export const ListDraftsQueryParams = zod.object({
+  "template": zod.coerce.string(),
+  "period": zod.coerce.string()
+})
+
+export const ListDraftsResponse = zod.object({
+  "ok": zod.literal(true),
+  "data": zod.unknown().describe('Response payload (shape varies by endpoint)'),
+  "source": zod.enum(['live', 'mock', 'cache', 'db']).optional().describe('Where the data was sourced from'),
+  "ts": zod.coerce.date().describe('Server timestamp (ISO 8601)')
+}).describe('Standard JSON envelope returned by all successful responses')
+
+
+/**
+ * @summary Get a single draft by ID
+ */
+export const GetDraftParams = zod.object({
+  "draftId": zod.coerce.string().uuid()
+})
+
+export const GetDraftResponse = zod.object({
+  "ok": zod.literal(true),
+  "data": zod.unknown().describe('Response payload (shape varies by endpoint)'),
+  "source": zod.enum(['live', 'mock', 'cache', 'db']).optional().describe('Where the data was sourced from'),
+  "ts": zod.coerce.date().describe('Server timestamp (ISO 8601)')
+}).describe('Standard JSON envelope returned by all successful responses')
+
+
+/**
+ * @summary Save narrative edits to a draft
+ */
+export const SaveDraftEditsParams = zod.object({
+  "draftId": zod.coerce.string().uuid()
+})
+
+export const SaveDraftEditsBody = zod.object({
+  "editableContent": zod.object({
+
+}).passthrough(),
+  "changeSummary": zod.string().optional()
+})
+
+export const SaveDraftEditsResponse = zod.object({
+  "ok": zod.literal(true),
+  "data": zod.unknown().describe('Response payload (shape varies by endpoint)'),
+  "source": zod.enum(['live', 'mock', 'cache', 'db']).optional().describe('Where the data was sourced from'),
+  "ts": zod.coerce.date().describe('Server timestamp (ISO 8601)')
+}).describe('Standard JSON envelope returned by all successful responses')
+
+
+/**
+ * @summary Get version history for a draft
+ */
+export const GetDraftVersionsParams = zod.object({
+  "draftId": zod.coerce.string().uuid()
+})
+
+export const GetDraftVersionsResponse = zod.object({
+  "ok": zod.literal(true),
+  "data": zod.unknown().describe('Response payload (shape varies by endpoint)'),
+  "source": zod.enum(['live', 'mock', 'cache', 'db']).optional().describe('Where the data was sourced from'),
+  "ts": zod.coerce.date().describe('Server timestamp (ISO 8601)')
+}).describe('Standard JSON envelope returned by all successful responses')
+
+
+/**
+ * @summary Restore a prior version
+ */
+export const RestoreDraftVersionParams = zod.object({
+  "draftId": zod.coerce.string().uuid()
+})
+
+export const RestoreDraftVersionBody = zod.object({
+  "versionNumber": zod.number()
+})
+
+export const RestoreDraftVersionResponse = zod.object({
+  "ok": zod.literal(true),
+  "data": zod.unknown().describe('Response payload (shape varies by endpoint)'),
+  "source": zod.enum(['live', 'mock', 'cache', 'db']).optional().describe('Where the data was sourced from'),
+  "ts": zod.coerce.date().describe('Server timestamp (ISO 8601)')
+}).describe('Standard JSON envelope returned by all successful responses')
+
+
+/**
+ * @summary Submit draft for review (draft → ready_for_review)
+ */
+export const SubmitDraftForReviewParams = zod.object({
+  "draftId": zod.coerce.string().uuid()
+})
+
+export const SubmitDraftForReviewResponse = zod.object({
+  "ok": zod.literal(true),
+  "data": zod.unknown().describe('Response payload (shape varies by endpoint)'),
+  "source": zod.enum(['live', 'mock', 'cache', 'db']).optional().describe('Where the data was sourced from'),
+  "ts": zod.coerce.date().describe('Server timestamp (ISO 8601)')
+}).describe('Standard JSON envelope returned by all successful responses')
+
+
+/**
+ * @summary Approve a draft (admin or cfo only)
+ */
+export const ApproveDraftParams = zod.object({
+  "draftId": zod.coerce.string().uuid()
+})
+
+export const ApproveDraftResponse = zod.object({
+  "ok": zod.literal(true),
+  "data": zod.unknown().describe('Response payload (shape varies by endpoint)'),
+  "source": zod.enum(['live', 'mock', 'cache', 'db']).optional().describe('Where the data was sourced from'),
+  "ts": zod.coerce.date().describe('Server timestamp (ISO 8601)')
+}).describe('Standard JSON envelope returned by all successful responses')
+
+
+/**
+ * @summary Render draft HTML preview with narrative context
+ */
+export const GetDraftPreviewParams = zod.object({
+  "draftId": zod.coerce.string().uuid()
+})
+
+export const GetDraftPreviewResponse = zod.object({
+  "ok": zod.literal(true),
+  "data": zod.unknown().describe('Response payload (shape varies by endpoint)'),
+  "source": zod.enum(['live', 'mock', 'cache', 'db']).optional().describe('Where the data was sourced from'),
+  "ts": zod.coerce.date().describe('Server timestamp (ISO 8601)')
+}).describe('Standard JSON envelope returned by all successful responses')
+
+
+/**
+ * Builds a final PDF/HTML/JSON report using the approved narrative from the
+ * specified draft. The server reloads all financial data from authoritative
+ * FinanceOS sources, recomputes the data fingerprint, and rejects generation
+ * if the data changed since approval. Approval metadata, financial values,
+ * fingerprints, and narrative source labels are never accepted from the client.
+ * @summary Generate a final report from an approved draft
+ */
+export const GenerateDraftReportParams = zod.object({
+  "draftId": zod.coerce.string().uuid()
+})
+
+export const GenerateDraftReportBody = zod.object({
+  "format": zod.enum(['json', 'pdf', 'html']).describe('Output format. Excel is not supported for draft-generated reports (narrative context is not available to the Excel renderer).')
+}).describe('Request body for POST \/drafts\/{draftId}\/generate')
+
+export const GenerateDraftReportResponse = zod.object({
+  "ok": zod.literal(true),
+  "data": zod.unknown().describe('Response payload (shape varies by endpoint)'),
+  "source": zod.enum(['live', 'mock', 'cache', 'db']).optional().describe('Where the data was sourced from'),
+  "ts": zod.coerce.date().describe('Server timestamp (ISO 8601)')
+}).describe('Standard JSON envelope returned by all successful responses')
+
+
+/**
+ * @summary Get commentary entries for an entity, period, and template
+ */
+export const GetCommentaryQueryParams = zod.object({
+  "entity": zod.coerce.string(),
+  "period": zod.coerce.string(),
+  "template": zod.coerce.string()
+})
+
+export const GetCommentaryResponse = zod.object({
+  "ok": zod.literal(true),
+  "data": zod.unknown().describe('Response payload (shape varies by endpoint)'),
+  "source": zod.enum(['live', 'mock', 'cache', 'db']).optional().describe('Where the data was sourced from'),
+  "ts": zod.coerce.date().describe('Server timestamp (ISO 8601)')
+}).describe('Standard JSON envelope returned by all successful responses')
+
+
+/**
+ * @summary Create or update a commentary entry (management_commentary or recommended_action only)
+ */
+export const SaveCommentaryBody = zod.object({
+  "entitySlug": zod.string(),
+  "reportingPeriod": zod.string(),
+  "templateId": zod.string(),
+  "sectionKey": zod.string(),
+  "commentaryType": zod.enum(['management_commentary', 'recommended_action']),
+  "content": zod.string(),
+  "sortOrder": zod.number().optional(),
+  "existingId": zod.string().uuid().optional()
+})
+
+export const SaveCommentaryResponse = zod.object({
+  "ok": zod.literal(true),
+  "data": zod.unknown().describe('Response payload (shape varies by endpoint)'),
+  "source": zod.enum(['live', 'mock', 'cache', 'db']).optional().describe('Where the data was sourced from'),
+  "ts": zod.coerce.date().describe('Server timestamp (ISO 8601)')
+}).describe('Standard JSON envelope returned by all successful responses')
+
+
+/**
+ * @summary Reorder commentary entries
+ */
+export const ReorderCommentaryBody = zod.object({
+  "ids": zod.array(zod.string())
+})
+
+export const ReorderCommentaryResponse = zod.object({
+  "ok": zod.literal(true),
+  "data": zod.unknown().describe('Response payload (shape varies by endpoint)'),
+  "source": zod.enum(['live', 'mock', 'cache', 'db']).optional().describe('Where the data was sourced from'),
+  "ts": zod.coerce.date().describe('Server timestamp (ISO 8601)')
+}).describe('Standard JSON envelope returned by all successful responses')
+
+
+/**
+ * @summary Toggle whether a commentary block is included in the report
+ */
+export const ToggleCommentaryParams = zod.object({
+  "commentaryId": zod.coerce.string().uuid()
+})
+
+export const ToggleCommentaryBody = zod.object({
+  "included": zod.boolean()
+})
+
+export const ToggleCommentaryResponse = zod.object({
+  "ok": zod.literal(true),
+  "data": zod.unknown().describe('Response payload (shape varies by endpoint)'),
+  "source": zod.enum(['live', 'mock', 'cache', 'db']).optional().describe('Where the data was sourced from'),
+  "ts": zod.coerce.date().describe('Server timestamp (ISO 8601)')
+}).describe('Standard JSON envelope returned by all successful responses')
+
+
+/**
+ * @summary Delete a commentary entry (management_commentary and recommended_action only)
+ */
+export const DeleteCommentaryParams = zod.object({
+  "commentaryId": zod.coerce.string().uuid()
+})
+
+export const DeleteCommentaryResponse = zod.void()
+
+
+/**
+ * @summary Approve a commentary entry (admin or cfo only)
+ */
+export const ApproveCommentaryParams = zod.object({
+  "commentaryId": zod.coerce.string().uuid()
+})
+
+export const ApproveCommentaryResponse = zod.object({
+  "ok": zod.literal(true),
+  "data": zod.unknown().describe('Response payload (shape varies by endpoint)'),
+  "source": zod.enum(['live', 'mock', 'cache', 'db']).optional().describe('Where the data was sourced from'),
+  "ts": zod.coerce.date().describe('Server timestamp (ISO 8601)')
+}).describe('Standard JSON envelope returned by all successful responses')
+
+

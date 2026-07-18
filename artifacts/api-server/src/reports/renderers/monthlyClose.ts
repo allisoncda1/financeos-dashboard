@@ -37,6 +37,12 @@ import {
   SHELL_EXTRA_STYLES,
   type HeaderFn,
 } from "./reportShell.js";
+import {
+  getCtxParagraphs,
+  getCtxHeading,
+  getCtxTitle,
+  renderApprovalBadge,
+} from "./narrativeRendering.js";
 
 // ─── Local types ──────────────────────────────────────────────────────────────
 
@@ -407,10 +413,14 @@ function buildExecSummaryPage(report: BuiltReport, entities: { slug: string; m: 
     tr(td("Open AP"), tdRaw(ac(first.m.open_ap), "right"), td("—", "right")),
   ].join("");
 
+  const execNarrative = getCtxParagraphs(report, "executive_summary", narrativeExecSummary(first.m, first.fin, report.period));
+  const execHeading   = getCtxHeading(report, "executive_summary", "Executive Financial Summary");
+
   return wrapPage(`
     ${headerFn(`${report.period} Monthly Close Report`)}
-    ${refSectionHeader(null, "OWNER SUMMARY", "Executive Financial Summary")}
-    ${refNarrative(...narrativeExecSummary(first.m, first.fin, report.period))}
+    ${renderApprovalBadge(report)}
+    ${refSectionHeader(null, "OWNER SUMMARY", execHeading)}
+    ${refNarrative(...execNarrative)}
     ${kpis}
     <div style="margin:16pt 0 8pt;">${chartHtml}</div>
     <div class="no-break">
@@ -434,10 +444,13 @@ function buildExecInsightsPage(report: BuiltReport, entities: { slug: string; m:
     entityTable = `${refSubHeading("Entity Performance Snapshot — Year to Date")}${refTable(tr(th("Entity"), th("Revenue YTD", "right"), th("Net Income YTD", "right"), th("Cash on Hand", "right"), th("Net Margin", "right")), tableRows)}`;
   }
 
+  const insightNarrative = getCtxParagraphs(report, "management_comments", paragraphs);
+  const insightHeading   = getCtxHeading(report, "management_comments", "Executive Insights");
+
   return wrapPage(`
     ${headerFn(`${report.period} Monthly Close Report`)}
-    ${refSectionHeader(null, "MANAGEMENT COMMENTARY", "Executive Insights")}
-    ${refNarrative(...paragraphs)}
+    ${refSectionHeader(null, "MANAGEMENT COMMENTARY", insightHeading)}
+    ${refNarrative(...insightNarrative)}
     ${entityTable}
   `);
 }
@@ -958,13 +971,25 @@ function buildRecommendationsPage(report: BuiltReport, alerts: Alert[], entities
   recs.push({ recommendation: "Confirm all bank accounts are reconciled in QuickBooks Online", basis: "Unreconciled accounts create risk of misstatements in future close cycles", priority: "Before Close" });
   recs.push({ recommendation: "Export and archive this close package for the owner record", basis: "Maintain a permanent digital record for audit readiness", priority: "Before Close" });
 
+  // Override recommendations table with NarrativeContext blocks if present
+  const ctxRecs = getCtxParagraphs(report, "recommended_actions", []);
+  const recHeading = getCtxHeading(report, "recommended_actions", "Management Recommendations");
+
+  if (ctxRecs.length > 0) {
+    return wrapPage(`
+      ${headerFn(`${report.period} Monthly Close Report`)}
+      ${refSectionHeader(11, "MANAGEMENT RECOMMENDATIONS", recHeading)}
+      ${refNarrative(...ctxRecs)}
+    `);
+  }
+
   const tableRows = recs.map((r) =>
     tr(td(r.recommendation, "left", true), td(r.basis), td(r.priority, "center")),
   ).join("");
 
   return wrapPage(`
     ${headerFn(`${report.period} Monthly Close Report`)}
-    ${refSectionHeader(11, "MANAGEMENT RECOMMENDATIONS", "Management Recommendations")}
+    ${refSectionHeader(11, "MANAGEMENT RECOMMENDATIONS", recHeading)}
     ${refTable(tr(th("Recommendation"), th("Basis"), th("Priority", "center")), tableRows)}
   `);
 }
@@ -1123,8 +1148,13 @@ export function renderMonthlyClose(report: BuiltReport): string {
     buildAppendixPage(report, headerFn),
   ];
 
+  const reportTitle = getCtxTitle(
+    report,
+    `${isPortfolio ? "FinanceOS Portfolio" : primaryName} — ${report.period} Monthly Close Report`,
+  );
+
   return buildReportHtml({
-    title: `${isPortfolio ? "FinanceOS Portfolio" : primaryName} — ${report.period} Monthly Close Report`,
+    title: reportTitle,
     accent,
     pages,
     extraStyles: SHELL_EXTRA_STYLES,

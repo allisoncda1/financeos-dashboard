@@ -20,6 +20,14 @@ export type ReportHistoryEntry = {
   errorMessage: string | null;
   completedAt: string | null;
   createdAt: string;
+  // Draft linkage — null for reports generated without an approved draft
+  draftId: string | null;
+  draftVersion: number | null;
+  approvalStatus: string | null;
+  approvedBy: string | null;
+  approvedAt: string | null;
+  dataFingerprint: string | null;
+  commentaryVersion: number | null;
 };
 
 function toEntry(row: typeof reportHistory.$inferSelect): ReportHistoryEntry {
@@ -39,6 +47,13 @@ function toEntry(row: typeof reportHistory.$inferSelect): ReportHistoryEntry {
     errorMessage:    row.errorMessage ?? null,
     completedAt:     row.completedAt ? row.completedAt.toISOString() : null,
     createdAt:       row.createdAt.toISOString(),
+    draftId:           row.draftId         ?? null,
+    draftVersion:      row.draftVersion    ?? null,
+    approvalStatus:    row.approvalStatus  ?? null,
+    approvedBy:        row.approvedBy      ?? null,
+    approvedAt:        row.approvedAt ? row.approvedAt.toISOString() : null,
+    dataFingerprint:   row.dataFingerprint ?? null,
+    commentaryVersion: row.commentaryVersion ?? null,
   };
 }
 

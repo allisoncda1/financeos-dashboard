@@ -3,6 +3,11 @@
 # compiled output
 dist
 tmp
+
+# Workspace library declaration outputs — committed so Replit and CI can
+# typecheck without a prior tsc --build step.
+!lib/db/dist/
+!lib/api-zod/dist/
 out-tsc
 *.tsbuildinfo
 .expo

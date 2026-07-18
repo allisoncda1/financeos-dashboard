@@ -1,0 +1,1 @@
+{"version":3,"file":"aiReportSummaryRequest.d.ts","sourceRoot":"","sources":["../../../src/generated/types/aiReportSummaryRequest.ts"],"names":[],"mappings":"AAAA;;;;;;GAMG;AACH,OAAO,KAAK,EAAE,8BAA8B,EAAE,MAAM,kCAAkC,CAAC;AAEvF,MAAM,WAAW,sBAAsB;IACrC,gDAAgD;IAChD,QAAQ,CAAC,EAAE,MAAM,CAAC;IAClB,uCAAuC;IACvC,QAAQ,CAAC,EAAE,8BAA8B,CAAC;CAC3C"}

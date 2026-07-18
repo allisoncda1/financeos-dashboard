@@ -33,6 +33,12 @@ import {
   SHELL_EXTRA_STYLES,
   type HeaderFn,
 } from "./reportShell.js";
+import {
+  getCtxParagraphs,
+  getCtxHeading,
+  getCtxTitle,
+  renderApprovalBadge,
+} from "./narrativeRendering.js";
 
 // ─── Local types ──────────────────────────────────────────────────────────────
 
@@ -110,13 +116,17 @@ function buildInvestorHighlightsPage(
     highlights.push(`Operating results for ${report.period} are presented in the sections below.`);
   }
 
+  const highlightNarrative = getCtxParagraphs(report, "executive_summary", [
+    `${first.m.entity} presents the following performance highlights for ${report.period}.`,
+    ...highlights,
+  ]);
+  const highlightHeading = getCtxHeading(report, "executive_summary", "Company Highlights");
+
   return wrapPage(`
     ${headerFn(`${report.period} Investor Update`)}
-    ${refSectionHeader(null, "HIGHLIGHTS", "Company Highlights")}
-    ${refNarrative(
-      `${first.m.entity} presents the following performance highlights for ${report.period}.`,
-      ...highlights,
-    )}
+    ${renderApprovalBadge(report)}
+    ${refSectionHeader(null, "HIGHLIGHTS", highlightHeading)}
+    ${refNarrative(...highlightNarrative)}
     ${refKpiRow([
       { label: "Revenue YTD", value: fmtCurrency(first.m.revenue_ytd), change: "", changeClass: "neu" },
       { label: "Gross Margin", value: fmtPercent(first.m.gross_margin_pct), change: "", changeClass: "neu" },
@@ -351,7 +361,7 @@ export function renderInvestorUpdate(report: BuiltReport): string {
   ];
 
   return buildReportHtml({
-    title: `${primaryName} — ${report.period} Investor Update`,
+    title: getCtxTitle(report, `${primaryName} — ${report.period} Investor Update`),
     accent,
     pages,
     extraStyles: SHELL_EXTRA_STYLES,

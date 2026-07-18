@@ -26,21 +26,30 @@ import type {
   ApiEnvelope,
   BudgetAnnualInput,
   BudgetPeriodInput,
+  CreateDraftBody,
+  DraftGenerateRequest,
   ErrorResponse,
   ForbiddenResponse,
   GetBudgetPortfolioParams,
+  GetCommentaryParams,
   GetEntityAnnualBudgetParams,
   GetEntityBudgetParams,
   GetEntityBudgetVsActualParams,
   GetModelCashflowParams,
   GetModelHistoryParams,
   HealthStatus,
+  ListDraftsParams,
   ListReportHistoryParams,
   LoginRequest,
   NotFoundResponse,
+  ReorderCommentaryBody,
   ReportGenerateRequest,
+  RestoreDraftVersionBody,
+  SaveCommentaryBody,
+  SaveDraftEditsBody,
   ServerErrorResponse,
   SimpleOkResponse,
+  ToggleCommentaryBody,
   TooManyRequestsResponse,
   UnauthorizedResponse
 } from './api.schemas';
@@ -3472,5 +3481,1184 @@ export const useUpsertEntityBudgetPeriod = <TError = ErrorType<ErrorResponse | U
         TContext
       > => {
       return useMutation(getUpsertEntityBudgetPeriodMutationOptions(options));
+    }
+
+export const getCreateDraftUrl = () => {
+
+
+
+
+  return `/api/drafts`
+}
+
+/**
+ * Builds a live report, generates analysis, creates a draft, and persists commentary. Requires editor role (admin, cfo, controller).
+ * @summary Create a new report draft
+ */
+export const createDraft = async (createDraftBody: CreateDraftBody, options?: RequestInit): Promise<ApiEnvelope> => {
+
+  return customFetch<ApiEnvelope>(getCreateDraftUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(createDraftBody)
+  }
+);}
+
+
+
+
+export const getCreateDraftMutationOptions = <TError = ErrorType<ErrorResponse | UnauthorizedResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createDraft>>, TError,{data: BodyType<CreateDraftBody>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof createDraft>>, TError,{data: BodyType<CreateDraftBody>}, TContext> => {
+
+const mutationKey = ['createDraft'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof createDraft>>, {data: BodyType<CreateDraftBody>}> = (props) => {
+          const {data} = props ?? {};
+
+          return  createDraft(data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type CreateDraftMutationResult = NonNullable<Awaited<ReturnType<typeof createDraft>>>
+    export type CreateDraftMutationBody = BodyType<CreateDraftBody>
+    export type CreateDraftMutationError = ErrorType<ErrorResponse | UnauthorizedResponse>
+
+    /**
+ * @summary Create a new report draft
+ */
+export const useCreateDraft = <TError = ErrorType<ErrorResponse | UnauthorizedResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createDraft>>, TError,{data: BodyType<CreateDraftBody>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof createDraft>>,
+        TError,
+        {data: BodyType<CreateDraftBody>},
+        TContext
+      > => {
+      return useMutation(getCreateDraftMutationOptions(options));
+    }
+
+export const getListDraftsUrl = (params: ListDraftsParams,) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : String(value))
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0 ? `/api/drafts?${stringifiedParams}` : `/api/drafts`
+}
+
+/**
+ * @summary List drafts for a template and period
+ */
+export const listDrafts = async (params: ListDraftsParams, options?: RequestInit): Promise<ApiEnvelope> => {
+
+  return customFetch<ApiEnvelope>(getListDraftsUrl(params),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getListDraftsQueryKey = (params?: ListDraftsParams,) => {
+    return [
+    `/api/drafts`, ...(params ? [params] : [])
+    ] as const;
+    }
+
+
+export const getListDraftsQueryOptions = <TData = Awaited<ReturnType<typeof listDrafts>>, TError = ErrorType<ErrorResponse | UnauthorizedResponse>>(params: ListDraftsParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listDrafts>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getListDraftsQueryKey(params);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof listDrafts>>> = ({ signal }) => listDrafts(params, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof listDrafts>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type ListDraftsQueryResult = NonNullable<Awaited<ReturnType<typeof listDrafts>>>
+export type ListDraftsQueryError = ErrorType<ErrorResponse | UnauthorizedResponse>
+
+
+/**
+ * @summary List drafts for a template and period
+ */
+
+export function useListDrafts<TData = Awaited<ReturnType<typeof listDrafts>>, TError = ErrorType<ErrorResponse | UnauthorizedResponse>>(
+ params: ListDraftsParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listDrafts>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getListDraftsQueryOptions(params,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getGetDraftUrl = (draftId: string,) => {
+
+
+
+
+  return `/api/drafts/${draftId}`
+}
+
+/**
+ * @summary Get a single draft by ID
+ */
+export const getDraft = async (draftId: string, options?: RequestInit): Promise<ApiEnvelope> => {
+
+  return customFetch<ApiEnvelope>(getGetDraftUrl(draftId),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetDraftQueryKey = (draftId: string,) => {
+    return [
+    `/api/drafts/${draftId}`
+    ] as const;
+    }
+
+
+export const getGetDraftQueryOptions = <TData = Awaited<ReturnType<typeof getDraft>>, TError = ErrorType<UnauthorizedResponse | NotFoundResponse>>(draftId: string, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getDraft>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetDraftQueryKey(draftId);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getDraft>>> = ({ signal }) => getDraft(draftId, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, enabled: draftId !== null && draftId !== undefined, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getDraft>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetDraftQueryResult = NonNullable<Awaited<ReturnType<typeof getDraft>>>
+export type GetDraftQueryError = ErrorType<UnauthorizedResponse | NotFoundResponse>
+
+
+/**
+ * @summary Get a single draft by ID
+ */
+
+export function useGetDraft<TData = Awaited<ReturnType<typeof getDraft>>, TError = ErrorType<UnauthorizedResponse | NotFoundResponse>>(
+ draftId: string, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getDraft>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetDraftQueryOptions(draftId,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getSaveDraftEditsUrl = (draftId: string,) => {
+
+
+
+
+  return `/api/drafts/${draftId}/edits`
+}
+
+/**
+ * @summary Save narrative edits to a draft
+ */
+export const saveDraftEdits = async (draftId: string,
+    saveDraftEditsBody: SaveDraftEditsBody, options?: RequestInit): Promise<ApiEnvelope> => {
+
+  return customFetch<ApiEnvelope>(getSaveDraftEditsUrl(draftId),
+  {
+    ...options,
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(saveDraftEditsBody)
+  }
+);}
+
+
+
+
+export const getSaveDraftEditsMutationOptions = <TError = ErrorType<ErrorResponse | UnauthorizedResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof saveDraftEdits>>, TError,{draftId: string;data: BodyType<SaveDraftEditsBody>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof saveDraftEdits>>, TError,{draftId: string;data: BodyType<SaveDraftEditsBody>}, TContext> => {
+
+const mutationKey = ['saveDraftEdits'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof saveDraftEdits>>, {draftId: string;data: BodyType<SaveDraftEditsBody>}> = (props) => {
+          const {draftId,data} = props ?? {};
+
+          return  saveDraftEdits(draftId,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type SaveDraftEditsMutationResult = NonNullable<Awaited<ReturnType<typeof saveDraftEdits>>>
+    export type SaveDraftEditsMutationBody = BodyType<SaveDraftEditsBody>
+    export type SaveDraftEditsMutationError = ErrorType<ErrorResponse | UnauthorizedResponse>
+
+    /**
+ * @summary Save narrative edits to a draft
+ */
+export const useSaveDraftEdits = <TError = ErrorType<ErrorResponse | UnauthorizedResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof saveDraftEdits>>, TError,{draftId: string;data: BodyType<SaveDraftEditsBody>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof saveDraftEdits>>,
+        TError,
+        {draftId: string;data: BodyType<SaveDraftEditsBody>},
+        TContext
+      > => {
+      return useMutation(getSaveDraftEditsMutationOptions(options));
+    }
+
+export const getGetDraftVersionsUrl = (draftId: string,) => {
+
+
+
+
+  return `/api/drafts/${draftId}/versions`
+}
+
+/**
+ * @summary Get version history for a draft
+ */
+export const getDraftVersions = async (draftId: string, options?: RequestInit): Promise<ApiEnvelope> => {
+
+  return customFetch<ApiEnvelope>(getGetDraftVersionsUrl(draftId),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetDraftVersionsQueryKey = (draftId: string,) => {
+    return [
+    `/api/drafts/${draftId}/versions`
+    ] as const;
+    }
+
+
+export const getGetDraftVersionsQueryOptions = <TData = Awaited<ReturnType<typeof getDraftVersions>>, TError = ErrorType<UnauthorizedResponse>>(draftId: string, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getDraftVersions>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetDraftVersionsQueryKey(draftId);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getDraftVersions>>> = ({ signal }) => getDraftVersions(draftId, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, enabled: draftId !== null && draftId !== undefined, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getDraftVersions>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetDraftVersionsQueryResult = NonNullable<Awaited<ReturnType<typeof getDraftVersions>>>
+export type GetDraftVersionsQueryError = ErrorType<UnauthorizedResponse>
+
+
+/**
+ * @summary Get version history for a draft
+ */
+
+export function useGetDraftVersions<TData = Awaited<ReturnType<typeof getDraftVersions>>, TError = ErrorType<UnauthorizedResponse>>(
+ draftId: string, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getDraftVersions>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetDraftVersionsQueryOptions(draftId,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getRestoreDraftVersionUrl = (draftId: string,) => {
+
+
+
+
+  return `/api/drafts/${draftId}/restore`
+}
+
+/**
+ * @summary Restore a prior version
+ */
+export const restoreDraftVersion = async (draftId: string,
+    restoreDraftVersionBody: RestoreDraftVersionBody, options?: RequestInit): Promise<ApiEnvelope> => {
+
+  return customFetch<ApiEnvelope>(getRestoreDraftVersionUrl(draftId),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(restoreDraftVersionBody)
+  }
+);}
+
+
+
+
+export const getRestoreDraftVersionMutationOptions = <TError = ErrorType<UnauthorizedResponse | NotFoundResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof restoreDraftVersion>>, TError,{draftId: string;data: BodyType<RestoreDraftVersionBody>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof restoreDraftVersion>>, TError,{draftId: string;data: BodyType<RestoreDraftVersionBody>}, TContext> => {
+
+const mutationKey = ['restoreDraftVersion'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof restoreDraftVersion>>, {draftId: string;data: BodyType<RestoreDraftVersionBody>}> = (props) => {
+          const {draftId,data} = props ?? {};
+
+          return  restoreDraftVersion(draftId,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type RestoreDraftVersionMutationResult = NonNullable<Awaited<ReturnType<typeof restoreDraftVersion>>>
+    export type RestoreDraftVersionMutationBody = BodyType<RestoreDraftVersionBody>
+    export type RestoreDraftVersionMutationError = ErrorType<UnauthorizedResponse | NotFoundResponse>
+
+    /**
+ * @summary Restore a prior version
+ */
+export const useRestoreDraftVersion = <TError = ErrorType<UnauthorizedResponse | NotFoundResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof restoreDraftVersion>>, TError,{draftId: string;data: BodyType<RestoreDraftVersionBody>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof restoreDraftVersion>>,
+        TError,
+        {draftId: string;data: BodyType<RestoreDraftVersionBody>},
+        TContext
+      > => {
+      return useMutation(getRestoreDraftVersionMutationOptions(options));
+    }
+
+export const getSubmitDraftForReviewUrl = (draftId: string,) => {
+
+
+
+
+  return `/api/drafts/${draftId}/submit`
+}
+
+/**
+ * @summary Submit draft for review (draft → ready_for_review)
+ */
+export const submitDraftForReview = async (draftId: string, options?: RequestInit): Promise<ApiEnvelope> => {
+
+  return customFetch<ApiEnvelope>(getSubmitDraftForReviewUrl(draftId),
+  {
+    ...options,
+    method: 'POST'
+
+
+  }
+);}
+
+
+
+
+export const getSubmitDraftForReviewMutationOptions = <TError = ErrorType<ErrorResponse | UnauthorizedResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof submitDraftForReview>>, TError,{draftId: string}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof submitDraftForReview>>, TError,{draftId: string}, TContext> => {
+
+const mutationKey = ['submitDraftForReview'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof submitDraftForReview>>, {draftId: string}> = (props) => {
+          const {draftId} = props ?? {};
+
+          return  submitDraftForReview(draftId,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type SubmitDraftForReviewMutationResult = NonNullable<Awaited<ReturnType<typeof submitDraftForReview>>>
+
+    export type SubmitDraftForReviewMutationError = ErrorType<ErrorResponse | UnauthorizedResponse>
+
+    /**
+ * @summary Submit draft for review (draft → ready_for_review)
+ */
+export const useSubmitDraftForReview = <TError = ErrorType<ErrorResponse | UnauthorizedResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof submitDraftForReview>>, TError,{draftId: string}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof submitDraftForReview>>,
+        TError,
+        {draftId: string},
+        TContext
+      > => {
+      return useMutation(getSubmitDraftForReviewMutationOptions(options));
+    }
+
+export const getApproveDraftUrl = (draftId: string,) => {
+
+
+
+
+  return `/api/drafts/${draftId}/approve`
+}
+
+/**
+ * @summary Approve a draft (admin or cfo only)
+ */
+export const approveDraft = async (draftId: string, options?: RequestInit): Promise<ApiEnvelope> => {
+
+  return customFetch<ApiEnvelope>(getApproveDraftUrl(draftId),
+  {
+    ...options,
+    method: 'POST'
+
+
+  }
+);}
+
+
+
+
+export const getApproveDraftMutationOptions = <TError = ErrorType<ErrorResponse | UnauthorizedResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof approveDraft>>, TError,{draftId: string}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof approveDraft>>, TError,{draftId: string}, TContext> => {
+
+const mutationKey = ['approveDraft'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof approveDraft>>, {draftId: string}> = (props) => {
+          const {draftId} = props ?? {};
+
+          return  approveDraft(draftId,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type ApproveDraftMutationResult = NonNullable<Awaited<ReturnType<typeof approveDraft>>>
+
+    export type ApproveDraftMutationError = ErrorType<ErrorResponse | UnauthorizedResponse>
+
+    /**
+ * @summary Approve a draft (admin or cfo only)
+ */
+export const useApproveDraft = <TError = ErrorType<ErrorResponse | UnauthorizedResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof approveDraft>>, TError,{draftId: string}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof approveDraft>>,
+        TError,
+        {draftId: string},
+        TContext
+      > => {
+      return useMutation(getApproveDraftMutationOptions(options));
+    }
+
+export const getGetDraftPreviewUrl = (draftId: string,) => {
+
+
+
+
+  return `/api/drafts/${draftId}/preview`
+}
+
+/**
+ * @summary Render draft HTML preview with narrative context
+ */
+export const getDraftPreview = async (draftId: string, options?: RequestInit): Promise<ApiEnvelope> => {
+
+  return customFetch<ApiEnvelope>(getGetDraftPreviewUrl(draftId),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetDraftPreviewQueryKey = (draftId: string,) => {
+    return [
+    `/api/drafts/${draftId}/preview`
+    ] as const;
+    }
+
+
+export const getGetDraftPreviewQueryOptions = <TData = Awaited<ReturnType<typeof getDraftPreview>>, TError = ErrorType<UnauthorizedResponse | NotFoundResponse>>(draftId: string, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getDraftPreview>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetDraftPreviewQueryKey(draftId);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getDraftPreview>>> = ({ signal }) => getDraftPreview(draftId, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, enabled: draftId !== null && draftId !== undefined, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getDraftPreview>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetDraftPreviewQueryResult = NonNullable<Awaited<ReturnType<typeof getDraftPreview>>>
+export type GetDraftPreviewQueryError = ErrorType<UnauthorizedResponse | NotFoundResponse>
+
+
+/**
+ * @summary Render draft HTML preview with narrative context
+ */
+
+export function useGetDraftPreview<TData = Awaited<ReturnType<typeof getDraftPreview>>, TError = ErrorType<UnauthorizedResponse | NotFoundResponse>>(
+ draftId: string, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getDraftPreview>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetDraftPreviewQueryOptions(draftId,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getGenerateDraftReportUrl = (draftId: string,) => {
+
+
+
+
+  return `/api/drafts/${draftId}/generate`
+}
+
+/**
+ * Builds a final PDF/HTML/JSON report using the approved narrative from the
+ * specified draft. The server reloads all financial data from authoritative
+ * FinanceOS sources, recomputes the data fingerprint, and rejects generation
+ * if the data changed since approval. Approval metadata, financial values,
+ * fingerprints, and narrative source labels are never accepted from the client.
+ * @summary Generate a final report from an approved draft
+ */
+export const generateDraftReport = async (draftId: string,
+    draftGenerateRequest: DraftGenerateRequest, options?: RequestInit): Promise<ApiEnvelope | Blob | string> => {
+
+  return customFetch<ApiEnvelope | Blob | string>(getGenerateDraftReportUrl(draftId),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(draftGenerateRequest)
+  }
+);}
+
+
+
+
+export const getGenerateDraftReportMutationOptions = <TError = ErrorType<ApiEnvelope | UnauthorizedResponse | NotFoundResponse | ServerErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof generateDraftReport>>, TError,{draftId: string;data: BodyType<DraftGenerateRequest>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof generateDraftReport>>, TError,{draftId: string;data: BodyType<DraftGenerateRequest>}, TContext> => {
+
+const mutationKey = ['generateDraftReport'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof generateDraftReport>>, {draftId: string;data: BodyType<DraftGenerateRequest>}> = (props) => {
+          const {draftId,data} = props ?? {};
+
+          return  generateDraftReport(draftId,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type GenerateDraftReportMutationResult = NonNullable<Awaited<ReturnType<typeof generateDraftReport>>>
+    export type GenerateDraftReportMutationBody = BodyType<DraftGenerateRequest>
+    export type GenerateDraftReportMutationError = ErrorType<ApiEnvelope | UnauthorizedResponse | NotFoundResponse | ServerErrorResponse>
+
+    /**
+ * @summary Generate a final report from an approved draft
+ */
+export const useGenerateDraftReport = <TError = ErrorType<ApiEnvelope | UnauthorizedResponse | NotFoundResponse | ServerErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof generateDraftReport>>, TError,{draftId: string;data: BodyType<DraftGenerateRequest>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof generateDraftReport>>,
+        TError,
+        {draftId: string;data: BodyType<DraftGenerateRequest>},
+        TContext
+      > => {
+      return useMutation(getGenerateDraftReportMutationOptions(options));
+    }
+
+export const getGetCommentaryUrl = (params: GetCommentaryParams,) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : String(value))
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0 ? `/api/drafts/commentary?${stringifiedParams}` : `/api/drafts/commentary`
+}
+
+/**
+ * @summary Get commentary entries for an entity, period, and template
+ */
+export const getCommentary = async (params: GetCommentaryParams, options?: RequestInit): Promise<ApiEnvelope> => {
+
+  return customFetch<ApiEnvelope>(getGetCommentaryUrl(params),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetCommentaryQueryKey = (params?: GetCommentaryParams,) => {
+    return [
+    `/api/drafts/commentary`, ...(params ? [params] : [])
+    ] as const;
+    }
+
+
+export const getGetCommentaryQueryOptions = <TData = Awaited<ReturnType<typeof getCommentary>>, TError = ErrorType<UnauthorizedResponse>>(params: GetCommentaryParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getCommentary>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetCommentaryQueryKey(params);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getCommentary>>> = ({ signal }) => getCommentary(params, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getCommentary>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetCommentaryQueryResult = NonNullable<Awaited<ReturnType<typeof getCommentary>>>
+export type GetCommentaryQueryError = ErrorType<UnauthorizedResponse>
+
+
+/**
+ * @summary Get commentary entries for an entity, period, and template
+ */
+
+export function useGetCommentary<TData = Awaited<ReturnType<typeof getCommentary>>, TError = ErrorType<UnauthorizedResponse>>(
+ params: GetCommentaryParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getCommentary>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetCommentaryQueryOptions(params,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getSaveCommentaryUrl = () => {
+
+
+
+
+  return `/api/drafts/commentary`
+}
+
+/**
+ * @summary Create or update a commentary entry (management_commentary or recommended_action only)
+ */
+export const saveCommentary = async (saveCommentaryBody: SaveCommentaryBody, options?: RequestInit): Promise<ApiEnvelope> => {
+
+  return customFetch<ApiEnvelope>(getSaveCommentaryUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(saveCommentaryBody)
+  }
+);}
+
+
+
+
+export const getSaveCommentaryMutationOptions = <TError = ErrorType<ErrorResponse | UnauthorizedResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof saveCommentary>>, TError,{data: BodyType<SaveCommentaryBody>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof saveCommentary>>, TError,{data: BodyType<SaveCommentaryBody>}, TContext> => {
+
+const mutationKey = ['saveCommentary'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof saveCommentary>>, {data: BodyType<SaveCommentaryBody>}> = (props) => {
+          const {data} = props ?? {};
+
+          return  saveCommentary(data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type SaveCommentaryMutationResult = NonNullable<Awaited<ReturnType<typeof saveCommentary>>>
+    export type SaveCommentaryMutationBody = BodyType<SaveCommentaryBody>
+    export type SaveCommentaryMutationError = ErrorType<ErrorResponse | UnauthorizedResponse>
+
+    /**
+ * @summary Create or update a commentary entry (management_commentary or recommended_action only)
+ */
+export const useSaveCommentary = <TError = ErrorType<ErrorResponse | UnauthorizedResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof saveCommentary>>, TError,{data: BodyType<SaveCommentaryBody>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof saveCommentary>>,
+        TError,
+        {data: BodyType<SaveCommentaryBody>},
+        TContext
+      > => {
+      return useMutation(getSaveCommentaryMutationOptions(options));
+    }
+
+export const getReorderCommentaryUrl = () => {
+
+
+
+
+  return `/api/drafts/commentary/reorder`
+}
+
+/**
+ * @summary Reorder commentary entries
+ */
+export const reorderCommentary = async (reorderCommentaryBody: ReorderCommentaryBody, options?: RequestInit): Promise<ApiEnvelope> => {
+
+  return customFetch<ApiEnvelope>(getReorderCommentaryUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(reorderCommentaryBody)
+  }
+);}
+
+
+
+
+export const getReorderCommentaryMutationOptions = <TError = ErrorType<UnauthorizedResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof reorderCommentary>>, TError,{data: BodyType<ReorderCommentaryBody>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof reorderCommentary>>, TError,{data: BodyType<ReorderCommentaryBody>}, TContext> => {
+
+const mutationKey = ['reorderCommentary'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof reorderCommentary>>, {data: BodyType<ReorderCommentaryBody>}> = (props) => {
+          const {data} = props ?? {};
+
+          return  reorderCommentary(data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type ReorderCommentaryMutationResult = NonNullable<Awaited<ReturnType<typeof reorderCommentary>>>
+    export type ReorderCommentaryMutationBody = BodyType<ReorderCommentaryBody>
+    export type ReorderCommentaryMutationError = ErrorType<UnauthorizedResponse>
+
+    /**
+ * @summary Reorder commentary entries
+ */
+export const useReorderCommentary = <TError = ErrorType<UnauthorizedResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof reorderCommentary>>, TError,{data: BodyType<ReorderCommentaryBody>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof reorderCommentary>>,
+        TError,
+        {data: BodyType<ReorderCommentaryBody>},
+        TContext
+      > => {
+      return useMutation(getReorderCommentaryMutationOptions(options));
+    }
+
+export const getToggleCommentaryUrl = (commentaryId: string,) => {
+
+
+
+
+  return `/api/drafts/commentary/${commentaryId}/toggle`
+}
+
+/**
+ * @summary Toggle whether a commentary block is included in the report
+ */
+export const toggleCommentary = async (commentaryId: string,
+    toggleCommentaryBody: ToggleCommentaryBody, options?: RequestInit): Promise<ApiEnvelope> => {
+
+  return customFetch<ApiEnvelope>(getToggleCommentaryUrl(commentaryId),
+  {
+    ...options,
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(toggleCommentaryBody)
+  }
+);}
+
+
+
+
+export const getToggleCommentaryMutationOptions = <TError = ErrorType<UnauthorizedResponse | NotFoundResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof toggleCommentary>>, TError,{commentaryId: string;data: BodyType<ToggleCommentaryBody>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof toggleCommentary>>, TError,{commentaryId: string;data: BodyType<ToggleCommentaryBody>}, TContext> => {
+
+const mutationKey = ['toggleCommentary'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof toggleCommentary>>, {commentaryId: string;data: BodyType<ToggleCommentaryBody>}> = (props) => {
+          const {commentaryId,data} = props ?? {};
+
+          return  toggleCommentary(commentaryId,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type ToggleCommentaryMutationResult = NonNullable<Awaited<ReturnType<typeof toggleCommentary>>>
+    export type ToggleCommentaryMutationBody = BodyType<ToggleCommentaryBody>
+    export type ToggleCommentaryMutationError = ErrorType<UnauthorizedResponse | NotFoundResponse>
+
+    /**
+ * @summary Toggle whether a commentary block is included in the report
+ */
+export const useToggleCommentary = <TError = ErrorType<UnauthorizedResponse | NotFoundResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof toggleCommentary>>, TError,{commentaryId: string;data: BodyType<ToggleCommentaryBody>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof toggleCommentary>>,
+        TError,
+        {commentaryId: string;data: BodyType<ToggleCommentaryBody>},
+        TContext
+      > => {
+      return useMutation(getToggleCommentaryMutationOptions(options));
+    }
+
+export const getDeleteCommentaryUrl = (commentaryId: string,) => {
+
+
+
+
+  return `/api/drafts/commentary/${commentaryId}`
+}
+
+/**
+ * @summary Delete a commentary entry (management_commentary and recommended_action only)
+ */
+export const deleteCommentary = async (commentaryId: string, options?: RequestInit): Promise<void> => {
+
+  return customFetch<void>(getDeleteCommentaryUrl(commentaryId),
+  {
+    ...options,
+    method: 'DELETE'
+
+
+  }
+);}
+
+
+
+
+export const getDeleteCommentaryMutationOptions = <TError = ErrorType<ErrorResponse | UnauthorizedResponse | NotFoundResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof deleteCommentary>>, TError,{commentaryId: string}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof deleteCommentary>>, TError,{commentaryId: string}, TContext> => {
+
+const mutationKey = ['deleteCommentary'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof deleteCommentary>>, {commentaryId: string}> = (props) => {
+          const {commentaryId} = props ?? {};
+
+          return  deleteCommentary(commentaryId,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type DeleteCommentaryMutationResult = NonNullable<Awaited<ReturnType<typeof deleteCommentary>>>
+
+    export type DeleteCommentaryMutationError = ErrorType<ErrorResponse | UnauthorizedResponse | NotFoundResponse>
+
+    /**
+ * @summary Delete a commentary entry (management_commentary and recommended_action only)
+ */
+export const useDeleteCommentary = <TError = ErrorType<ErrorResponse | UnauthorizedResponse | NotFoundResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof deleteCommentary>>, TError,{commentaryId: string}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof deleteCommentary>>,
+        TError,
+        {commentaryId: string},
+        TContext
+      > => {
+      return useMutation(getDeleteCommentaryMutationOptions(options));
+    }
+
+export const getApproveCommentaryUrl = (commentaryId: string,) => {
+
+
+
+
+  return `/api/drafts/commentary/${commentaryId}/approve`
+}
+
+/**
+ * @summary Approve a commentary entry (admin or cfo only)
+ */
+export const approveCommentary = async (commentaryId: string, options?: RequestInit): Promise<ApiEnvelope> => {
+
+  return customFetch<ApiEnvelope>(getApproveCommentaryUrl(commentaryId),
+  {
+    ...options,
+    method: 'POST'
+
+
+  }
+);}
+
+
+
+
+export const getApproveCommentaryMutationOptions = <TError = ErrorType<UnauthorizedResponse | ErrorResponse | NotFoundResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof approveCommentary>>, TError,{commentaryId: string}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof approveCommentary>>, TError,{commentaryId: string}, TContext> => {
+
+const mutationKey = ['approveCommentary'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof approveCommentary>>, {commentaryId: string}> = (props) => {
+          const {commentaryId} = props ?? {};
+
+          return  approveCommentary(commentaryId,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type ApproveCommentaryMutationResult = NonNullable<Awaited<ReturnType<typeof approveCommentary>>>
+
+    export type ApproveCommentaryMutationError = ErrorType<UnauthorizedResponse | ErrorResponse | NotFoundResponse>
+
+    /**
+ * @summary Approve a commentary entry (admin or cfo only)
+ */
+export const useApproveCommentary = <TError = ErrorType<UnauthorizedResponse | ErrorResponse | NotFoundResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof approveCommentary>>, TError,{commentaryId: string}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof approveCommentary>>,
+        TError,
+        {commentaryId: string},
+        TContext
+      > => {
+      return useMutation(getApproveCommentaryMutationOptions(options));
     }
 
