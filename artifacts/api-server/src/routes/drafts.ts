@@ -547,8 +547,11 @@ router.post("/drafts/:id/generate", requirePermission("reports"), async (req, re
       return;
     }
 
-    // ── 2. Require approved status ────────────────────────────────────────────
-    if (draft.status !== "approved") {
+    // ── 2. Require approved (or already-generated) status ───────────────────
+    // Generation is idempotent — each call creates its own Report History row.
+    // "generated" is accepted so that a draft that was previously downloaded
+    // can be re-downloaded in a different format without error.
+    if (draft.status !== "approved" && draft.status !== "generated") {
       res.status(400).json({
         ok: false,
         error: `Draft must be approved before generating. Current status: ${draft.status}`,
@@ -668,10 +671,16 @@ router.post("/drafts/:id/generate", requirePermission("reports"), async (req, re
       commentaryVersion,
     });
 
-    // ── 12. Mark draft as generated ────────────────────────────────────────────
-    await DraftService.markGenerated(draftId, user.email);
+    // ── 12. Return file or JSON ────────────────────────────────────────────────
+    // NOTE: Draft status is intentionally NOT transitioned to "generated" here.
+    // Generation is idempotent — the approved draft remains approved so the
+    // same draft can be downloaded in any format any number of times, each
+    // producing its own Report History row with full linkage metadata.
 
-    // ── 13. Return file or JSON ────────────────────────────────────────────────
+    // approvedBy and approvedAt are non-null here — validated at step 4 above.
+    // Explicit extraction prevents Express silently dropping null header values.
+    const approvedBy = draft.approvedBy!;
+
     if (format === "json") {
       res.json({
         ok: true,
@@ -685,7 +694,7 @@ router.post("/drafts/:id/generate", requirePermission("reports"), async (req, re
           historyId:    historyRow.id,
           draftId:      draft.id,
           draftVersion: draft.currentVersion,
-          approvedBy:   draft.approvedBy,
+          approvedBy,
           approvedAt:   draft.approvedAt,
         },
         source: report.source,
@@ -705,13 +714,14 @@ router.post("/drafts/:id/generate", requirePermission("reports"), async (req, re
       html: "text/html; charset=utf-8",
       pdf:  "application/pdf",
     };
-    res.setHeader("Content-Type", contentType[format] ?? "application/octet-stream");
+    res.setHeader("Content-Type",        contentType[format] ?? "application/octet-stream");
     res.setHeader("Content-Disposition", `attachment; filename="${filename}.${format}"`);
-    res.setHeader("X-Report-Source",   report.source);
-    res.setHeader("X-Draft-Id",        draft.id);
-    res.setHeader("X-Draft-Version",   String(draft.currentVersion));
-    res.setHeader("X-Approved-By",     draft.approvedBy);
-    res.setHeader("X-History-Id",      historyRow.id);
+    res.setHeader("X-Report-Source",     report.source ?? "live");
+    // All four required linkage headers — set with null-safe values.
+    res.setHeader("X-Draft-Id",          draft.id);
+    res.setHeader("X-Draft-Version",     String(draft.currentVersion));
+    res.setHeader("X-Approved-By",       approvedBy);
+    res.setHeader("X-History-Id",        historyRow.id);
     res.send(output);
   } catch (err) {
     const errorMessage = sanitizeErrorMessage(err);

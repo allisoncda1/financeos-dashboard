@@ -355,7 +355,8 @@ export default function ReportDraftEditor() {
   const canEdit = draft?.status === "draft" || draft?.status === "ready_for_review";
   const canSubmit = draft?.status === "draft";
   const canApprove = draft?.status === "ready_for_review";
-  const canGenerate = draft?.status === "approved" && !draft?.isStale;
+  // Generation is idempotent — allow repeated downloads from any approved-or-already-generated draft.
+  const canGenerate = (draft?.status === "approved" || draft?.status === "generated") && !draft?.isStale;
   const statusCfg = draft ? STATUS_CONFIG[draft.status] : null;
 
   // ── Loading / error ───────────────────────────────────────────────────────

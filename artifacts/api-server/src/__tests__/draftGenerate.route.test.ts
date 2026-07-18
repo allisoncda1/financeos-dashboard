@@ -1,8 +1,10 @@
 /**
  * POST /api/drafts/:id/generate — regression tests.
  *
- * Covers all 22 requirements from the live-blocker fix:
+ * Covers all 22 original requirements plus 6 additional regression tests
+ * for the two live-retest blockers discovered post-merge:
  *
+ * ORIGINAL (1-22):
  *  1. Approved draft generates successfully (HTML).
  *  2. Approved Management Commentary appears in final output.
  *  3. Included Recommended Actions appear.
@@ -19,12 +21,22 @@
  * 14. Client cannot forge approval metadata (approvedBy, approvedAt not accepted from body).
  * 15. Client cannot forge draft version (version not accepted from body).
  * 16. Client cannot modify financial values (financial data rebuilt from Core).
- * 17. Report History receives all draft linkage metadata.
+ * 17. Report History receives all draft linkage metadata for every generation.
  * 18. Existing Report History rows remain readable (tested via mock isolation).
  * 19. Original generation without a draft remains functional (draftId=undefined accepted).
  * 20. Supplying draftId to the old POST /api/reports/generate is rejected with 400.
  * 21. All major formats (json, html) work — pdf path is renderer-mocked.
- * 22. Draft transitions to "generated" status after successful generation.
+ * 22. Generation is idempotent — draft status does NOT change after generating.
+ *
+ * BLOCKER REGRESSION (B1-B6):
+ * B1. HTML then PDF from the same approved draft both return HTTP 200.
+ * B2. PDF then HTML also both return HTTP 200.
+ * B3. Already-"generated" draft can be re-downloaded (status accepted).
+ * B4. All four required headers present for HTML: X-Draft-Id, X-Draft-Version,
+ *     X-Approved-By, X-History-Id.
+ * B5. All four required headers present for PDF.
+ * B6. Repeated generation creates a new Report History row each time with
+ *     complete linkage metadata.
  *
  * All DB and engine calls are mocked — no real database or live data required.
  */
@@ -742,23 +754,219 @@ describe("req 21 — json and html formats return correct content types", () => 
 });
 
 // ═══════════════════════════════════════════════════════════════════════════════
-// Requirement 22 — Draft transitions to "generated" after successful generation
+// Requirement 22 — Generation is idempotent; draft status does NOT change
 // ═══════════════════════════════════════════════════════════════════════════════
 
-describe("req 22 — draft status transitions to generated", () => {
-  it("calls markGenerated with the draft ID after successful generation", async () => {
+describe("req 22 — generation is idempotent (draft stays approved)", () => {
+  it("does NOT call markGenerated on a successful generation", async () => {
     setupApprovedDraft();
     await request(createApp(CFO))
       .post(`/api/drafts/${DRAFT_ID}/generate`)
       .send({ format: "json" });
-    expect(markGeneratedMock).toHaveBeenCalledWith(DRAFT_ID, "cfo@test.com");
+    expect(markGeneratedMock).not.toHaveBeenCalled();
   });
 
-  it("does NOT call markGenerated when draft is rejected (stale)", async () => {
-    getDraftMock.mockResolvedValue({ ...APPROVED_DRAFT, isStale: true });
+  it("does NOT call markGenerated for html format either", async () => {
+    setupApprovedDraft();
     await request(createApp(CFO))
       .post(`/api/drafts/${DRAFT_ID}/generate`)
-      .send({ format: "json" });
+      .send({ format: "html" });
     expect(markGeneratedMock).not.toHaveBeenCalled();
+  });
+});
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// Blocker B1 — HTML then PDF from the same approved draft both succeed
+// ═══════════════════════════════════════════════════════════════════════════════
+
+describe("blocker B1 — HTML then PDF both return HTTP 200", () => {
+  it("first call (html) succeeds", async () => {
+    setupApprovedDraft();
+    const res = await request(createApp(CFO))
+      .post(`/api/drafts/${DRAFT_ID}/generate`)
+      .send({ format: "html" });
+    expect(res.status).toBe(200);
+  });
+
+  it("second call (pdf) from same approved draft also succeeds", async () => {
+    // Draft is still "approved" — not transitioned to "generated".
+    setupApprovedDraft();
+    const res = await request(createApp(CFO))
+      .post(`/api/drafts/${DRAFT_ID}/generate`)
+      .send({ format: "pdf" });
+    expect(res.status).toBe(200);
+  });
+
+  it("html → pdf in a single test app returns 200 both times", async () => {
+    setupApprovedDraft();
+    const app = createApp(CFO);
+    const r1 = await request(app).post(`/api/drafts/${DRAFT_ID}/generate`).send({ format: "html" });
+    const r2 = await request(app).post(`/api/drafts/${DRAFT_ID}/generate`).send({ format: "pdf" });
+    expect(r1.status).toBe(200);
+    expect(r2.status).toBe(200);
+  });
+});
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// Blocker B2 — PDF then HTML also both succeed
+// ═══════════════════════════════════════════════════════════════════════════════
+
+describe("blocker B2 — PDF then HTML both return HTTP 200", () => {
+  it("pdf → html in a single test app returns 200 both times", async () => {
+    setupApprovedDraft();
+    const app = createApp(CFO);
+    const r1 = await request(app).post(`/api/drafts/${DRAFT_ID}/generate`).send({ format: "pdf" });
+    const r2 = await request(app).post(`/api/drafts/${DRAFT_ID}/generate`).send({ format: "html" });
+    expect(r1.status).toBe(200);
+    expect(r2.status).toBe(200);
+  });
+});
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// Blocker B3 — Already-"generated" draft can be re-downloaded
+// ═══════════════════════════════════════════════════════════════════════════════
+
+describe("blocker B3 — status=generated draft can be re-generated", () => {
+  it("returns 200 when draft.status is generated (backward-compat for existing drafts)", async () => {
+    getDraftMock.mockResolvedValue({ ...APPROVED_DRAFT, status: "generated" });
+    getCommentaryMock.mockResolvedValue(MOCK_COMMENTARY);
+    insertHistoryMock.mockResolvedValue(MOCK_HISTORY_ROW);
+
+    const res = await request(createApp(CFO))
+      .post(`/api/drafts/${DRAFT_ID}/generate`)
+      .send({ format: "html" });
+    expect(res.status).toBe(200);
+  });
+
+  it("status=draft is still rejected even if called after a prior generation", async () => {
+    getDraftMock.mockResolvedValue({ ...APPROVED_DRAFT, status: "draft", approvedBy: null, approvedAt: null });
+    const res = await request(createApp(CFO))
+      .post(`/api/drafts/${DRAFT_ID}/generate`)
+      .send({ format: "html" });
+    expect(res.status).toBe(400);
+  });
+});
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// Blocker B4 — All four required response headers present for HTML
+// ═══════════════════════════════════════════════════════════════════════════════
+
+describe("blocker B4 — all four required headers present for HTML", () => {
+  it("X-Draft-Id header equals the draft UUID", async () => {
+    setupApprovedDraft();
+    const res = await request(createApp(CFO))
+      .post(`/api/drafts/${DRAFT_ID}/generate`)
+      .send({ format: "html" });
+    expect(res.headers["x-draft-id"]).toBe(DRAFT_ID);
+  });
+
+  it("X-Draft-Version header equals the draft currentVersion as a string", async () => {
+    setupApprovedDraft();
+    const res = await request(createApp(CFO))
+      .post(`/api/drafts/${DRAFT_ID}/generate`)
+      .send({ format: "html" });
+    expect(res.headers["x-draft-version"]).toBe("2");
+  });
+
+  it("X-Approved-By header equals the approver email", async () => {
+    setupApprovedDraft();
+    const res = await request(createApp(CFO))
+      .post(`/api/drafts/${DRAFT_ID}/generate`)
+      .send({ format: "html" });
+    expect(res.headers["x-approved-by"]).toBe("cfo@test.com");
+  });
+
+  it("X-History-Id header equals the new Report History row ID", async () => {
+    setupApprovedDraft();
+    const res = await request(createApp(CFO))
+      .post(`/api/drafts/${DRAFT_ID}/generate`)
+      .send({ format: "html" });
+    expect(res.headers["x-history-id"]).toBe("hist-001");
+  });
+
+  it("all four headers present in a single HTML response", async () => {
+    setupApprovedDraft();
+    const res = await request(createApp(CFO))
+      .post(`/api/drafts/${DRAFT_ID}/generate`)
+      .send({ format: "html" });
+    expect(res.status).toBe(200);
+    expect(res.headers["x-draft-id"]).toBe(DRAFT_ID);
+    expect(res.headers["x-draft-version"]).toBe("2");
+    expect(res.headers["x-approved-by"]).toBe("cfo@test.com");
+    expect(res.headers["x-history-id"]).toBe("hist-001");
+  });
+});
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// Blocker B5 — All four required headers present for PDF
+// ═══════════════════════════════════════════════════════════════════════════════
+
+describe("blocker B5 — all four required headers present for PDF", () => {
+  it("all four headers present in a single PDF response", async () => {
+    setupApprovedDraft();
+    const res = await request(createApp(CFO))
+      .post(`/api/drafts/${DRAFT_ID}/generate`)
+      .send({ format: "pdf" });
+    expect(res.status).toBe(200);
+    expect(res.headers["x-draft-id"]).toBe(DRAFT_ID);
+    expect(res.headers["x-draft-version"]).toBe("2");
+    expect(res.headers["x-approved-by"]).toBe("cfo@test.com");
+    expect(res.headers["x-history-id"]).toBe("hist-001");
+  });
+
+  it("PDF Content-Type is application/pdf", async () => {
+    setupApprovedDraft();
+    const res = await request(createApp(CFO))
+      .post(`/api/drafts/${DRAFT_ID}/generate`)
+      .send({ format: "pdf" });
+    expect(res.headers["content-type"]).toMatch(/application\/pdf/);
+  });
+});
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// Blocker B6 — Each generation creates a new Report History row with full linkage
+// ═══════════════════════════════════════════════════════════════════════════════
+
+describe("blocker B6 — each generation creates a complete Report History row", () => {
+  it("two sequential generations call insertReportHistory twice", async () => {
+    setupApprovedDraft();
+    const app = createApp(CFO);
+    await request(app).post(`/api/drafts/${DRAFT_ID}/generate`).send({ format: "html" });
+    await request(app).post(`/api/drafts/${DRAFT_ID}/generate`).send({ format: "pdf" });
+    expect(insertHistoryMock).toHaveBeenCalledTimes(2);
+  });
+
+  it("both Report History rows contain all 7 non-null linkage fields", async () => {
+    setupApprovedDraft();
+    const app = createApp(CFO);
+    await request(app).post(`/api/drafts/${DRAFT_ID}/generate`).send({ format: "html" });
+    await request(app).post(`/api/drafts/${DRAFT_ID}/generate`).send({ format: "pdf" });
+
+    for (const call of insertHistoryMock.mock.calls) {
+      const arg = call[0];
+      expect(arg.draftId).toBe(DRAFT_ID);
+      expect(arg.draftVersion).toBe(2);
+      expect(arg.approvalStatus).toBe("approved");
+      expect(arg.approvedBy).toBe("cfo@test.com");
+      expect(arg.approvedAt).toBeInstanceOf(Date);
+      expect(arg.dataFingerprint).toBe("fp-abc123");
+      expect(typeof arg.commentaryVersion).toBe("number");
+    }
+  });
+
+  it("repeated generation does not alter financial values in the report", async () => {
+    const { buildReport } = await import("../reports/builder.js");
+    setupApprovedDraft();
+    const app = createApp(CFO);
+    await request(app).post(`/api/drafts/${DRAFT_ID}/generate`).send({ format: "html" });
+    await request(app).post(`/api/drafts/${DRAFT_ID}/generate`).send({ format: "pdf" });
+    // buildReport is called twice. The format field differs (html vs pdf) — that's
+    // correct. The financial-data inputs (template, entities, period) must be
+    // identical: always rebuilt from Core, never carried over from a prior call.
+    expect(vi.mocked(buildReport)).toHaveBeenCalledTimes(2);
+    const [call1, call2] = vi.mocked(buildReport).mock.calls;
+    expect(call1![0].template).toBe(call2![0].template);
+    expect(call1![0].entities).toEqual(call2![0].entities);
+    expect(call1![0].period).toBe(call2![0].period);
   });
 });
