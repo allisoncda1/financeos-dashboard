@@ -9,6 +9,13 @@
  *   - No signed URLs or credentials are written to logs.
  *   - Access is always mediated through authenticated API endpoints.
  *   - Entity isolation is enforced at the API layer before calling this service.
+ *
+ * API notes (@replit/object-storage@1.0.0):
+ *   - All methods return a Result<T> discriminated union: { ok: true; value: T } | { ok: false; error }
+ *   - uploadFromBytes(key, buf, opts?) — opts only accepts { compress?: boolean }, NOT contentType
+ *   - downloadAsBytes(key) returns Result<[Buffer]> — value is a 1-tuple, access [0]
+ *   - list() returns Result<StorageObject[]> — check .ok before using
+ *   - Content type is derived from the storage key extension on retrieval
  */
 
 import { createHash } from "crypto";
@@ -43,11 +50,20 @@ function sha256hex(buf: Buffer): string {
   return createHash("sha256").update(buf).digest("hex");
 }
 
+// ─── Content-type helper ─────────────────────────────────────────────────────
+
+function contentTypeFromKey(storageKey: string): string {
+  const ext = storageKey.split(".").pop()?.toLowerCase() ?? "bin";
+  if (ext === "pdf")  return "application/pdf";
+  if (ext === "html") return "text/html; charset=utf-8";
+  return "application/octet-stream";
+}
+
 // ─── Storage key generation ───────────────────────────────────────────────────
 
 /**
- * Generates a deterministic, unpredictable storage key for a report artifact.
- * Keys are never accepted from user input — always constructed server-side.
+ * Generates a deterministic storage key for a report artifact.
+ * Keys are always constructed server-side — never accepted from user input.
  */
 export function buildStorageKey(opts: {
   historyId: string;
@@ -59,47 +75,63 @@ export function buildStorageKey(opts: {
   return `reports/${opts.templateId}/${periodSlug}/${opts.historyId}.${opts.format}`;
 }
 
-// ─── Replit Object Storage client (lazy-loaded, nil when not configured) ─────
+// ─── Replit Object Storage client (lazy-loaded, null when not configured) ─────
 
 let _client: ReplitStorageClient | null = null;
 let _clientInit = false;
 
+/** Minimal surface we use from @replit/object-storage Client. */
 interface ReplitStorageClient {
-  uploadFromBytes(key: string, data: Buffer, contentType: string): Promise<void>;
-  downloadAsBytes(key: string): Promise<Buffer>;
-  delete(key: string): Promise<void>;
+  upload(key: string, data: Buffer): Promise<void>;
+  download(key: string): Promise<Buffer>;
 }
 
 async function getReplitClient(): Promise<ReplitStorageClient | null> {
   if (_clientInit) return _client;
   _clientInit = true;
 
-  // Replit Object Storage is available when @replit/object-storage is installed
-  // and REPLIT_DB_URL / OBJECT_STORAGE_BUCKET is set by the Replit runtime.
   try {
-    // Dynamic import so the server starts cleanly without the package
+    // Dynamic import — server starts cleanly when the package is absent
+    // or when Replit Object Storage is not provisioned.
     const mod = await import("@replit/object-storage" as string);
-    const client = new mod.Client();
-    await client.list(); // lightweight probe — fails fast if not configured
+    const raw = new mod.Client();
+
+    // Probe: list() returns Result<StorageObject[]>; a failed probe means
+    // the bucket is not provisioned in this runtime environment.
+    const probe = await raw.list();
+    if (!probe.ok) {
+      const detail = (probe.error as Error | undefined)?.message ?? String(probe.error);
+      throw new Error(`Bucket not available: ${detail}`);
+    }
+
     _client = {
-      async uploadFromBytes(key, data, contentType) {
-        await client.uploadFromBytes(key, data, { contentType });
+      async upload(key: string, data: Buffer): Promise<void> {
+        // UploadOptions only supports { compress?: boolean } — no contentType field.
+        // Content type is derived from the key extension on retrieval.
+        const result = await raw.uploadFromBytes(key, data);
+        if (!result.ok) {
+          const detail = (result.error as Error | undefined)?.message ?? String(result.error);
+          throw new Error(`Upload failed: ${detail}`);
+        }
       },
-      async downloadAsBytes(key) {
-        const result = await client.downloadAsBytes(key);
-        if (!result.ok) throw new Error(`Storage download failed: ${result.error?.message}`);
-        return Buffer.from(result.value);
-      },
-      async delete(key) {
-        await client.delete(key);
+
+      async download(key: string): Promise<Buffer> {
+        // downloadAsBytes returns Result<[Buffer]> — value is a 1-tuple.
+        const result = await raw.downloadAsBytes(key);
+        if (!result.ok) {
+          const detail = (result.error as Error | undefined)?.message ?? String(result.error);
+          throw new Error(`Download failed: ${detail}`);
+        }
+        // result.value is [Buffer] — unpack the first (and only) element.
+        return result.value[0];
       },
     };
+
     console.info("[ReportStorage] Replit Object Storage client ready");
   } catch (e: unknown) {
     const msg = e instanceof Error ? e.message : String(e);
     console.warn(
       `[ReportStorage] Replit Object Storage unavailable — artifacts will not be persisted. ` +
-        `To enable: install @replit/object-storage and ensure REPLIT runtime is active. ` +
         `Detail: ${msg}`,
     );
     _client = null;
@@ -135,12 +167,12 @@ export async function storeArtifact(opts: {
   if (!client) {
     return {
       stored: false,
-      reason: "No object-storage backend configured. Install @replit/object-storage and enable in Replit.",
+      reason: "No object-storage backend configured. Provision Replit Object Storage to enable.",
     };
   }
 
   try {
-    await client.uploadFromBytes(storageKey, opts.data, contentType);
+    await client.upload(storageKey, opts.data);
     return {
       stored:      true,
       provider:    "replit-object-storage",
@@ -169,13 +201,9 @@ export async function retrieveArtifact(storageKey: string): Promise<GetArtifactR
   }
 
   try {
-    const data = await client.downloadAsBytes(storageKey);
-    const ext = storageKey.split(".").pop()?.toLowerCase() ?? "bin";
-    const contentType =
-      ext === "pdf"  ? "application/pdf" :
-      ext === "html" ? "text/html; charset=utf-8" :
-                       "application/octet-stream";
-    const fileName = storageKey.split("/").pop() ?? `report.${ext}`;
+    const data = await client.download(storageKey);
+    const contentType = contentTypeFromKey(storageKey);
+    const fileName = storageKey.split("/").pop() ?? `report`;
     return { available: true, data, contentType, fileName };
   } catch (e: unknown) {
     const msg = e instanceof Error ? e.message : String(e);
