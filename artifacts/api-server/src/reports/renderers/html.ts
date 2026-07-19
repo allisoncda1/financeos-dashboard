@@ -9,6 +9,7 @@
 
 import { readFileSync } from "fs";
 import { join, resolve, sep } from "path";
+import { embedLogoPath } from "./designSystem.js";
 import type { Renderer } from "../renderer";
 import type { BuiltReport } from "../builder";
 import type {
@@ -57,32 +58,8 @@ export function fmtPercent(value: number | null | undefined): string {
   return `${value.toFixed(1)}%`;
 }
 
-const LOGO_CACHE = new Map<string, string | null>();
-
-/** Base64-embeds a logo from the FinanceOS frontend's public/logos directory. */
-export function embedLogo(logoPath: string | null): string | null {
-  if (!logoPath) return null;
-  if (LOGO_CACHE.has(logoPath)) return LOGO_CACHE.get(logoPath) ?? null;
-
-  try {
-    const relative = logoPath.replace(/^\//, "");
-    const logoRoot = resolve(__dirname, "../../../../financeos/public");
-    const diskPath = resolve(join(logoRoot, relative));
-    if (diskPath !== logoRoot && !diskPath.startsWith(logoRoot + sep)) {
-      LOGO_CACHE.set(logoPath, null);
-      return null;
-    }
-    const bytes = readFileSync(diskPath);
-    const ext = diskPath.split(".").pop()?.toLowerCase() ?? "png";
-    const mime = ext === "svg" ? "image/svg+xml" : ext === "jpg" || ext === "jpeg" ? "image/jpeg" : "image/png";
-    const dataUrl = `data:${mime};base64,${bytes.toString("base64")}`;
-    LOGO_CACHE.set(logoPath, dataUrl);
-    return dataUrl;
-  } catch {
-    LOGO_CACHE.set(logoPath, null);
-    return null;
-  }
-}
+/** @deprecated Use embedLogoPath from designSystem.ts — same behaviour, shared logo root resolution. */
+export const embedLogo = embedLogoPath;
 
 // ─── section renderers ──────────────────────────────────────────────────────
 

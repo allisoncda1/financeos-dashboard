@@ -49,6 +49,22 @@ export const reportHistory = pgTable(
     dataFingerprint:   text("data_fingerprint"),
     /** Commentary version number at generation time. */
     commentaryVersion: integer("commentary_version"),
+
+    // ── Stored artifact metadata (nullable — pre-storage rows remain readable) ─
+    /** Storage provider: "replit-object-storage" | "s3" | null (not stored). */
+    storageProvider: text("storage_provider"),
+    /** Object storage key, e.g. reports/2026/07/monthly-close/portfolio/{id}/report.pdf */
+    storageKey: text("storage_key"),
+    /** Original filename for download. */
+    fileName: text("file_name"),
+    /** MIME type of the stored file. */
+    contentType: text("content_type"),
+    /** File size in bytes. */
+    fileSize: integer("file_size"),
+    /** SHA-256 hex checksum of the stored file. */
+    checksum: text("checksum"),
+    /** When the artifact was stored. */
+    storedAt: timestamp("stored_at", { withTimezone: true }),
   },
   (t) => [
     index("idx_report_history_created").on(t.createdAt),

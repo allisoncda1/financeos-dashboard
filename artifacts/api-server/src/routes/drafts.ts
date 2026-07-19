@@ -27,6 +27,37 @@ import type { ReportOutputFormat } from "../reports/templates.js";
 
 const router: IRouter = Router();
 
+// ── Placeholder management commentary seeded on every new draft ──────────────
+// Maps each template ID to the management-authored narrative sections
+// that should have an editable placeholder created on draft creation.
+// Without these rows the preview has zero data-editable elements.
+const TEMPLATE_MANAGEMENT_PLACEHOLDERS: Record<string, Array<{ sectionKey: string; commentaryType: CommentaryType; content: string }>> = {
+  "monthly-close": [
+    { sectionKey: "management_comments", commentaryType: "management_commentary", content: "Add management commentary for this period." },
+    { sectionKey: "recommended_actions", commentaryType: "recommended_action",   content: "Add recommended actions for leadership review." },
+  ],
+  "quarterly-close": [
+    { sectionKey: "management_comments", commentaryType: "management_commentary", content: "Add management commentary for this quarter." },
+    { sectionKey: "recommended_actions", commentaryType: "recommended_action",   content: "Add recommended actions for this quarter." },
+  ],
+  "board-package": [
+    { sectionKey: "management_comments", commentaryType: "management_commentary", content: "Add management commentary for board review." },
+    { sectionKey: "recommended_actions", commentaryType: "recommended_action",   content: "Add recommended actions for the board." },
+  ],
+  "investor-update": [
+    { sectionKey: "management_comments", commentaryType: "management_commentary", content: "Add investor narrative for this period." },
+    { sectionKey: "recommended_actions", commentaryType: "recommended_action",   content: "Add strategic priorities for investors." },
+  ],
+  "bank-package": [
+    { sectionKey: "management_comments", commentaryType: "management_commentary", content: "Add management commentary for the bank package." },
+    { sectionKey: "recommended_actions", commentaryType: "recommended_action",   content: "Add recommended actions for this report." },
+  ],
+  "executive-package": [
+    { sectionKey: "management_comments", commentaryType: "management_commentary", content: "Add executive management commentary." },
+    { sectionKey: "recommended_actions", commentaryType: "recommended_action",   content: "Add recommended executive actions." },
+  ],
+};
+
 /**
  * Inject a small inline-editing script into preview HTML.
  * When canEdit=false (approved/generated drafts) the script is omitted —
@@ -193,9 +224,10 @@ router.post("/drafts", requirePermission("reports"), async (req, res) => {
 
     // Persist generated analysis as commentary rows
     const now = new Date();
+    const entitySlugForCommentary = entitySlugsArray[0] ?? "portfolio";
     await CommentaryService.bulkUpsertCommentary(
       analysis.map((stmt) => ({
-        entitySlug:      entitySlugsArray[0] ?? "portfolio",
+        entitySlug:      entitySlugForCommentary,
         reportingPeriod: body.period as string,
         templateId:      body.template as string,
         sectionKey:      stmt.sectionKey,
@@ -209,6 +241,28 @@ router.post("/drafts", requirePermission("reports"), async (req, res) => {
         updatedAt:       now,
       })),
     );
+
+    // Seed editable placeholder management commentary so the preview immediately
+    // has data-editable elements. Without these rows a new draft has zero editable
+    // content and the "Click narrative text to edit inline" hint is misleading.
+    const placeholders = TEMPLATE_MANAGEMENT_PLACEHOLDERS[body.template as string] ?? [];
+    if (placeholders.length > 0) {
+      await CommentaryService.seedPlaceholderCommentary(
+        placeholders.map((p, i) => ({
+          entitySlug:      entitySlugForCommentary,
+          reportingPeriod: body.period as string,
+          templateId:      body.template as string,
+          sectionKey:      p.sectionKey,
+          commentaryType:  p.commentaryType,
+          content:         p.content,
+          sortOrder:       i,
+          createdBy:       user.email,
+          updatedBy:       user.email,
+          createdAt:       now,
+          updatedAt:       now,
+        })),
+      );
+    }
 
     res.status(201).json({ ok: true, data: draft, ts: new Date().toISOString() });
   } catch (err) {
@@ -410,14 +464,16 @@ router.get("/drafts/:id", requirePermission("reports"), async (req, res) => {
 
 // ─── GET /api/drafts — List drafts for a template+period ─────────────────────
 router.get("/drafts", requirePermission("reports"), async (req, res) => {
-  const templateId      = typeof req.query["template"] === "string" ? req.query["template"] : null;
-  const reportingPeriod = typeof req.query["period"] === "string"   ? req.query["period"]   : null;
-  if (!templateId || !reportingPeriod) {
-    res.status(400).json({ ok: false, error: "`template` and `period` query params are required", ts: new Date().toISOString() });
-    return;
-  }
+  const templateId      = typeof req.query["template"]  === "string" ? req.query["template"]  : undefined;
+  const reportingPeriod = typeof req.query["period"]    === "string" ? req.query["period"]    : undefined;
+  const archivedParam   = typeof req.query["archived"]  === "string" ? req.query["archived"]  : undefined;
+
+  const archived: boolean | "all" =
+    archivedParam === "true"  ? true  :
+    archivedParam === "all"   ? "all" : false;
+
   try {
-    const drafts = await DraftService.listDrafts({ templateId, reportingPeriod });
+    const drafts = await DraftService.listDrafts({ templateId, reportingPeriod, archived });
     res.json({ ok: true, data: drafts, ts: new Date().toISOString() });
   } catch (err) {
     res.status(500).json({ ok: false, error: String(err), ts: new Date().toISOString() });
@@ -484,6 +540,44 @@ router.post("/drafts/:id/restore", requirePermission("reports"), async (req, res
       draftId:             paramStr(req.params["id"]),
       targetVersionNumber: versionNumber,
       userEmail:           user.email,
+    });
+    res.json({ ok: true, data: draft, ts: new Date().toISOString() });
+  } catch (err) {
+    res.status(400).json({ ok: false, error: String(err), ts: new Date().toISOString() });
+  }
+});
+
+// ─── POST /api/drafts/:id/archive — Soft-archive a draft ─────────────────────
+router.post("/drafts/:id/archive", requirePermission("reports"), async (req, res) => {
+  const user = req.session.user!;
+  if (!userCanEdit(user.role)) {
+    res.status(403).json({ ok: false, error: "Your role cannot archive drafts.", ts: new Date().toISOString() });
+    return;
+  }
+  const { reason } = req.body as { reason?: unknown };
+  try {
+    const draft = await DraftService.archiveDraft({
+      draftId:   paramStr(req.params["id"]),
+      userEmail: user.email,
+      reason:    typeof reason === "string" ? reason : undefined,
+    });
+    res.json({ ok: true, data: draft, ts: new Date().toISOString() });
+  } catch (err) {
+    res.status(400).json({ ok: false, error: String(err), ts: new Date().toISOString() });
+  }
+});
+
+// ─── POST /api/drafts/:id/unarchive — Restore a soft-archived draft ──────────
+router.post("/drafts/:id/unarchive", requirePermission("reports"), async (req, res) => {
+  const user = req.session.user!;
+  if (!userCanEdit(user.role)) {
+    res.status(403).json({ ok: false, error: "Your role cannot restore drafts.", ts: new Date().toISOString() });
+    return;
+  }
+  try {
+    const draft = await DraftService.restoreDraft({
+      draftId:   paramStr(req.params["id"]),
+      userEmail: user.email,
     });
     res.json({ ok: true, data: draft, ts: new Date().toISOString() });
   } catch (err) {

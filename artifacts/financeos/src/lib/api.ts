@@ -200,14 +200,23 @@ export const api = {
     postForBlob(`/drafts/${id}/generate`, { format }),
   getDraft: (id: string) =>
     get<ReportDraft>(`/drafts/${id}`),
-  listDrafts: (template: string, period: string) =>
-    get<ReportDraft[]>(`/drafts?template=${encodeURIComponent(template)}&period=${encodeURIComponent(period)}`),
+  listDrafts: (opts: { template?: string; period?: string; archived?: boolean | "all" } = {}) => {
+    const params = new URLSearchParams();
+    if (opts.template) params.set("template", opts.template);
+    if (opts.period)   params.set("period",   opts.period);
+    if (opts.archived !== undefined) params.set("archived", String(opts.archived));
+    return get<ReportDraft[]>(`/drafts?${params}`);
+  },
   saveDraftEdits: (id: string, editableContent: unknown, changeSummary?: string) =>
     patch<ReportDraft>(`/drafts/${id}/edits`, { editableContent, changeSummary }),
   getDraftVersions: (id: string) =>
     get<ReportDraftVersion[]>(`/drafts/${id}/versions`),
   restoreDraftVersion: (id: string, versionNumber: number) =>
     post<ReportDraft>(`/drafts/${id}/restore`, { versionNumber }),
+  archiveDraft: (id: string, reason?: string) =>
+    post<ReportDraft>(`/drafts/${id}/archive`, { reason }),
+  unarchiveDraft: (id: string) =>
+    post<ReportDraft>(`/drafts/${id}/unarchive`, {}),
   submitDraftForReview: (id: string) =>
     post<ReportDraft>(`/drafts/${id}/submit`, {}),
   approveDraft: (id: string) =>
@@ -280,6 +289,9 @@ export type ReportDraft = {
   createdAt: string;
   updatedAt: string;
   approvedAt: string | null;
+  archivedAt: string | null;
+  archivedBy: string | null;
+  archiveReason: string | null;
 };
 
 export type ReportDraftVersion = {

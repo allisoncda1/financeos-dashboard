@@ -1,5 +1,5 @@
 
-import { useState, useMemo, useCallback } from "react";
+import { useState, useMemo, useCallback, useEffect } from "react";
 import { useLocation } from "wouter";
 import { motion } from "framer-motion";
 import {
@@ -7,13 +7,16 @@ import {
   BarChart3, TrendingUp, Users, Landmark, Briefcase,
   Package, Clock, CheckCircle2, ChevronRight,
   FileSpreadsheet, Sparkles, AlertTriangle, Loader2,
-  XCircle, History, Pencil,
+  XCircle, History, Pencil, Archive, RotateCcw, BookOpen,
 } from "lucide-react";
 import { ENTITY_CONFIG, ENTITY_SLUGS, ENTITY_META } from "@/lib/entities";
 import { EntityLogo } from "@/components/ui/EntityLogo";
 import { useReportTemplates, useReportGenerator, useReportDownload, useReportHistory } from "@/hooks/useApi";
-import { api } from "@/lib/api";
+import { api, type ReportDraft } from "@/lib/api";
 import type { EntitySlug } from "@/lib/types";
+import type { ReportHistoryEntry } from "@/lib/reportTypes";
+
+type ReportCenterTab = "templates" | "drafts" | "library";
 
 // ── Template definitions ───────────────────────────────────────────────────
 
@@ -129,9 +132,71 @@ const PERIODS = [
   "Q2 2026 (YTD)", "Q1 2026", "FY 2025",
 ];
 
+// ── Library accordion ─────────────────────────────────────────────────────────
+
+function LibraryMonthAccordion({ month, entries }: { month: string; entries: ReportHistoryEntry[] }) {
+  const [open, setOpen] = useState(true);
+  return (
+    <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
+      <button
+        onClick={() => setOpen((v) => !v)}
+        className="w-full flex items-center justify-between px-4 py-3 hover:bg-gray-50 transition-colors"
+      >
+        <div className="flex items-center gap-2">
+          <Calendar className="w-3.5 h-3.5 text-gray-400" />
+          <span className="text-[12px] font-semibold text-gray-700">{month}</span>
+          <span className="text-[10px] text-gray-400">({entries.length} report{entries.length !== 1 ? "s" : ""})</span>
+        </div>
+        <ChevronRight className={`w-3.5 h-3.5 text-gray-400 transition-transform ${open ? "rotate-90" : ""}`} />
+      </button>
+      {open && (
+        <table className="w-full text-[11px] border-t border-gray-100">
+          <tbody>
+            {entries.map((entry) => (
+              <tr
+                key={entry.id}
+                className="border-b border-gray-100 last:border-0 hover:bg-gray-50 transition-colors"
+                data-testid={`library-row-${entry.id}`}
+              >
+                <td className="px-4 py-2.5 font-medium text-gray-800">{entry.title}</td>
+                <td className="px-4 py-2.5 text-gray-500">{entry.period}</td>
+                <td className="px-4 py-2.5">
+                  <span className="text-[9px] font-semibold px-1.5 py-0.5 rounded-full bg-violet-50 text-violet-700 uppercase">
+                    {entry.format}
+                  </span>
+                </td>
+                <td className="px-4 py-2.5">
+                  {entry.status === "completed" ? (
+                    <span className="flex items-center gap-1 text-emerald-600">
+                      <CheckCircle2 className="w-3 h-3" /> Done
+                    </span>
+                  ) : entry.status === "failed" ? (
+                    <span className="flex items-center gap-1 text-red-500">
+                      <XCircle className="w-3 h-3" /> Failed
+                    </span>
+                  ) : (
+                    <span className="flex items-center gap-1 text-amber-500">
+                      <Clock className="w-3 h-3" /> {entry.status}
+                    </span>
+                  )}
+                </td>
+                <td className="px-4 py-2.5 text-gray-400 whitespace-nowrap text-[10px]">
+                  {new Date(entry.createdAt).toLocaleDateString()}
+                </td>
+                <td className="px-4 py-2.5 text-[10px] text-gray-300">Metadata only</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      )}
+    </div>
+  );
+}
+
 // ── Component ────────────────────────────────────────────────────────────────
 
 export default function ReportCenterPage() {
+  const [activeTab, setActiveTab] = useState<ReportCenterTab>("templates");
   const [selectedTemplate, setSelectedTemplate] = useState<TemplateId>("monthly-close");
   const [period, setPeriod]             = useState("Jun 2026 (Latest)");
   const [selectedEntities, setSelectedEntities] = useState<string[]>([...ENTITY_SLUGS]);
@@ -142,6 +207,46 @@ export default function ReportCenterPage() {
   const [creatingDraft, setCreatingDraft] = useState(false);
   const [draftError, setDraftError] = useState<string | null>(null);
   const [, navigate] = useLocation();
+
+  // Draft Library state
+  const [drafts, setDrafts] = useState<ReportDraft[]>([]);
+  const [draftsLoading, setDraftsLoading] = useState(false);
+  const [draftsError, setDraftsError] = useState<string | null>(null);
+  const [showArchived, setShowArchived] = useState(false);
+  const [archivingId, setArchivingId] = useState<string | null>(null);
+
+  const loadDrafts = useCallback(async (archived: boolean) => {
+    setDraftsLoading(true);
+    setDraftsError(null);
+    try {
+      const result = await api.listDrafts({ archived: archived || undefined });
+      setDrafts(result);
+    } catch (e) {
+      setDraftsError(e instanceof Error ? e.message : "Failed to load drafts");
+    } finally {
+      setDraftsLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (activeTab === "drafts") loadDrafts(showArchived);
+  }, [activeTab, showArchived, loadDrafts]);
+
+  const handleArchiveDraft = useCallback(async (id: string, isArchived: boolean) => {
+    setArchivingId(id);
+    try {
+      if (isArchived) {
+        await api.unarchiveDraft(id);
+      } else {
+        await api.archiveDraft(id);
+      }
+      await loadDrafts(showArchived);
+    } catch (e) {
+      alert(e instanceof Error ? e.message : "Action failed");
+    } finally {
+      setArchivingId(null);
+    }
+  }, [showArchived, loadDrafts]);
 
   const { data: liveTemplatesData, source: templatesSource } = useReportTemplates();
   const liveTemplates = liveTemplatesData ?? [];
@@ -236,11 +341,183 @@ export default function ReportCenterPage() {
         </div>
       </div>
 
+      {/* ── Tab bar ─────────────────────────────────────────────────────── */}
+      <div className="flex-shrink-0 bg-white border-b border-gray-200 px-4 sm:px-6 flex items-center gap-1">
+        {([
+          { id: "templates" as const, label: "Templates", icon: FileText },
+          { id: "drafts"    as const, label: "Drafts",    icon: Pencil },
+          { id: "library"   as const, label: "Report Library", icon: BookOpen },
+        ] satisfies { id: ReportCenterTab; label: string; icon: React.ComponentType<{className?:string}> }[]).map(({ id, label, icon: Icon }) => (
+          <button
+            key={id}
+            onClick={() => setActiveTab(id)}
+            className={`flex items-center gap-1.5 px-3 py-2.5 text-[12px] font-semibold border-b-2 transition-colors ${
+              activeTab === id
+                ? "border-violet-500 text-violet-700"
+                : "border-transparent text-gray-500 hover:text-gray-700"
+            }`}
+          >
+            <Icon className="w-3.5 h-3.5" />
+            {label}
+          </button>
+        ))}
+      </div>
+
       <div className="flex-1 overflow-hidden flex">
 
-        {/* ── Left: template gallery ──────────────────────────────────── */}
+        {/* ── Left: template gallery / tab content ────────────────────── */}
         <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
           <div className="flex-1 overflow-y-auto px-3 sm:px-6 py-4 sm:py-5 space-y-4 sm:space-y-5">
+
+            {/* ── Drafts tab ──────────────────────────────────────────── */}
+            {activeTab === "drafts" && (
+              <div>
+                <div className="flex items-center justify-between mb-3">
+                  <div className="flex items-center gap-2">
+                    <Pencil className="w-3.5 h-3.5 text-gray-400" />
+                    <p className="text-[11px] font-semibold text-gray-500 uppercase tracking-widest">Draft Library</p>
+                  </div>
+                  <label className="flex items-center gap-1.5 text-[11px] text-gray-500 cursor-pointer select-none">
+                    <input
+                      type="checkbox"
+                      checked={showArchived}
+                      onChange={(e) => setShowArchived(e.target.checked)}
+                      className="w-3 h-3"
+                    />
+                    Show archived
+                  </label>
+                </div>
+
+                {draftsLoading && (
+                  <div className="flex items-center gap-2 text-[11px] text-gray-400 py-3">
+                    <Loader2 className="w-3.5 h-3.5 animate-spin" /> Loading drafts…
+                  </div>
+                )}
+                {draftsError && (
+                  <div className="flex items-start gap-2 p-3 bg-red-50 border border-red-200 rounded-xl text-[11px] text-red-700">
+                    <AlertTriangle className="w-3.5 h-3.5 flex-shrink-0 mt-0.5" /> {draftsError}
+                  </div>
+                )}
+                {!draftsLoading && !draftsError && drafts.length === 0 && (
+                  <p className="text-[11px] text-gray-400 py-3" data-testid="draft-library-empty">
+                    {showArchived ? "No archived drafts." : "No active drafts. Create a draft from the Templates tab."}
+                  </p>
+                )}
+                {!draftsLoading && drafts.length > 0 && (
+                  <div className="bg-white rounded-xl border border-gray-200 overflow-hidden" data-testid="draft-library-table">
+                    <table className="w-full text-[11px]">
+                      <thead className="bg-gray-50 border-b border-gray-100">
+                        <tr className="text-[10px] font-semibold text-gray-400 uppercase tracking-wide">
+                          <th className="text-left px-4 py-2.5">Template</th>
+                          <th className="text-left px-4 py-2.5">Period</th>
+                          <th className="text-left px-4 py-2.5">Status</th>
+                          <th className="text-left px-4 py-2.5">Version</th>
+                          <th className="text-left px-4 py-2.5">Updated</th>
+                          <th className="text-left px-4 py-2.5">Actions</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {drafts.map((draft) => {
+                          const isArchived = !!draft.archivedAt;
+                          const isWorking = archivingId === draft.id;
+                          const statusColors: Record<string, string> = {
+                            draft: "bg-gray-100 text-gray-600",
+                            ready_for_review: "bg-amber-50 text-amber-700",
+                            approved: "bg-emerald-50 text-emerald-700",
+                            superseded: "bg-gray-50 text-gray-400",
+                            generated: "bg-violet-50 text-violet-700",
+                          };
+                          return (
+                            <tr
+                              key={draft.id}
+                              className="border-b border-gray-100 last:border-0 hover:bg-gray-50 transition-colors"
+                              data-testid={`draft-row-${draft.id}`}
+                            >
+                              <td className="px-4 py-3 font-medium text-gray-900">{draft.templateId}</td>
+                              <td className="px-4 py-3 text-gray-500 whitespace-nowrap">{draft.reportingPeriod}</td>
+                              <td className="px-4 py-3">
+                                <span className={`text-[9px] font-semibold px-1.5 py-0.5 rounded-full ${statusColors[draft.status] ?? "bg-gray-100 text-gray-500"}`}>
+                                  {isArchived ? "archived" : draft.status}
+                                </span>
+                                {draft.isStale && (
+                                  <span className="ml-1 text-[9px] font-semibold px-1.5 py-0.5 rounded-full bg-orange-50 text-orange-600">stale</span>
+                                )}
+                              </td>
+                              <td className="px-4 py-3 text-gray-400">v{draft.currentVersion}</td>
+                              <td className="px-4 py-3 text-gray-400 whitespace-nowrap">
+                                {new Date(draft.updatedAt).toLocaleDateString()}
+                              </td>
+                              <td className="px-4 py-3">
+                                <div className="flex items-center gap-1.5">
+                                  {!isArchived && (
+                                    <button
+                                      onClick={() => navigate(`/reports/draft/${draft.id}`)}
+                                      className="text-[10px] text-violet-600 hover:text-violet-800 font-medium flex items-center gap-1"
+                                    >
+                                      <Pencil className="w-3 h-3" /> Edit
+                                    </button>
+                                  )}
+                                  <button
+                                    onClick={() => handleArchiveDraft(draft.id, isArchived)}
+                                    disabled={isWorking}
+                                    className="text-[10px] text-gray-400 hover:text-gray-600 font-medium flex items-center gap-1 disabled:opacity-50"
+                                    title={isArchived ? "Restore draft" : "Archive draft"}
+                                  >
+                                    {isWorking ? (
+                                      <Loader2 className="w-3 h-3 animate-spin" />
+                                    ) : isArchived ? (
+                                      <RotateCcw className="w-3 h-3" />
+                                    ) : (
+                                      <Archive className="w-3 h-3" />
+                                    )}
+                                    {isArchived ? "Restore" : "Archive"}
+                                  </button>
+                                </div>
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* ── Report Library tab ──────────────────────────────────── */}
+            {activeTab === "library" && (
+              <div>
+                <div className="flex items-center gap-2 mb-3">
+                  <BookOpen className="w-3.5 h-3.5 text-gray-400" />
+                  <p className="text-[11px] font-semibold text-gray-500 uppercase tracking-widest">Report Library</p>
+                </div>
+                {historySource === "loading" && (
+                  <div className="flex items-center gap-2 text-[11px] text-gray-400 py-2">
+                    <Loader2 className="w-3.5 h-3.5 animate-spin" /> Loading…
+                  </div>
+                )}
+                {historySource !== "loading" && historyData !== null && historyData!.length === 0 && (
+                  <p className="text-[11px] text-gray-400 py-2">No reports generated yet.</p>
+                )}
+                {historySource !== "loading" && historyData !== null && historyData!.length > 0 && (() => {
+                  const byMonth: Record<string, typeof historyData> = {};
+                  for (const entry of historyData!) {
+                    const month = new Date(entry.createdAt).toLocaleDateString("en-US", { year: "numeric", month: "long" });
+                    (byMonth[month] ??= []).push(entry);
+                  }
+                  return (
+                    <div className="space-y-3" data-testid="report-library-accordion">
+                      {Object.entries(byMonth).map(([month, entries]) => (
+                        <LibraryMonthAccordion key={month} month={month} entries={entries!} />
+                      ))}
+                    </div>
+                  );
+                })()}
+              </div>
+            )}
+
+            {/* ── Templates tab (default) ────────────────────────────── */}
+            {activeTab === "templates" && <div>
 
             {/* Template gallery */}
             <div>
@@ -382,6 +659,8 @@ export default function ReportCenterPage() {
                 )
               )}
             </div>
+
+            </div>} {/* end activeTab === "templates" */}
 
           </div>
         </div>

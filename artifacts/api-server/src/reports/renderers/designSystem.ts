@@ -22,39 +22,62 @@ import { readFileSync, statSync } from "fs";
 import { resolve, join, sep, dirname } from "path";
 import { fileURLToPath } from "url";
 
-const __filename = fileURLToPath(import.meta.url);
-const __dirname  = dirname(__filename);
+// import.meta.url is always correct in ESM (bundle or source).
+// In the esbuild bundle dist/index.mjs, it resolves to the bundle file URL.
+const _META_DIR = dirname(fileURLToPath(import.meta.url));
 
 // ─── Logo root resolution (path-safe, env-overridable) ───────────────────────
 //
-// When esbuild bundles all modules into dist/index.mjs, import.meta.url
-// resolves to the bundle location (artifacts/api-server/dist/), not the
-// original source file. The "../../../../" path only works from the source
-// tree. We probe multiple candidate paths and use the first that exists on
-// disk. An env var override wins above all.
+// FINANCEOS_PUBLIC_DIR env var is the authoritative override (set in Replit).
+// Otherwise we probe multiple candidate paths via statSync().
+//
+// Runtime layouts:
+//   bundle (dist/):   _META_DIR = artifacts/api-server/dist  → ../../financeos/public ✓
+//   source (tsx):     _META_DIR = artifacts/api-server/src/reports/renderers → ../../../../financeos/public ✓
+//   CWD = repo root:  process.cwd()/artifacts/financeos/public ✓
+//   CWD = api-server: process.cwd()/../financeos/public ✓
+//   CWD = artifacts:  process.cwd()/financeos/public ✓
+//   Vite build output also checked as last-resort fallback.
 
 function _findLogoRoot(): string {
-  if (process.env.FINANCEOS_PUBLIC_DIR) return process.env.FINANCEOS_PUBLIC_DIR;
+  if (process.env.FINANCEOS_PUBLIC_DIR) {
+    console.info(`[FinanceOS] Logo root from env: ${process.env.FINANCEOS_PUBLIC_DIR}`);
+    return process.env.FINANCEOS_PUBLIC_DIR;
+  }
 
   const candidates = [
-    // ESM bundle at dist/index.mjs → artifacts/api-server/dist/ → ../../financeos/public
-    resolve(__dirname, "../../financeos/public"),
-    // Source: src/reports/renderers/ → ../../../../financeos/public
-    resolve(__dirname, "../../../../financeos/public"),
-    // Replit: workspace root may be different
-    resolve(__dirname, "../../../../../financeos/public"),
+    // ESM bundle: _META_DIR = dist/ → 2 up = artifacts/ → financeos/public
+    resolve(_META_DIR, "../../financeos/public"),
+    // Source tsx: _META_DIR = src/reports/renderers/ → 4 up = api-server/ → ../../financeos/public
+    resolve(_META_DIR, "../../../../financeos/public"),
+    // CWD = repo root (production node run from workspace root)
     resolve(process.cwd(), "artifacts/financeos/public"),
+    // CWD = artifacts/api-server (pnpm workspace script)
+    resolve(process.cwd(), "../financeos/public"),
+    // CWD = artifacts/
     resolve(process.cwd(), "financeos/public"),
+    // Vite build output — available even when source tree isn't deployed
+    resolve(_META_DIR, "../../financeos/dist/public"),
+    resolve(_META_DIR, "../../../../financeos/dist/public"),
+    resolve(process.cwd(), "artifacts/financeos/dist/public"),
+    resolve(process.cwd(), "../financeos/dist/public"),
   ];
 
   for (const candidate of candidates) {
     try {
       const st = statSync(candidate);
-      if (st.isDirectory()) return candidate;
-    } catch { /* not found */ }
+      if (st.isDirectory()) {
+        console.info(`[FinanceOS] Logo root resolved: ${candidate}`);
+        return candidate;
+      }
+    } catch { /* not found, try next */ }
   }
 
-  // Return first candidate as fallback (will likely fail — logged at read time)
+  // None found — log all attempted paths for diagnostics
+  console.warn(
+    `[FinanceOS] Logo root not found. Attempted:\n${candidates.map((c) => `  ${c}`).join("\n")}\n` +
+    `  Set FINANCEOS_PUBLIC_DIR to the absolute path of artifacts/financeos/public.`,
+  );
   return candidates[0]!;
 }
 
