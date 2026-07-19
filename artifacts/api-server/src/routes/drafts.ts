@@ -21,6 +21,7 @@ import { CommentaryService, DraftService } from "../db/reportDrafts.js";
 import { ReportHistoryService } from "../db/index.js";
 import { sanitizeErrorMessage } from "./reports.js";
 import { requirePermission } from "../auth/permissions.js";
+import { storeArtifact, retrieveArtifact } from "../services/reportStorage.js";
 import type { Role } from "../auth/types.js";
 import type { CommentaryType } from "../db/reportDrafts.js";
 import type { ReportOutputFormat } from "../reports/templates.js";
@@ -870,6 +871,43 @@ router.post("/drafts/:id/generate", requirePermission("reports"), async (req, re
       dataFingerprint:   draft.dataFingerprint ?? liveFingerprint,
       commentaryVersion,
     });
+
+    // ── 11b. Store artifact when format is html or pdf ───────────────────────
+    // Non-blocking: storage failure never prevents the download response.
+    // The history row metadata is updated only when storage succeeds.
+    if (format === "html" || format === "pdf") {
+      const titleSlugForStorage = (report.template.name ?? report.template.id)
+        .toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 40) || "report";
+      const fileNameForStorage = `financeos-${titleSlugForStorage}-${draft.reportingPeriod.replace(/\s+/g, "-").replace(/[^a-z0-9-]/gi, "").toLowerCase()}.${format}`;
+
+      storeArtifact({
+        historyId:  historyRow.id,
+        templateId: report.template.id,
+        period:     draft.reportingPeriod,
+        format,
+        fileName:   fileNameForStorage,
+        data:       Buffer.isBuffer(output) ? output : Buffer.from(output as string, "utf-8"),
+      }).then((result) => {
+        if (result.stored) {
+          // Best-effort metadata update — not awaited so it never blocks the response
+          ReportHistoryService.updateStorageMetadata(historyRow.id, {
+            storageProvider: result.provider,
+            storageKey:      result.storageKey,
+            fileName:        result.fileName,
+            contentType:     result.contentType,
+            fileSize:        result.fileSize,
+            checksum:        result.checksum,
+            storedAt:        result.storedAt,
+          }).catch((e) => {
+            req.log?.warn({ err: e }, "Failed to update history storage metadata");
+          });
+        } else {
+          req.log?.info({ reason: result.reason }, "Report artifact not stored (storage unavailable)");
+        }
+      }).catch((e) => {
+        req.log?.warn({ err: e }, "Report artifact storage threw unexpectedly");
+      });
+    }
 
     // ── 12. Return file or JSON ────────────────────────────────────────────────
     // NOTE: Draft status is intentionally NOT transitioned to "generated" here.

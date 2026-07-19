@@ -21,6 +21,7 @@
 import { readFileSync, statSync } from "fs";
 import { resolve, join, sep, dirname } from "path";
 import { fileURLToPath } from "url";
+import { getBakedLogo } from "./logoAssets.generated.js";
 
 // import.meta.url is always correct in ESM (bundle or source).
 // In the esbuild bundle dist/index.mjs, it resolves to the bundle file URL.
@@ -136,6 +137,15 @@ const _LOGO_CACHE = new Map<string, string | null>();
 export function embedLogoPath(logoPath: string | null): string | null {
   if (!logoPath) return null;
   if (_LOGO_CACHE.has(logoPath)) return _LOGO_CACHE.get(logoPath) ?? null;
+
+  // Primary: use pre-baked asset (inlined at build time — no filesystem access)
+  const baked = getBakedLogo(logoPath);
+  if (baked) {
+    _LOGO_CACHE.set(logoPath, baked);
+    return baked;
+  }
+
+  // Fallback: runtime filesystem read (dev mode, custom logos)
   try {
     const relative = logoPath.replace(/^\//, "");
     const diskPath = resolve(join(_LOGO_ROOT, relative));
@@ -148,6 +158,7 @@ export function embedLogoPath(logoPath: string | null): string | null {
     _LOGO_CACHE.set(logoPath, dataUrl);
     return dataUrl;
   } catch {
+    console.warn(`[FinanceOS] Logo not found: ${logoPath} (baked asset missing, filesystem read failed)`);
     _LOGO_CACHE.set(logoPath, null);
     return null;
   }

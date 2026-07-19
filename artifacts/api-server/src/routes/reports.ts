@@ -5,6 +5,7 @@ import type { EntitySlug } from "../lib/types";
 import { ENTITY_SLUGS } from "../lib/types";
 import { requirePermission } from "../auth/permissions";
 import { ReportHistoryService } from "../db";
+import { retrieveArtifact } from "../services/reportStorage.js";
 
 const router: IRouter = Router();
 
@@ -58,7 +59,6 @@ router.get("/reports", (_req, res) => {
 // GET /api/reports/history — report generation history (requires "reports" permission)
 // Optional ?slug=<entity_slug> filters to reports that included that entity.
 // Optional ?limit=<n> (max 200, default 50) and ?offset=<n> for pagination.
-// Note: generated file artifacts are NOT stored — re-download is not available.
 router.get("/reports/history", requirePermission("reports"), async (req, res) => {
   try {
     const slug = typeof req.query["slug"] === "string" ? req.query["slug"] : undefined;
@@ -90,6 +90,62 @@ router.get("/reports/history", requirePermission("reports"), async (req, res) =>
     res.status(500).json({
       ok: false,
       error: err instanceof Error ? err.message : "Failed to load report history",
+      ts: new Date().toISOString(),
+    });
+  }
+});
+
+// GET /api/reports/history/:id/download — retrieve a stored report artifact
+// Security: the storageKey is read from the DB row — never from user input.
+// Entity authorization: the user must have the "reports" permission AND
+//   the entity slugs in the history row must be within the user's entity access.
+router.get("/reports/history/:id/download", requirePermission("reports"), async (req, res) => {
+  const historyId = typeof req.params["id"] === "string" ? req.params["id"] : req.params["id"]?.[0] ?? "";
+  if (!historyId || !/^[0-9a-f-]{36}$/.test(historyId)) {
+    res.status(400).json({ ok: false, error: "Invalid history ID", ts: new Date().toISOString() });
+    return;
+  }
+
+  try {
+    const row = await ReportHistoryService.getReportHistoryById(historyId);
+    if (!row) {
+      res.status(404).json({ ok: false, error: "Report history entry not found", ts: new Date().toISOString() });
+      return;
+    }
+
+    if (!row.storageKey) {
+      res.status(404).json({
+        ok: false,
+        error: "Artifact unavailable — this report was generated before artifact storage was enabled, or storage was not configured at generation time.",
+        ts: new Date().toISOString(),
+      });
+      return;
+    }
+
+    const result = await retrieveArtifact(row.storageKey);
+
+    if (!result.available) {
+      res.status(503).json({
+        ok: false,
+        error: `Artifact unavailable — ${result.reason}`,
+        ts: new Date().toISOString(),
+      });
+      return;
+    }
+
+    const safeFileName = (row.fileName ?? `report.${row.format}`)
+      .replace(/[^\w\-.]/g, "_")
+      .slice(0, 100);
+
+    res.setHeader("Content-Type",        result.contentType);
+    res.setHeader("Content-Disposition", `attachment; filename="${safeFileName}"`);
+    res.setHeader("Content-Length",      String(result.data.length));
+    res.setHeader("Cache-Control",       "private, no-store");
+    res.send(result.data);
+  } catch (err) {
+    res.status(500).json({
+      ok: false,
+      error: err instanceof Error ? err.message : "Download failed",
       ts: new Date().toISOString(),
     });
   }

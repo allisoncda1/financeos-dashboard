@@ -170,8 +170,9 @@ export const api = {
     const qs = params.toString();
     return getSourced<ReportHistoryEntry[]>(`/reports/history${qs ? `?${qs}` : ""}`);
   },
-  generateReport:   (req: ReportGenerateRequest) => post<BuiltReport>("/reports/generate", req),
-  downloadReport:   (req: ReportGenerateRequest) => postForBlob("/reports/generate", req),
+  generateReport:    (req: ReportGenerateRequest) => post<BuiltReport>("/reports/generate", req),
+  downloadReport:    (req: ReportGenerateRequest) => postForBlob("/reports/generate", req),
+  downloadHistoryArtifact: (historyId: string) => fetch(`/api/reports/history/${encodeURIComponent(historyId)}/download`, { credentials: "include" }),
   aiStatus:         ()           => getSourced<AIStatus>("/ai/status"),
   pipelineStatus:   ()           => getSourced<PipelineStatus>("/pipeline/status"),
 

@@ -136,8 +136,34 @@ const PERIODS = [
 
 function LibraryMonthAccordion({ month, entries }: { month: string; entries: ReportHistoryEntry[] }) {
   const [open, setOpen] = useState(true);
+  const [downloadingId, setDownloadingId] = useState<string | null>(null);
+
+  const handleDownload = async (entry: ReportHistoryEntry) => {
+    if (!entry.storageKey) return;
+    setDownloadingId(entry.id);
+    try {
+      const resp = await api.downloadHistoryArtifact(entry.id);
+      if (!resp.ok) {
+        const body = await resp.json().catch(() => ({}));
+        alert((body as { error?: string }).error ?? "Download failed");
+        return;
+      }
+      const blob = await resp.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = entry.fileName ?? `report.${entry.format}`;
+      a.click();
+      URL.revokeObjectURL(url);
+    } catch (e) {
+      alert(e instanceof Error ? e.message : "Download failed");
+    } finally {
+      setDownloadingId(null);
+    }
+  };
+
   return (
-    <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
+    <div className="bg-white rounded-xl border border-gray-200 overflow-hidden" data-testid="library-accordion-month">
       <button
         onClick={() => setOpen((v) => !v)}
         className="w-full flex items-center justify-between px-4 py-3 hover:bg-gray-50 transition-colors"
@@ -150,44 +176,76 @@ function LibraryMonthAccordion({ month, entries }: { month: string; entries: Rep
         <ChevronRight className={`w-3.5 h-3.5 text-gray-400 transition-transform ${open ? "rotate-90" : ""}`} />
       </button>
       {open && (
-        <table className="w-full text-[11px] border-t border-gray-100">
-          <tbody>
-            {entries.map((entry) => (
-              <tr
-                key={entry.id}
-                className="border-b border-gray-100 last:border-0 hover:bg-gray-50 transition-colors"
-                data-testid={`library-row-${entry.id}`}
-              >
-                <td className="px-4 py-2.5 font-medium text-gray-800">{entry.title}</td>
-                <td className="px-4 py-2.5 text-gray-500">{entry.period}</td>
-                <td className="px-4 py-2.5">
-                  <span className="text-[9px] font-semibold px-1.5 py-0.5 rounded-full bg-violet-50 text-violet-700 uppercase">
-                    {entry.format}
-                  </span>
-                </td>
-                <td className="px-4 py-2.5">
-                  {entry.status === "completed" ? (
-                    <span className="flex items-center gap-1 text-emerald-600">
-                      <CheckCircle2 className="w-3 h-3" /> Done
-                    </span>
-                  ) : entry.status === "failed" ? (
-                    <span className="flex items-center gap-1 text-red-500">
-                      <XCircle className="w-3 h-3" /> Failed
-                    </span>
-                  ) : (
-                    <span className="flex items-center gap-1 text-amber-500">
-                      <Clock className="w-3 h-3" /> {entry.status}
-                    </span>
-                  )}
-                </td>
-                <td className="px-4 py-2.5 text-gray-400 whitespace-nowrap text-[10px]">
-                  {new Date(entry.createdAt).toLocaleDateString()}
-                </td>
-                <td className="px-4 py-2.5 text-[10px] text-gray-300">Metadata only</td>
+        <div className="overflow-x-auto border-t border-gray-100">
+          <table className="w-full text-[11px]">
+            <thead className="bg-gray-50 border-b border-gray-100">
+              <tr className="text-[10px] font-semibold text-gray-400 uppercase tracking-wide">
+                <th className="text-left px-4 py-2">Template</th>
+                <th className="text-left px-4 py-2">Entities</th>
+                <th className="text-left px-4 py-2">Format</th>
+                <th className="text-left px-4 py-2">Status</th>
+                <th className="text-left px-4 py-2">Generated</th>
+                <th className="text-left px-4 py-2">Approved By</th>
+                <th className="text-left px-4 py-2">Artifact</th>
               </tr>
-            ))}
-          </tbody>
-        </table>
+            </thead>
+            <tbody>
+              {entries.map((entry) => {
+                const hasArtifact = !!entry.storageKey;
+                const isDownloading = downloadingId === entry.id;
+                return (
+                  <tr
+                    key={entry.id}
+                    className="border-b border-gray-100 last:border-0 hover:bg-gray-50 transition-colors"
+                    data-testid={`library-row-${entry.id}`}
+                  >
+                    <td className="px-4 py-2.5 font-medium text-gray-800 whitespace-nowrap">{entry.title}</td>
+                    <td className="px-4 py-2.5 text-gray-500 text-[10px]">
+                      {entry.entitySlugs.length === 1 ? entry.entitySlugs[0] : `${entry.entitySlugs.length} entities`}
+                    </td>
+                    <td className="px-4 py-2.5">
+                      <span className="text-[9px] font-semibold px-1.5 py-0.5 rounded-full bg-violet-50 text-violet-700 uppercase">
+                        {entry.format}
+                      </span>
+                    </td>
+                    <td className="px-4 py-2.5">
+                      {entry.status === "completed" ? (
+                        <span className="flex items-center gap-1 text-emerald-600"><CheckCircle2 className="w-3 h-3" /> Done</span>
+                      ) : entry.status === "failed" ? (
+                        <span className="flex items-center gap-1 text-red-500"><XCircle className="w-3 h-3" /> Failed</span>
+                      ) : (
+                        <span className="flex items-center gap-1 text-amber-500"><Clock className="w-3 h-3" /> {entry.status}</span>
+                      )}
+                    </td>
+                    <td className="px-4 py-2.5 text-gray-400 whitespace-nowrap text-[10px]">
+                      {new Date(entry.createdAt).toLocaleDateString()}
+                    </td>
+                    <td className="px-4 py-2.5 text-gray-400 text-[10px] whitespace-nowrap">
+                      {entry.approvedBy ?? <span className="text-gray-300">—</span>}
+                    </td>
+                    <td className="px-4 py-2.5">
+                      {hasArtifact ? (
+                        <button
+                          onClick={() => handleDownload(entry)}
+                          disabled={isDownloading}
+                          className="flex items-center gap-1 text-[10px] text-violet-600 hover:text-violet-800 font-medium disabled:opacity-50"
+                          title={`Download ${entry.fileName ?? "report"}`}
+                        >
+                          {isDownloading ? <Loader2 className="w-3 h-3 animate-spin" /> : <Download className="w-3 h-3" />}
+                          Download
+                        </button>
+                      ) : (
+                        <span className="text-[10px] text-gray-300 italic">
+                          Artifact unavailable — metadata only
+                        </span>
+                      )}
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
       )}
     </div>
   );
@@ -213,13 +271,20 @@ export default function ReportCenterPage() {
   const [draftsLoading, setDraftsLoading] = useState(false);
   const [draftsError, setDraftsError] = useState<string | null>(null);
   const [showArchived, setShowArchived] = useState(false);
-  const [archivingId, setArchivingId] = useState<string | null>(null);
+  const [draftFilterTemplate, setDraftFilterTemplate] = useState<string>("");
+  const [draftFilterPeriod, setDraftFilterPeriod] = useState<string>("");
+  const [draftFilterStatus, setDraftFilterStatus] = useState<string>("");
+  const [actioningId, setActioningId] = useState<string | null>(null);
 
-  const loadDrafts = useCallback(async (archived: boolean) => {
+  const loadDrafts = useCallback(async (archived: boolean, filterTemplate?: string, filterPeriod?: string) => {
     setDraftsLoading(true);
     setDraftsError(null);
     try {
-      const result = await api.listDrafts({ archived: archived || undefined });
+      const result = await api.listDrafts({
+        archived: archived || undefined,
+        template: filterTemplate || undefined,
+        period:   filterPeriod  || undefined,
+      });
       setDrafts(result);
     } catch (e) {
       setDraftsError(e instanceof Error ? e.message : "Failed to load drafts");
@@ -229,24 +294,34 @@ export default function ReportCenterPage() {
   }, []);
 
   useEffect(() => {
-    if (activeTab === "drafts") loadDrafts(showArchived);
-  }, [activeTab, showArchived, loadDrafts]);
+    if (activeTab === "drafts") loadDrafts(showArchived, draftFilterTemplate, draftFilterPeriod);
+  }, [activeTab, showArchived, draftFilterTemplate, draftFilterPeriod, loadDrafts]);
 
-  const handleArchiveDraft = useCallback(async (id: string, isArchived: boolean) => {
-    setArchivingId(id);
+  const filteredDrafts = useMemo(() => {
+    if (!draftFilterStatus) return drafts;
+    return drafts.filter((d) => d.status === draftFilterStatus);
+  }, [drafts, draftFilterStatus]);
+
+  const handleDraftAction = useCallback(async (
+    id: string,
+    action: "archive" | "unarchive" | "submit" | "approve",
+    isArchived: boolean,
+  ) => {
+    setActioningId(id);
     try {
-      if (isArchived) {
-        await api.unarchiveDraft(id);
-      } else {
-        await api.archiveDraft(id);
+      switch (action) {
+        case "archive":   await api.archiveDraft(id); break;
+        case "unarchive": await api.unarchiveDraft(id); break;
+        case "submit":    await api.submitDraftForReview(id); break;
+        case "approve":   await api.approveDraft(id); break;
       }
-      await loadDrafts(showArchived);
+      await loadDrafts(showArchived, draftFilterTemplate, draftFilterPeriod);
     } catch (e) {
       alert(e instanceof Error ? e.message : "Action failed");
     } finally {
-      setArchivingId(null);
+      setActioningId(null);
     }
-  }, [showArchived, loadDrafts]);
+  }, [showArchived, draftFilterTemplate, draftFilterPeriod, loadDrafts]);
 
   const { data: liveTemplatesData, source: templatesSource } = useReportTemplates();
   const liveTemplates = liveTemplatesData ?? [];
@@ -372,20 +447,44 @@ export default function ReportCenterPage() {
             {/* ── Drafts tab ──────────────────────────────────────────── */}
             {activeTab === "drafts" && (
               <div>
-                <div className="flex items-center justify-between mb-3">
+                {/* Filters row */}
+                <div className="flex flex-wrap items-center gap-2 mb-3">
                   <div className="flex items-center gap-2">
                     <Pencil className="w-3.5 h-3.5 text-gray-400" />
-                    <p className="text-[11px] font-semibold text-gray-500 uppercase tracking-widest">Draft Library</p>
+                    <p className="text-[11px] font-semibold text-gray-500 uppercase tracking-widest">Drafts</p>
                   </div>
-                  <label className="flex items-center gap-1.5 text-[11px] text-gray-500 cursor-pointer select-none">
-                    <input
-                      type="checkbox"
-                      checked={showArchived}
-                      onChange={(e) => setShowArchived(e.target.checked)}
-                      className="w-3 h-3"
-                    />
-                    Show archived
-                  </label>
+                  <div className="flex flex-wrap items-center gap-2 ml-auto">
+                    <select
+                      value={draftFilterTemplate}
+                      onChange={(e) => setDraftFilterTemplate(e.target.value)}
+                      className="text-[11px] bg-gray-50 border border-gray-200 rounded-lg px-2 py-1 outline-none focus:border-violet-400"
+                    >
+                      <option value="">All templates</option>
+                      {TEMPLATES.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}
+                    </select>
+                    <select
+                      value={draftFilterPeriod}
+                      onChange={(e) => setDraftFilterPeriod(e.target.value)}
+                      className="text-[11px] bg-gray-50 border border-gray-200 rounded-lg px-2 py-1 outline-none focus:border-violet-400"
+                    >
+                      <option value="">All periods</option>
+                      {PERIODS.map((p) => <option key={p} value={p}>{p}</option>)}
+                    </select>
+                    <select
+                      value={draftFilterStatus}
+                      onChange={(e) => setDraftFilterStatus(e.target.value)}
+                      className="text-[11px] bg-gray-50 border border-gray-200 rounded-lg px-2 py-1 outline-none focus:border-violet-400"
+                    >
+                      <option value="">All statuses</option>
+                      {["draft","ready_for_review","approved","generated","superseded"].map((s) => (
+                        <option key={s} value={s}>{s.replace(/_/g, " ")}</option>
+                      ))}
+                    </select>
+                    <label className="flex items-center gap-1.5 text-[11px] text-gray-500 cursor-pointer select-none">
+                      <input type="checkbox" checked={showArchived} onChange={(e) => setShowArchived(e.target.checked)} className="w-3 h-3" />
+                      Archived
+                    </label>
+                  </div>
                 </div>
 
                 {draftsLoading && (
@@ -398,78 +497,85 @@ export default function ReportCenterPage() {
                     <AlertTriangle className="w-3.5 h-3.5 flex-shrink-0 mt-0.5" /> {draftsError}
                   </div>
                 )}
-                {!draftsLoading && !draftsError && drafts.length === 0 && (
+                {!draftsLoading && !draftsError && filteredDrafts.length === 0 && (
                   <p className="text-[11px] text-gray-400 py-3" data-testid="draft-library-empty">
-                    {showArchived ? "No archived drafts." : "No active drafts. Create a draft from the Templates tab."}
+                    {showArchived ? "No archived drafts." : "No drafts match the selected filters."}
                   </p>
                 )}
-                {!draftsLoading && drafts.length > 0 && (
-                  <div className="bg-white rounded-xl border border-gray-200 overflow-hidden" data-testid="draft-library-table">
+                {!draftsLoading && filteredDrafts.length > 0 && (
+                  <div className="bg-white rounded-xl border border-gray-200 overflow-x-auto" data-testid="draft-library-table">
                     <table className="w-full text-[11px]">
                       <thead className="bg-gray-50 border-b border-gray-100">
                         <tr className="text-[10px] font-semibold text-gray-400 uppercase tracking-wide">
                           <th className="text-left px-4 py-2.5">Template</th>
                           <th className="text-left px-4 py-2.5">Period</th>
                           <th className="text-left px-4 py-2.5">Status</th>
-                          <th className="text-left px-4 py-2.5">Version</th>
+                          <th className="text-left px-4 py-2.5">v</th>
+                          <th className="text-left px-4 py-2.5">Owner</th>
                           <th className="text-left px-4 py-2.5">Updated</th>
+                          <th className="text-left px-4 py-2.5">Approval</th>
                           <th className="text-left px-4 py-2.5">Actions</th>
                         </tr>
                       </thead>
                       <tbody>
-                        {drafts.map((draft) => {
+                        {filteredDrafts.map((draft) => {
                           const isArchived = !!draft.archivedAt;
-                          const isWorking = archivingId === draft.id;
+                          const isActioning = actioningId === draft.id;
                           const statusColors: Record<string, string> = {
-                            draft: "bg-gray-100 text-gray-600",
+                            draft:            "bg-gray-100 text-gray-600",
                             ready_for_review: "bg-amber-50 text-amber-700",
-                            approved: "bg-emerald-50 text-emerald-700",
-                            superseded: "bg-gray-50 text-gray-400",
-                            generated: "bg-violet-50 text-violet-700",
+                            approved:         "bg-emerald-50 text-emerald-700",
+                            superseded:       "bg-gray-50 text-gray-400",
+                            generated:        "bg-violet-50 text-violet-700",
                           };
                           return (
-                            <tr
-                              key={draft.id}
-                              className="border-b border-gray-100 last:border-0 hover:bg-gray-50 transition-colors"
-                              data-testid={`draft-row-${draft.id}`}
-                            >
-                              <td className="px-4 py-3 font-medium text-gray-900">{draft.templateId}</td>
-                              <td className="px-4 py-3 text-gray-500 whitespace-nowrap">{draft.reportingPeriod}</td>
-                              <td className="px-4 py-3">
+                            <tr key={draft.id} className="border-b border-gray-100 last:border-0 hover:bg-gray-50 transition-colors" data-testid={`draft-row-${draft.id}`}>
+                              <td className="px-4 py-2.5 font-medium text-gray-900 whitespace-nowrap">{draft.templateId}</td>
+                              <td className="px-4 py-2.5 text-gray-500 whitespace-nowrap text-[10px]">{draft.reportingPeriod}</td>
+                              <td className="px-4 py-2.5 whitespace-nowrap">
                                 <span className={`text-[9px] font-semibold px-1.5 py-0.5 rounded-full ${statusColors[draft.status] ?? "bg-gray-100 text-gray-500"}`}>
-                                  {isArchived ? "archived" : draft.status}
+                                  {isArchived ? "archived" : draft.status.replace(/_/g, " ")}
                                 </span>
-                                {draft.isStale && (
+                                {draft.isStale && !isArchived && (
                                   <span className="ml-1 text-[9px] font-semibold px-1.5 py-0.5 rounded-full bg-orange-50 text-orange-600">stale</span>
                                 )}
                               </td>
-                              <td className="px-4 py-3 text-gray-400">v{draft.currentVersion}</td>
-                              <td className="px-4 py-3 text-gray-400 whitespace-nowrap">
+                              <td className="px-4 py-2.5 text-gray-400 text-[10px]">v{draft.currentVersion}</td>
+                              <td className="px-4 py-2.5 text-gray-400 text-[10px] whitespace-nowrap">{draft.createdBy ?? "—"}</td>
+                              <td className="px-4 py-2.5 text-gray-400 whitespace-nowrap text-[10px]">
                                 {new Date(draft.updatedAt).toLocaleDateString()}
                               </td>
-                              <td className="px-4 py-3">
-                                <div className="flex items-center gap-1.5">
+                              <td className="px-4 py-2.5 text-[10px]">
+                                {draft.approvedBy ? (
+                                  <span className="text-emerald-600">{draft.approvedBy}</span>
+                                ) : (
+                                  <span className="text-gray-300">—</span>
+                                )}
+                              </td>
+                              <td className="px-4 py-2.5">
+                                <div className="flex items-center gap-1.5 flex-wrap">
                                   {!isArchived && (
-                                    <button
-                                      onClick={() => navigate(`/reports/draft/${draft.id}`)}
-                                      className="text-[10px] text-violet-600 hover:text-violet-800 font-medium flex items-center gap-1"
-                                    >
+                                    <button onClick={() => navigate(`/reports/draft/${draft.id}`)} className="text-[10px] text-violet-600 hover:text-violet-800 font-medium flex items-center gap-1">
                                       <Pencil className="w-3 h-3" /> Edit
                                     </button>
                                   )}
+                                  {!isArchived && draft.status === "draft" && (
+                                    <button onClick={() => handleDraftAction(draft.id, "submit", false)} disabled={isActioning} className="text-[10px] text-amber-600 hover:text-amber-800 font-medium flex items-center gap-1 disabled:opacity-50">
+                                      {isActioning ? <Loader2 className="w-3 h-3 animate-spin" /> : <ChevronRight className="w-3 h-3" />} Submit
+                                    </button>
+                                  )}
+                                  {!isArchived && draft.status === "ready_for_review" && (
+                                    <button onClick={() => handleDraftAction(draft.id, "approve", false)} disabled={isActioning} className="text-[10px] text-emerald-600 hover:text-emerald-800 font-medium flex items-center gap-1 disabled:opacity-50">
+                                      {isActioning ? <Loader2 className="w-3 h-3 animate-spin" /> : <CheckCircle2 className="w-3 h-3" />} Approve
+                                    </button>
+                                  )}
                                   <button
-                                    onClick={() => handleArchiveDraft(draft.id, isArchived)}
-                                    disabled={isWorking}
+                                    onClick={() => handleDraftAction(draft.id, isArchived ? "unarchive" : "archive", isArchived)}
+                                    disabled={isActioning}
                                     className="text-[10px] text-gray-400 hover:text-gray-600 font-medium flex items-center gap-1 disabled:opacity-50"
                                     title={isArchived ? "Restore draft" : "Archive draft"}
                                   >
-                                    {isWorking ? (
-                                      <Loader2 className="w-3 h-3 animate-spin" />
-                                    ) : isArchived ? (
-                                      <RotateCcw className="w-3 h-3" />
-                                    ) : (
-                                      <Archive className="w-3 h-3" />
-                                    )}
+                                    {isActioning ? <Loader2 className="w-3 h-3 animate-spin" /> : isArchived ? <RotateCcw className="w-3 h-3" /> : <Archive className="w-3 h-3" />}
                                     {isArchived ? "Restore" : "Archive"}
                                   </button>
                                 </div>
