@@ -896,7 +896,7 @@ html, body {
 
 /* ── Page header — logo left, report name right, rule below ── */
 .page-hdr { display: flex; align-items: center; justify-content: space-between; padding: 14pt 0 10pt; border-bottom: 0.75pt solid #e5e7eb; margin-bottom: 22pt; }
-.page-hdr__logo img, .page-hdr__logo-img { height: 18pt; width: auto; object-fit: contain; display: block; }
+.page-hdr__logo img, .page-hdr__logo-img { height: 18pt; width: auto; object-fit: contain; display: block; filter: brightness(0); }
 .page-hdr__logo-text { font-size: 11pt; font-weight: 700; color: #111827; }
 .page-hdr__right { font-size: 8pt; color: #9ca3af; }
 /* legacy compat */

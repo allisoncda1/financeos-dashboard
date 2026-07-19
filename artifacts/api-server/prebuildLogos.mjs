@@ -18,7 +18,14 @@ const LOGO_FILES = [
   { key: "cardealer_ai",     relPath: "../financeos/public/logos/cardealer-ai.png" },
   { key: "t3_marketing",     relPath: "../financeos/public/logos/t3-marketing.png" },
   { key: "topmrktr",         relPath: "../financeos/public/logos/topmrktr.png" },
-  { key: "smile_more",       relPath: "../financeos/public/logos/smile-more.png" },
+  // smile-more.png has a SOLID BLACK background (corner pixel RGBA 0,0,0,255).
+  // On dark report covers the CSS filter brightness(0)+invert(1)+opacity(0.7) turns
+  // every pixel — including the black background — into a gray rectangle.
+  // smile-more-dark.png has a TRANSPARENT background with white/yellow content,
+  // identical to how the three working company logos are structured.
+  // The key stays "smile_more" so the logo path /logos/smile-more.png resolves
+  // correctly through getBakedLogo() without touching entity definitions.
+  { key: "smile_more",       relPath: "../financeos/public/logos/smile-more-dark.png" },
   { key: "portfolio",        relPath: "../financeos/public/logos/portfolio.png" },
   { key: "financeos_lockup_light", relPath: "../financeos/public/branding/financeos-lockup-light.png" },
 ];
