@@ -30,6 +30,14 @@ import type {
   DraftGenerateRequest,
   ErrorResponse,
   ForbiddenResponse,
+  GetAccountingSlugAccounts200,
+  GetAccountingSlugBills200,
+  GetAccountingSlugCustomers200,
+  GetAccountingSlugInvoices200,
+  GetAccountingSlugInvoicesParams,
+  GetAccountingSlugTransactions200,
+  GetAccountingSlugTransactionsParams,
+  GetAccountingSlugVendors200,
   GetBudgetPortfolioParams,
   GetCommentaryParams,
   GetEntityAnnualBudgetParams,
@@ -4661,4 +4669,511 @@ export const useApproveCommentary = <TError = ErrorType<UnauthorizedResponse | E
       > => {
       return useMutation(getApproveCommentaryMutationOptions(options));
     }
+
+export const getGetAccountingSlugCustomersUrl = (slug: string,) => {
+
+
+
+
+  return `/api/accounting/${slug}/customers`
+}
+
+/**
+ * Returns QBO-synced customers for the given entity. Requires the
+ * `customers` permission. Balances are QBO-authoritative open AR amounts.
+ * @summary List customers for an entity
+ */
+export const getAccountingSlugCustomers = async (slug: string, options?: RequestInit): Promise<GetAccountingSlugCustomers200> => {
+
+  return customFetch<GetAccountingSlugCustomers200>(getGetAccountingSlugCustomersUrl(slug),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetAccountingSlugCustomersQueryKey = (slug: string,) => {
+    return [
+    `/api/accounting/${slug}/customers`
+    ] as const;
+    }
+
+
+export const getGetAccountingSlugCustomersQueryOptions = <TData = Awaited<ReturnType<typeof getAccountingSlugCustomers>>, TError = ErrorType<UnauthorizedResponse | ErrorResponse | NotFoundResponse>>(slug: string, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getAccountingSlugCustomers>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetAccountingSlugCustomersQueryKey(slug);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getAccountingSlugCustomers>>> = ({ signal }) => getAccountingSlugCustomers(slug, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, enabled: slug !== null && slug !== undefined, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getAccountingSlugCustomers>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetAccountingSlugCustomersQueryResult = NonNullable<Awaited<ReturnType<typeof getAccountingSlugCustomers>>>
+export type GetAccountingSlugCustomersQueryError = ErrorType<UnauthorizedResponse | ErrorResponse | NotFoundResponse>
+
+
+/**
+ * @summary List customers for an entity
+ */
+
+export function useGetAccountingSlugCustomers<TData = Awaited<ReturnType<typeof getAccountingSlugCustomers>>, TError = ErrorType<UnauthorizedResponse | ErrorResponse | NotFoundResponse>>(
+ slug: string, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getAccountingSlugCustomers>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetAccountingSlugCustomersQueryOptions(slug,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getGetAccountingSlugVendorsUrl = (slug: string,) => {
+
+
+
+
+  return `/api/accounting/${slug}/vendors`
+}
+
+/**
+ * Returns QBO-synced vendors for the given entity. Requires the
+ * `vendors` permission. Balances are QBO-authoritative open AP amounts.
+ * @summary List vendors for an entity
+ */
+export const getAccountingSlugVendors = async (slug: string, options?: RequestInit): Promise<GetAccountingSlugVendors200> => {
+
+  return customFetch<GetAccountingSlugVendors200>(getGetAccountingSlugVendorsUrl(slug),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetAccountingSlugVendorsQueryKey = (slug: string,) => {
+    return [
+    `/api/accounting/${slug}/vendors`
+    ] as const;
+    }
+
+
+export const getGetAccountingSlugVendorsQueryOptions = <TData = Awaited<ReturnType<typeof getAccountingSlugVendors>>, TError = ErrorType<UnauthorizedResponse | ErrorResponse | NotFoundResponse>>(slug: string, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getAccountingSlugVendors>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetAccountingSlugVendorsQueryKey(slug);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getAccountingSlugVendors>>> = ({ signal }) => getAccountingSlugVendors(slug, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, enabled: slug !== null && slug !== undefined, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getAccountingSlugVendors>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetAccountingSlugVendorsQueryResult = NonNullable<Awaited<ReturnType<typeof getAccountingSlugVendors>>>
+export type GetAccountingSlugVendorsQueryError = ErrorType<UnauthorizedResponse | ErrorResponse | NotFoundResponse>
+
+
+/**
+ * @summary List vendors for an entity
+ */
+
+export function useGetAccountingSlugVendors<TData = Awaited<ReturnType<typeof getAccountingSlugVendors>>, TError = ErrorType<UnauthorizedResponse | ErrorResponse | NotFoundResponse>>(
+ slug: string, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getAccountingSlugVendors>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetAccountingSlugVendorsQueryOptions(slug,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getGetAccountingSlugInvoicesUrl = (slug: string,
+    params?: GetAccountingSlugInvoicesParams,) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : String(value))
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0 ? `/api/accounting/${slug}/invoices?${stringifiedParams}` : `/api/accounting/${slug}/invoices`
+}
+
+/**
+ * Returns QBO-synced invoices for the given entity. Requires the
+ * `financials` permission. Supports optional `limit` query param (max 500,
+ * default 200).
+ * @summary List invoices for an entity
+ */
+export const getAccountingSlugInvoices = async (slug: string,
+    params?: GetAccountingSlugInvoicesParams, options?: RequestInit): Promise<GetAccountingSlugInvoices200> => {
+
+  return customFetch<GetAccountingSlugInvoices200>(getGetAccountingSlugInvoicesUrl(slug,params),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetAccountingSlugInvoicesQueryKey = (slug: string,
+    params?: GetAccountingSlugInvoicesParams,) => {
+    return [
+    `/api/accounting/${slug}/invoices`, ...(params ? [params] : [])
+    ] as const;
+    }
+
+
+export const getGetAccountingSlugInvoicesQueryOptions = <TData = Awaited<ReturnType<typeof getAccountingSlugInvoices>>, TError = ErrorType<UnauthorizedResponse | ErrorResponse | NotFoundResponse>>(slug: string,
+    params?: GetAccountingSlugInvoicesParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getAccountingSlugInvoices>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetAccountingSlugInvoicesQueryKey(slug,params);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getAccountingSlugInvoices>>> = ({ signal }) => getAccountingSlugInvoices(slug,params, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, enabled: slug !== null && slug !== undefined, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getAccountingSlugInvoices>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetAccountingSlugInvoicesQueryResult = NonNullable<Awaited<ReturnType<typeof getAccountingSlugInvoices>>>
+export type GetAccountingSlugInvoicesQueryError = ErrorType<UnauthorizedResponse | ErrorResponse | NotFoundResponse>
+
+
+/**
+ * @summary List invoices for an entity
+ */
+
+export function useGetAccountingSlugInvoices<TData = Awaited<ReturnType<typeof getAccountingSlugInvoices>>, TError = ErrorType<UnauthorizedResponse | ErrorResponse | NotFoundResponse>>(
+ slug: string,
+    params?: GetAccountingSlugInvoicesParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getAccountingSlugInvoices>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetAccountingSlugInvoicesQueryOptions(slug,params,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getGetAccountingSlugAccountsUrl = (slug: string,) => {
+
+
+
+
+  return `/api/accounting/${slug}/accounts`
+}
+
+/**
+ * Returns QBO-synced accounts (chart of accounts) for the given entity.
+ * Requires the `financials` permission. `currentBalance` reflects the
+ * QBO-synced balance; may be negative for income/equity accounts.
+ * @summary Chart of accounts for an entity
+ */
+export const getAccountingSlugAccounts = async (slug: string, options?: RequestInit): Promise<GetAccountingSlugAccounts200> => {
+
+  return customFetch<GetAccountingSlugAccounts200>(getGetAccountingSlugAccountsUrl(slug),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetAccountingSlugAccountsQueryKey = (slug: string,) => {
+    return [
+    `/api/accounting/${slug}/accounts`
+    ] as const;
+    }
+
+
+export const getGetAccountingSlugAccountsQueryOptions = <TData = Awaited<ReturnType<typeof getAccountingSlugAccounts>>, TError = ErrorType<UnauthorizedResponse | ErrorResponse | NotFoundResponse>>(slug: string, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getAccountingSlugAccounts>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetAccountingSlugAccountsQueryKey(slug);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getAccountingSlugAccounts>>> = ({ signal }) => getAccountingSlugAccounts(slug, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, enabled: slug !== null && slug !== undefined, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getAccountingSlugAccounts>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetAccountingSlugAccountsQueryResult = NonNullable<Awaited<ReturnType<typeof getAccountingSlugAccounts>>>
+export type GetAccountingSlugAccountsQueryError = ErrorType<UnauthorizedResponse | ErrorResponse | NotFoundResponse>
+
+
+/**
+ * @summary Chart of accounts for an entity
+ */
+
+export function useGetAccountingSlugAccounts<TData = Awaited<ReturnType<typeof getAccountingSlugAccounts>>, TError = ErrorType<UnauthorizedResponse | ErrorResponse | NotFoundResponse>>(
+ slug: string, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getAccountingSlugAccounts>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetAccountingSlugAccountsQueryOptions(slug,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getGetAccountingSlugTransactionsUrl = (slug: string,
+    params?: GetAccountingSlugTransactionsParams,) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : String(value))
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0 ? `/api/accounting/${slug}/transactions?${stringifiedParams}` : `/api/accounting/${slug}/transactions`
+}
+
+/**
+ * Returns QBO-synced bank and payment transactions for the given entity.
+ * Requires the `banking` permission. Supports optional `limit` query param
+ * (max 500, default 100).
+ *
+ * **Important**: Amounts are unsigned magnitudes — direction is encoded in
+ * `transactionType` (e.g. "Payment" = inflow, "Purchase"/"Check" = outflow).
+ * This is NOT a complete double-entry general ledger; it reflects bank account
+ * activity and QBO payment records only.
+ * @summary Bank transactions for an entity
+ */
+export const getAccountingSlugTransactions = async (slug: string,
+    params?: GetAccountingSlugTransactionsParams, options?: RequestInit): Promise<GetAccountingSlugTransactions200> => {
+
+  return customFetch<GetAccountingSlugTransactions200>(getGetAccountingSlugTransactionsUrl(slug,params),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetAccountingSlugTransactionsQueryKey = (slug: string,
+    params?: GetAccountingSlugTransactionsParams,) => {
+    return [
+    `/api/accounting/${slug}/transactions`, ...(params ? [params] : [])
+    ] as const;
+    }
+
+
+export const getGetAccountingSlugTransactionsQueryOptions = <TData = Awaited<ReturnType<typeof getAccountingSlugTransactions>>, TError = ErrorType<UnauthorizedResponse | ErrorResponse | NotFoundResponse>>(slug: string,
+    params?: GetAccountingSlugTransactionsParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getAccountingSlugTransactions>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetAccountingSlugTransactionsQueryKey(slug,params);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getAccountingSlugTransactions>>> = ({ signal }) => getAccountingSlugTransactions(slug,params, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, enabled: slug !== null && slug !== undefined, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getAccountingSlugTransactions>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetAccountingSlugTransactionsQueryResult = NonNullable<Awaited<ReturnType<typeof getAccountingSlugTransactions>>>
+export type GetAccountingSlugTransactionsQueryError = ErrorType<UnauthorizedResponse | ErrorResponse | NotFoundResponse>
+
+
+/**
+ * @summary Bank transactions for an entity
+ */
+
+export function useGetAccountingSlugTransactions<TData = Awaited<ReturnType<typeof getAccountingSlugTransactions>>, TError = ErrorType<UnauthorizedResponse | ErrorResponse | NotFoundResponse>>(
+ slug: string,
+    params?: GetAccountingSlugTransactionsParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getAccountingSlugTransactions>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetAccountingSlugTransactionsQueryOptions(slug,params,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getGetAccountingSlugBillsUrl = (slug: string,) => {
+
+
+
+
+  return `/api/accounting/${slug}/bills`
+}
+
+/**
+ * Returns open bills from QBO for the given entity.
+ * Requires the `vendors` permission. `balance` is the remaining unpaid amount
+ * per QBO; `amount` is the original bill total.
+ * @summary Open bills (AP) for an entity
+ */
+export const getAccountingSlugBills = async (slug: string, options?: RequestInit): Promise<GetAccountingSlugBills200> => {
+
+  return customFetch<GetAccountingSlugBills200>(getGetAccountingSlugBillsUrl(slug),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetAccountingSlugBillsQueryKey = (slug: string,) => {
+    return [
+    `/api/accounting/${slug}/bills`
+    ] as const;
+    }
+
+
+export const getGetAccountingSlugBillsQueryOptions = <TData = Awaited<ReturnType<typeof getAccountingSlugBills>>, TError = ErrorType<UnauthorizedResponse | ErrorResponse | NotFoundResponse>>(slug: string, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getAccountingSlugBills>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetAccountingSlugBillsQueryKey(slug);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getAccountingSlugBills>>> = ({ signal }) => getAccountingSlugBills(slug, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, enabled: slug !== null && slug !== undefined, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getAccountingSlugBills>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetAccountingSlugBillsQueryResult = NonNullable<Awaited<ReturnType<typeof getAccountingSlugBills>>>
+export type GetAccountingSlugBillsQueryError = ErrorType<UnauthorizedResponse | ErrorResponse | NotFoundResponse>
+
+
+/**
+ * @summary Open bills (AP) for an entity
+ */
+
+export function useGetAccountingSlugBills<TData = Awaited<ReturnType<typeof getAccountingSlugBills>>, TError = ErrorType<UnauthorizedResponse | ErrorResponse | NotFoundResponse>>(
+ slug: string, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getAccountingSlugBills>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetAccountingSlugBillsQueryOptions(slug,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
 

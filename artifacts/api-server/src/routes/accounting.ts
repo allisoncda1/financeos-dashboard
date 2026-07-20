@@ -63,7 +63,7 @@ router.get(
   "/accounting/:slug/customers",
   requirePermission("customers"),
   async (req, res) => {
-    const slug = req.params["slug"]!;
+    const slug = req.params["slug"] as string;
     if (!isValidSlug(slug)) {
       res.status(404).json({ ok: false, error: `Unknown entity slug "${slug}"` });
       return;
@@ -105,7 +105,7 @@ router.get(
   "/accounting/:slug/vendors",
   requirePermission("vendors"),
   async (req, res) => {
-    const slug = req.params["slug"]!;
+    const slug = req.params["slug"] as string;
     if (!isValidSlug(slug)) {
       res.status(404).json({ ok: false, error: `Unknown entity slug "${slug}"` });
       return;
@@ -145,7 +145,7 @@ router.get(
   "/accounting/:slug/invoices",
   requirePermission("financials"),
   async (req, res) => {
-    const slug = req.params["slug"]!;
+    const slug = req.params["slug"] as string;
     if (!isValidSlug(slug)) {
       res.status(404).json({ ok: false, error: `Unknown entity slug "${slug}"` });
       return;
@@ -193,7 +193,7 @@ router.get(
   "/accounting/:slug/accounts",
   requirePermission("financials"),
   async (req, res) => {
-    const slug = req.params["slug"]!;
+    const slug = req.params["slug"] as string;
     if (!isValidSlug(slug)) {
       res.status(404).json({ ok: false, error: `Unknown entity slug "${slug}"` });
       return;
@@ -243,7 +243,7 @@ router.get(
   "/accounting/:slug/transactions",
   requirePermission("banking"),
   async (req, res) => {
-    const slug = req.params["slug"]!;
+    const slug = req.params["slug"] as string;
     if (!isValidSlug(slug)) {
       res.status(404).json({ ok: false, error: `Unknown entity slug "${slug}"` });
       return;
@@ -290,7 +290,7 @@ router.get(
   "/accounting/:slug/bills",
   requirePermission("vendors"),
   async (req, res) => {
-    const slug = req.params["slug"]!;
+    const slug = req.params["slug"] as string;
     if (!isValidSlug(slug)) {
       res.status(404).json({ ok: false, error: `Unknown entity slug "${slug}"` });
       return;

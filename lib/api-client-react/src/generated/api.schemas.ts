@@ -424,3 +424,175 @@ export type ToggleCommentaryBody = {
   included: boolean;
 };
 
+export type GetAccountingSlugCustomers200Source = typeof GetAccountingSlugCustomers200Source[keyof typeof GetAccountingSlugCustomers200Source];
+
+
+export const GetAccountingSlugCustomers200Source = {
+  db: 'db',
+} as const;
+
+export type GetAccountingSlugCustomers200DataItem = {
+  id?: string;
+  qboId?: string;
+  displayName?: string;
+  email?: string | null;
+  phone?: string | null;
+  balance?: number | null;
+  currency?: string;
+  isActive?: boolean;
+  syncedAt?: string | null;
+};
+
+export type GetAccountingSlugCustomers200 = ApiEnvelope & {
+  source?: GetAccountingSlugCustomers200Source;
+  data?: GetAccountingSlugCustomers200DataItem[];
+};
+
+export type GetAccountingSlugVendors200Source = typeof GetAccountingSlugVendors200Source[keyof typeof GetAccountingSlugVendors200Source];
+
+
+export const GetAccountingSlugVendors200Source = {
+  db: 'db',
+} as const;
+
+export type GetAccountingSlugVendors200DataItem = {
+  id?: string;
+  qboId?: string;
+  displayName?: string;
+  email?: string | null;
+  balance?: number | null;
+  currency?: string;
+  isActive?: boolean;
+  syncedAt?: string | null;
+};
+
+export type GetAccountingSlugVendors200 = ApiEnvelope & {
+  source?: GetAccountingSlugVendors200Source;
+  data?: GetAccountingSlugVendors200DataItem[];
+};
+
+export type GetAccountingSlugInvoicesParams = {
+/**
+ * @minimum 1
+ * @maximum 500
+ */
+limit?: number;
+};
+
+export type GetAccountingSlugInvoices200Source = typeof GetAccountingSlugInvoices200Source[keyof typeof GetAccountingSlugInvoices200Source];
+
+
+export const GetAccountingSlugInvoices200Source = {
+  db: 'db',
+} as const;
+
+export type GetAccountingSlugInvoices200DataItem = {
+  id?: string;
+  qboId?: string;
+  customerName?: string | null;
+  invoiceDate?: string | null;
+  dueDate?: string | null;
+  amount?: number | null;
+  balance?: number | null;
+  status?: string | null;
+  daysOverdue?: number | null;
+  currency?: string;
+  memo?: string | null;
+  syncedAt?: string | null;
+};
+
+export type GetAccountingSlugInvoices200 = ApiEnvelope & {
+  source?: GetAccountingSlugInvoices200Source;
+  data?: GetAccountingSlugInvoices200DataItem[];
+};
+
+export type GetAccountingSlugAccounts200Source = typeof GetAccountingSlugAccounts200Source[keyof typeof GetAccountingSlugAccounts200Source];
+
+
+export const GetAccountingSlugAccounts200Source = {
+  db: 'db',
+} as const;
+
+export type GetAccountingSlugAccounts200DataItem = {
+  id?: string;
+  qboId?: string;
+  name?: string;
+  fullyQualifiedName?: string | null;
+  accountType?: string;
+  accountSubtype?: string | null;
+  classification?: string | null;
+  currentBalance?: number | null;
+  currency?: string;
+  isActive?: boolean;
+  isSubAccount?: boolean;
+  parentQboId?: string | null;
+  syncedAt?: string | null;
+};
+
+export type GetAccountingSlugAccounts200 = ApiEnvelope & {
+  source?: GetAccountingSlugAccounts200Source;
+  data?: GetAccountingSlugAccounts200DataItem[];
+};
+
+export type GetAccountingSlugTransactionsParams = {
+/**
+ * @minimum 1
+ * @maximum 500
+ */
+limit?: number;
+};
+
+export type GetAccountingSlugTransactions200Source = typeof GetAccountingSlugTransactions200Source[keyof typeof GetAccountingSlugTransactions200Source];
+
+
+export const GetAccountingSlugTransactions200Source = {
+  db: 'db',
+} as const;
+
+export type GetAccountingSlugTransactions200DataItem = {
+  id?: string;
+  qboId?: string | null;
+  accountId?: string | null;
+  transactionDate?: string | null;
+  transactionType?: string | null;
+  memo?: string | null;
+  /** Unsigned magnitude; direction implied by transactionType. Null means amount missing from source record. */
+  amount?: number | null;
+  currency?: string;
+  category?: string | null;
+  isReconciled?: boolean;
+  syncedAt?: string | null;
+};
+
+export type GetAccountingSlugTransactions200 = ApiEnvelope & {
+  source?: GetAccountingSlugTransactions200Source;
+  data?: GetAccountingSlugTransactions200DataItem[];
+};
+
+export type GetAccountingSlugBills200Source = typeof GetAccountingSlugBills200Source[keyof typeof GetAccountingSlugBills200Source];
+
+
+export const GetAccountingSlugBills200Source = {
+  db: 'db',
+} as const;
+
+export type GetAccountingSlugBills200DataItem = {
+  id?: string;
+  qboId?: string;
+  vendorName?: string | null;
+  billDate?: string | null;
+  dueDate?: string | null;
+  amount?: number | null;
+  balance?: number | null;
+  status?: string | null;
+  daysOverdue?: number | null;
+  currency?: string;
+  memo?: string | null;
+  syncedAt?: string | null;
+};
+
+export type GetAccountingSlugBills200 = ApiEnvelope & {
+  source?: GetAccountingSlugBills200Source;
+  data?: GetAccountingSlugBills200DataItem[];
+};
+

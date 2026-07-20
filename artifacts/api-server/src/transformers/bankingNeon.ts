@@ -58,7 +58,10 @@ export async function transformBankingNeon(slug: EntitySlug, asOf: string): Prom
       account_id: t.accountId ?? "",
       date: t.transactionDate ?? "",
       description: t.memo ?? t.entityRef ?? t.transactionType ?? "",
-      amount: t.amount,
+      // BankTransaction.amount is typed as number; null from the Neon
+      // transactions table (missing source amount) maps to 0 here — this is
+      // display-only and does not propagate to accounting balances.
+      amount: t.amount ?? 0,
       category: t.category ?? t.accountName ?? "",
       reconciled: t.isReconciled ?? false,
     }));
