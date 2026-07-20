@@ -1,39 +1,24 @@
 import { AccountingLayout } from "@/components/accounting/AccountingLayout";
-import { Card, DataTable, Td, Pill, PrimaryButton } from "@/components/accounting/AccountingUI";
-import { JOURNAL_ENTRIES } from "@/lib/accountingMockData";
-import { Plus } from "lucide-react";
-
-const fmt = (n: number) =>
-  n.toLocaleString("en-US", { style: "currency", currency: "USD" });
+import { AlertCircle } from "lucide-react";
 
 export default function JournalEntriesPage() {
   return (
     <AccountingLayout title="Journal Entries" subtitle="Manual entries and adjustments">
-      <Card
-        title="Journal Entries"
-        action={<PrimaryButton testId="button-new-journal-entry"><Plus className="w-3.5 h-3.5" /> New Entry</PrimaryButton>}
-      >
-        <DataTable headers={[
-          { label: "Date" }, { label: "Ref" }, { label: "Memo" },
-          { label: "Debit", className: "text-right" }, { label: "Credit", className: "text-right" },
-          { label: "Status" },
-        ]}>
-          {JOURNAL_ENTRIES.map(je => (
-            <tr key={je.id} data-testid={`row-journal-${je.ref}`} className="hover:bg-gray-50 transition-colors">
-              <Td>{je.date}</Td>
-              <Td className="font-semibold text-gray-900 text-[13px]">{je.ref}</Td>
-              <Td className="text-gray-500 whitespace-normal">{je.memo}</Td>
-              <Td className="text-right font-semibold text-gray-900">{fmt(je.debit)}</Td>
-              <Td className="text-right font-semibold text-gray-900">{fmt(je.credit)}</Td>
-              <Td>
-                {je.status === "Posted"
-                  ? <Pill tone="emerald">Posted</Pill>
-                  : <Pill tone="gray">Draft</Pill>}
-              </Td>
-            </tr>
-          ))}
-        </DataTable>
-      </Card>
+      <div className="bg-white rounded-xl border border-amber-100 shadow-sm p-8 flex items-start gap-4">
+        <AlertCircle className="w-5 h-5 text-amber-500 shrink-0 mt-0.5" />
+        <div>
+          <p className="text-[14px] font-semibold text-gray-900">Journal entries not available</p>
+          <p className="text-[13px] text-gray-500 mt-2 max-w-xl">
+            Manual journal entries require a FinanceOS-native double-entry accounting engine.
+            QBO journal entries are not yet surfaced in the FinanceOS Core pipeline.
+            This feature is planned for a future release.
+          </p>
+          <p className="text-[12px] text-gray-400 mt-3">
+            Data source requirement: <code className="bg-gray-100 px-1 rounded text-[11px]">journal_entries</code> table
+            or QBO journal entry sync — neither currently available in the Core pipeline.
+          </p>
+        </div>
+      </div>
     </AccountingLayout>
   );
 }

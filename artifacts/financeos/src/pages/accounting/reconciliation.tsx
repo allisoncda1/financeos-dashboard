@@ -1,122 +1,76 @@
 import { AccountingLayout } from "@/components/accounting/AccountingLayout";
-import { Card, DataTable, Td, Pill, PrimaryButton } from "@/components/accounting/AccountingUI";
-import { RECON_ACCOUNT_LIST, RECON_MATCHES, RECON_HISTORY } from "@/lib/accountingMockData";
-import { Link } from "wouter";
-import { PlayCircle, Check } from "lucide-react";
+import { useAccountingEntity } from "@/lib/accounting-context";
+import { useAccountingAccounts, useAccountingTransactions } from "@/hooks/useApi";
+import { AlertCircle } from "lucide-react";
+import { formatCurrency } from "@/lib/format";
 
-const fmt = (n: number) =>
-  n.toLocaleString("en-US", { style: "currency", currency: "USD" });
+const fmt = formatCurrency;
 
-const VIEWS = [
-  { id: "accounts", label: "Accounts" },
-  { id: "match-center", label: "Match Center" },
-  { id: "history", label: "History" },
-];
+export default function ReconciliationPage() {
+  const { activeSlug } = useAccountingEntity();
+  const { data: accounts }    = useAccountingAccounts(activeSlug);
+  const { data: transactions } = useAccountingTransactions(activeSlug);
 
-const STATUS_TONE: Record<string, string> = {
-  Reconciled: "emerald",
-  "In Progress": "amber",
-  "Not Started": "gray",
-};
-
-export default function ReconciliationPage({ view = "accounts" }: { view?: string }) {
-  const activeView = VIEWS.find(v => v.id === view) ?? VIEWS[0];
+  const bankAccounts   = (accounts ?? []).filter(a => a.accountType === "Bank" && a.isActive);
+  const unreconciled   = (transactions ?? []).filter(t => !t.isReconciled).length;
+  const reconciledCount = (transactions ?? []).filter(t => t.isReconciled).length;
 
   return (
     <AccountingLayout title="Reconciliation" subtitle="Match bank activity against your ledger">
-      <Card
-        title="Reconciliation"
-        action={<PrimaryButton testId="button-start-reconciliation"><PlayCircle className="w-3.5 h-3.5" /> Start New Reconciliation</PrimaryButton>}
-      >
-        <div className="px-5 pt-3 border-b border-gray-100">
-          <div className="flex gap-6">
-            {VIEWS.map(v => (
-              <Link
-                key={v.id}
-                href={`/accounting/reconciliation/${v.id}`}
-                data-testid={`tab-reconciliation-${v.id}`}
-                className={`pb-3 text-[12px] font-semibold transition-colors border-b-2 ${
-                  activeView.id === v.id
-                    ? "border-emerald-500 text-emerald-700"
-                    : "border-transparent text-gray-500 hover:text-gray-700"
-                }`}
-              >
-                {v.label}
-              </Link>
+
+      {/* Live status from Neon data */}
+      {transactions && (
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          <div className="bg-white rounded-xl border border-gray-200 p-4 shadow-sm">
+            <p className="text-[22px] font-bold text-gray-900">{transactions.length}</p>
+            <p className="text-[12px] text-gray-500 mt-1">Total transactions (synced from QBO)</p>
+          </div>
+          <div className="bg-white rounded-xl border border-gray-200 p-4 shadow-sm">
+            <p className="text-[22px] font-bold text-emerald-700">{reconciledCount}</p>
+            <p className="text-[12px] text-gray-500 mt-1">Reconciled in QBO</p>
+          </div>
+          <div className="bg-white rounded-xl border border-gray-200 p-4 shadow-sm">
+            <p className={`text-[22px] font-bold ${unreconciled > 0 ? "text-amber-700" : "text-gray-900"}`}>
+              {unreconciled}
+            </p>
+            <p className="text-[12px] text-gray-500 mt-1">Unreconciled (pending)</p>
+          </div>
+        </div>
+      )}
+
+      {/* Bank account balances from live data */}
+      {bankAccounts.length > 0 && (
+        <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
+          <div className="px-5 py-4 border-b border-gray-100">
+            <h2 className="text-[14px] font-semibold text-gray-900">Bank Account Balances</h2>
+            <p className="text-[11px] text-gray-400 mt-0.5">From QBO sync — current book balances</p>
+          </div>
+          <div className="divide-y divide-gray-100">
+            {bankAccounts.map(acc => (
+              <div key={acc.id} className="px-5 py-3 flex items-center justify-between">
+                <span className="text-[13px] font-semibold text-gray-900">{acc.name}</span>
+                <span className={`text-[13px] font-bold ${acc.currentBalance < 0 ? "text-red-600" : "text-gray-900"}`}>
+                  {fmt(acc.currentBalance)}
+                </span>
+              </div>
             ))}
           </div>
         </div>
+      )}
 
-        {activeView.id === "accounts" && (
-          <DataTable headers={[
-            { label: "Account" }, { label: "Period" }, { label: "Last Reconciled" },
-            { label: "Difference", className: "text-right" }, { label: "Status" },
-          ]}>
-            {RECON_ACCOUNT_LIST.map(acc => (
-              <tr key={acc.id} data-testid={`row-recon-account-${acc.id}`} className="hover:bg-gray-50 transition-colors">
-                <Td className="font-semibold text-gray-900 text-[13px]">{acc.name}</Td>
-                <Td>{acc.period}</Td>
-                <Td>{acc.lastReconciled}</Td>
-                <Td className={`text-right font-semibold ${acc.difference === 0 ? "text-gray-900" : "text-red-600"}`}>
-                  {fmt(acc.difference)}
-                </Td>
-                <Td><Pill tone={STATUS_TONE[acc.status]}>{acc.status}</Pill></Td>
-              </tr>
-            ))}
-          </DataTable>
-        )}
-
-        {activeView.id === "match-center" && (
-          <DataTable headers={[
-            { label: "Bank Line" }, { label: "Amount", className: "text-right" },
-            { label: "Suggested Ledger Match" }, { label: "Amount", className: "text-right" },
-            { label: "Confidence" }, { label: "" },
-          ]}>
-            {RECON_MATCHES.map(m => (
-              <tr key={m.id} data-testid={`row-match-${m.id}`} className="hover:bg-gray-50 transition-colors">
-                <Td className="font-medium text-gray-900 text-[13px]">{m.bankLine}</Td>
-                <Td className="text-right font-semibold text-gray-900">{fmt(m.bankAmount)}</Td>
-                <Td className="text-gray-500">{m.ledgerLine}</Td>
-                <Td className="text-right">{fmt(m.ledgerAmount)}</Td>
-                <Td>
-                  <span className="inline-flex items-center gap-1.5 text-[12px] text-gray-600">
-                    <span className={`w-1.5 h-1.5 rounded-full ${m.confidence >= 95 ? "bg-emerald-500" : "bg-emerald-400"}`} />
-                    {m.confidence}%
-                  </span>
-                </Td>
-                <Td>
-                  <button
-                    data-testid={`button-match-${m.id}`}
-                    className="flex items-center gap-1 px-2.5 h-7 rounded-md border border-emerald-200 bg-emerald-50 text-emerald-700 text-[11px] font-semibold hover:bg-emerald-100 transition-colors"
-                  >
-                    <Check className="w-3 h-3" /> Match
-                  </button>
-                </Td>
-              </tr>
-            ))}
-          </DataTable>
-        )}
-
-        {activeView.id === "history" && (
-          <DataTable headers={[
-            { label: "Account" }, { label: "Period" }, { label: "Completed" }, { label: "By" },
-            { label: "Matched", className: "text-right" }, { label: "Difference", className: "text-right" },
-            { label: "Status" },
-          ]}>
-            {RECON_HISTORY.map(h => (
-              <tr key={h.id} data-testid={`row-history-${h.id}`} className="hover:bg-gray-50 transition-colors">
-                <Td className="font-semibold text-gray-900 text-[13px]">{h.account}</Td>
-                <Td>{h.period}</Td>
-                <Td>{h.completed}</Td>
-                <Td>{h.by}</Td>
-                <Td className="text-right">{h.matched}</Td>
-                <Td className="text-right">{fmt(h.difference)}</Td>
-                <Td><Pill tone="emerald">{h.status}</Pill></Td>
-              </tr>
-            ))}
-          </DataTable>
-        )}
-      </Card>
+      {/* Engine gap notice */}
+      <div className="bg-white rounded-xl border border-amber-100 shadow-sm p-6 flex items-start gap-4">
+        <AlertCircle className="w-5 h-5 text-amber-500 shrink-0 mt-0.5" />
+        <div>
+          <p className="text-[14px] font-semibold text-gray-900">Full reconciliation workflow not available</p>
+          <p className="text-[13px] text-gray-500 mt-2 max-w-xl">
+            Matching bank statement lines against ledger entries, computing differences, and recording
+            reconciliation history requires a reconciliation engine. The QBO-synced reconciliation
+            status (<code className="bg-gray-100 px-1 rounded text-[11px]">isReconciled</code>) is shown above
+            as a read-only indicator. The interactive match/approve workflow is planned for a future release.
+          </p>
+        </div>
+      </div>
     </AccountingLayout>
   );
 }
