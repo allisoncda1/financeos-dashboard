@@ -20,9 +20,34 @@ function statusLabel(status: string | null, daysOverdue: number | null): string 
   return status ?? "Unknown";
 }
 
+function ReconBanner({ status, authoritativeTotal, detailTotal, difference, asOf }: {
+  status: string;
+  authoritativeTotal: number | null;
+  detailTotal: number | null;
+  difference: number | null;
+  asOf: string | null;
+}) {
+  if (status === "reconciled" || status === "no_snapshot") return null;
+  return (
+    <div className="rounded-lg border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-900 flex gap-3 items-start">
+      <span className="text-amber-500 mt-0.5">⚠</span>
+      <div>
+        <p className="font-semibold">Invoice detail may not match QBO-authoritative AR</p>
+        <p className="text-amber-800 mt-0.5">
+          QBO reports <strong>{fmt(authoritativeTotal ?? 0)}</strong> open AR
+          {asOf ? ` as of ${asOf.slice(0, 10)}` : ""}
+          {" "}— normalized invoices total <strong>{fmt(detailTotal ?? 0)}</strong>
+          {" "}(gap: <strong>{fmt(difference ?? 0)}</strong>).
+          Credit memos or payments may not yet be synced.
+        </p>
+      </div>
+    </div>
+  );
+}
+
 export default function InvoicesPage() {
   const { activeSlug } = useAccountingEntity();
-  const { data: invoices, source } = useAccountingInvoices(activeSlug);
+  const { data: invoices, source, reconciliation } = useAccountingInvoices(activeSlug);
 
   if (source === "loading" || (source !== "unavailable" && !invoices)) {
     return (
@@ -48,6 +73,15 @@ export default function InvoicesPage() {
 
   return (
     <AccountingLayout title="Invoices" subtitle="View and track customer invoices from QBO">
+      {reconciliation && (
+        <ReconBanner
+          status={reconciliation.reconciliationStatus}
+          authoritativeTotal={reconciliation.authoritativeTotal}
+          detailTotal={reconciliation.detailTotal}
+          difference={reconciliation.difference}
+          asOf={reconciliation.asOf}
+        />
+      )}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
         <MiniKpi label="Total Invoiced" value={fmt(totalAmount)} sub={`${invoices.length} invoices`} tone="blue" />
         <MiniKpi label="Outstanding AR" value={fmt(outstanding)} sub="Open balance" tone="blue" />

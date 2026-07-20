@@ -39,6 +39,7 @@ import { getAllInvoices } from "../db/invoices";
 import { getAllAccounts } from "../db/accounts";
 import { getRecentTransactions } from "../db/transactions";
 import { getOpenBills } from "../db/bills";
+import { getArApReconciliation } from "../db/snapshots";
 
 const router: IRouter = Router();
 
@@ -161,7 +162,10 @@ router.get(
     const limit = Number.isFinite(limitParam) && limitParam > 0 ? Math.min(limitParam, 500) : 200;
 
     try {
-      const rows = await getAllInvoices(entityId, limit);
+      const [rows, recon] = await Promise.all([
+        getAllInvoices(entityId, limit),
+        getArApReconciliation(entityId),
+      ]);
       const data = rows.map((r) => ({
         id:           r.id,
         qboId:        r.qboId,
@@ -179,7 +183,17 @@ router.get(
         syncedAt:     r.syncedAt?.toISOString() ?? null,
       }));
 
-      res.json({ ok: true, data, source: "db", ts: new Date().toISOString() });
+      // reconciliation: compare normalized invoice totals against QBO-authoritative AR
+      const reconciliation = {
+        authoritativeTotal:    recon.officialAr,
+        detailTotal:           recon.normalizedAr,
+        difference:            recon.arDiff,
+        reconciliationStatus:  recon.arReconciled ? "reconciled" : recon.officialAr === null ? "no_snapshot" : "unreconciled",
+        asOf:                  recon.asOf,
+        source:                "entity_snapshots.metrics.ar_ap_metrics.open_ar",
+      };
+
+      res.json({ ok: true, data, reconciliation, source: "db", ts: new Date().toISOString() });
     } catch (err) {
       req.log.error({ err }, `accounting/invoices failed for ${slug}`);
       res.status(500).json({ ok: false, error: "Failed to load invoices" });
@@ -303,7 +317,10 @@ router.get(
     }
 
     try {
-      const rows = await getOpenBills(entityId);
+      const [rows, recon] = await Promise.all([
+        getOpenBills(entityId),
+        getArApReconciliation(entityId),
+      ]);
       const data = rows.map((r) => ({
         id:          r.id,
         qboId:       r.qboId,
@@ -320,7 +337,17 @@ router.get(
         syncedAt:    r.syncedAt?.toISOString() ?? null,
       }));
 
-      res.json({ ok: true, data, source: "db", ts: new Date().toISOString() });
+      // reconciliation: compare normalized bill totals against QBO-authoritative AP
+      const reconciliation = {
+        authoritativeTotal:    recon.officialAp,
+        detailTotal:           recon.normalizedAp,
+        difference:            recon.apDiff,
+        reconciliationStatus:  recon.apReconciled ? "reconciled" : recon.officialAp === null ? "no_snapshot" : "unreconciled",
+        asOf:                  recon.asOf,
+        source:                "entity_snapshots.metrics.ar_ap_metrics.open_ap",
+      };
+
+      res.json({ ok: true, data, reconciliation, source: "db", ts: new Date().toISOString() });
     } catch (err) {
       req.log.error({ err }, `accounting/bills failed for ${slug}`);
       res.status(500).json({ ok: false, error: "Failed to load bills" });

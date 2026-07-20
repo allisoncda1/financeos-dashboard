@@ -25,7 +25,7 @@ import {
  */
 function useTrackedFetch<T>(
   key: string,
-  fetcher: () => Promise<{ data: T; source: 'db' | 'live' | 'cache' | 'mock' }>,
+  fetcher: () => Promise<{ data: T; source: 'db' | 'live' | 'cache' | 'mock'; reconciliation?: import('@/lib/api').ArApReconciliation | null }>,
   mockInit: (() => T) | null,
   deps: unknown[],
   reportGlobal: boolean = true,
@@ -45,10 +45,10 @@ function useTrackedFetch<T>(
   useEffect(() => {
     let cancelled = false;
     fetcher()
-      .then(({ data, source }) => {
+      .then(({ data, source, reconciliation }) => {
         if (cancelled) return;
         lastGoodRef.current = data;
-        setState({ data, source, lastSuccessfulFetch: new Date().toISOString() });
+        setState({ data, source, lastSuccessfulFetch: new Date().toISOString(), reconciliation });
       })
       .catch(() => {
         if (cancelled) return;
@@ -67,10 +67,10 @@ function useTrackedFetch<T>(
   // effect; hits the same endpoint with no extra side effects.
   const refetch = useCallback(async () => {
     try {
-      const { data, source } = await fetcher();
+      const { data, source, reconciliation } = await fetcher();
       if (!mountedRef.current) return;
       lastGoodRef.current = data;
-      setState({ data, source, lastSuccessfulFetch: new Date().toISOString() });
+      setState({ data, source, lastSuccessfulFetch: new Date().toISOString(), reconciliation });
     } catch {
       if (!mountedRef.current) return;
       setState((prev) => ({

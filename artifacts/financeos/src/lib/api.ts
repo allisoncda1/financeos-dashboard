@@ -10,6 +10,23 @@ const BASE = "/api";
 
 export type Sourced<T> = { data: T; source: ApiSource };
 
+export type ArApReconciliation = {
+  /** QBO-authoritative total from entity_snapshots. Null when no snapshot exists. */
+  authoritativeTotal: number | null;
+  /** Sum of normalized table balances (invoices or bills). */
+  detailTotal: number | null;
+  /** |authoritativeTotal - detailTotal|. Null when authoritative is unavailable. */
+  difference: number | null;
+  /** "reconciled" | "unreconciled" | "no_snapshot" */
+  reconciliationStatus: string;
+  /** ISO date of the snapshot used for authoritative value. */
+  asOf: string | null;
+  /** Source path in entity_snapshots.metrics. */
+  source: string;
+};
+
+export type SourcedWithRecon<T> = Sourced<T> & { reconciliation: ArApReconciliation | null };
+
 function normalizeSource(value: unknown): ApiSource {
   return value === "db" || value === "live" || value === "cache" || value === "mock" ? value : "live";
 }
@@ -50,6 +67,22 @@ async function getSourced<T>(path: string): Promise<Sourced<T>> {
   const json = await res.json();
   if (!json.ok) throw new Error(json.error ?? "API error");
   return { data: json.data as T, source: normalizeSource(json.source) };
+}
+
+async function getSourcedWithRecon<T>(path: string): Promise<SourcedWithRecon<T>> {
+  const res = await fetch(`${BASE}${path}`, { credentials: "include" });
+  if (res.status === 401) {
+    handleUnauthorized();
+    throw new Error("Session expired");
+  }
+  if (!res.ok) throw new Error(`API ${path} → ${res.status}`);
+  const json = await res.json();
+  if (!json.ok) throw new Error(json.error ?? "API error");
+  return {
+    data:           json.data as T,
+    source:         normalizeSource(json.source),
+    reconciliation: (json.reconciliation as ArApReconciliation) ?? null,
+  };
 }
 
 async function put<T>(path: string, body: unknown): Promise<T> {
@@ -340,14 +373,14 @@ export const api = {
   accountingVendors:      (slug: string) => getSourced<AccountingVendor[]>(`/accounting/${slug}/vendors`),
   accountingInvoices:     (slug: string, limit?: number) => {
     const qs = limit ? `?limit=${limit}` : "";
-    return getSourced<AccountingInvoice[]>(`/accounting/${slug}/invoices${qs}`);
+    return getSourcedWithRecon<AccountingInvoice[]>(`/accounting/${slug}/invoices${qs}`);
   },
   accountingAccounts:     (slug: string) => getSourced<AccountingAccount[]>(`/accounting/${slug}/accounts`),
   accountingTransactions: (slug: string, limit?: number) => {
     const qs = limit ? `?limit=${limit}` : "";
     return getSourced<AccountingTransaction[]>(`/accounting/${slug}/transactions${qs}`);
   },
-  accountingBills:        (slug: string) => getSourced<AccountingBill[]>(`/accounting/${slug}/bills`),
+  accountingBills:        (slug: string) => getSourcedWithRecon<AccountingBill[]>(`/accounting/${slug}/bills`),
 };
 
 // ── Frontend-side draft types ───────────────────────────────────────────────
