@@ -2121,3 +2121,361 @@ paths:
                 $ref: "#/components/schemas/ErrorResponse"
         "404":
           $ref: "#/components/responses/NotFound"
+
+  # ─── Accounting module ─────────────────────────────────────────────────────
+  #
+  # All six endpoints read from CORE_DATABASE_URL (Neon Core, read-only).
+  # Data lineage: QBO API → Python FinanceOS Core pipeline → Neon → these routes.
+  # Auth: requireAuth (global) + per-resource requirePermission middleware.
+
+  /accounting/{slug}/customers:
+    get:
+      summary: List customers for an entity
+      description: |
+        Returns QBO-synced customers for the given entity. Requires the
+        `customers` permission. Balances are QBO-authoritative open AR amounts.
+      tags: [Accounting]
+      security: [{ cookieAuth: [] }]
+      parameters:
+        - name: slug
+          in: path
+          required: true
+          description: Entity slug (case-insensitive; one of CarDealer_ai, T3_Marketing, TopMrktr, Smile_More)
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Customer list
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/ApiEnvelope"
+                  - type: object
+                    properties:
+                      source:
+                        type: string
+                        enum: [db]
+                      data:
+                        type: array
+                        items:
+                          type: object
+                          properties:
+                            id:          { type: string, format: uuid }
+                            qboId:       { type: string }
+                            displayName: { type: string }
+                            email:       { type: string, nullable: true }
+                            phone:       { type: string, nullable: true }
+                            balance:     { type: number, nullable: true }
+                            currency:    { type: string, example: USD }
+                            isActive:    { type: boolean }
+                            syncedAt:    { type: string, format: date-time, nullable: true }
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          description: Insufficient permission (requires customers role)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /accounting/{slug}/vendors:
+    get:
+      summary: List vendors for an entity
+      description: |
+        Returns QBO-synced vendors for the given entity. Requires the
+        `vendors` permission. Balances are QBO-authoritative open AP amounts.
+      tags: [Accounting]
+      security: [{ cookieAuth: [] }]
+      parameters:
+        - name: slug
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Vendor list
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/ApiEnvelope"
+                  - type: object
+                    properties:
+                      source:
+                        type: string
+                        enum: [db]
+                      data:
+                        type: array
+                        items:
+                          type: object
+                          properties:
+                            id:          { type: string, format: uuid }
+                            qboId:       { type: string }
+                            displayName: { type: string }
+                            email:       { type: string, nullable: true }
+                            balance:     { type: number, nullable: true }
+                            currency:    { type: string }
+                            isActive:    { type: boolean }
+                            syncedAt:    { type: string, format: date-time, nullable: true }
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          description: Insufficient permission (requires vendors role)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /accounting/{slug}/invoices:
+    get:
+      summary: List invoices for an entity
+      description: |
+        Returns QBO-synced invoices for the given entity. Requires the
+        `financials` permission. Supports optional `limit` query param (max 500,
+        default 200).
+      tags: [Accounting]
+      security: [{ cookieAuth: [] }]
+      parameters:
+        - name: slug
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: limit
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 500
+            default: 200
+      responses:
+        "200":
+          description: Invoice list
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/ApiEnvelope"
+                  - type: object
+                    properties:
+                      source:
+                        type: string
+                        enum: [db]
+                      data:
+                        type: array
+                        items:
+                          type: object
+                          properties:
+                            id:           { type: string, format: uuid }
+                            qboId:        { type: string }
+                            customerName: { type: string, nullable: true }
+                            invoiceDate:  { type: string, format: date, nullable: true }
+                            dueDate:      { type: string, format: date, nullable: true }
+                            amount:       { type: number, nullable: true }
+                            balance:      { type: number, nullable: true }
+                            status:       { type: string, nullable: true }
+                            daysOverdue:  { type: integer, nullable: true }
+                            currency:     { type: string }
+                            memo:         { type: string, nullable: true }
+                            syncedAt:     { type: string, format: date-time, nullable: true }
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          description: Insufficient permission (requires financials role)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /accounting/{slug}/accounts:
+    get:
+      summary: Chart of accounts for an entity
+      description: |
+        Returns QBO-synced accounts (chart of accounts) for the given entity.
+        Requires the `financials` permission. `currentBalance` reflects the
+        QBO-synced balance; may be negative for income/equity accounts.
+      tags: [Accounting]
+      security: [{ cookieAuth: [] }]
+      parameters:
+        - name: slug
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Chart of accounts
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/ApiEnvelope"
+                  - type: object
+                    properties:
+                      source:
+                        type: string
+                        enum: [db]
+                      data:
+                        type: array
+                        items:
+                          type: object
+                          properties:
+                            id:                 { type: string, format: uuid }
+                            qboId:              { type: string }
+                            name:               { type: string }
+                            fullyQualifiedName: { type: string, nullable: true }
+                            accountType:        { type: string }
+                            accountSubtype:     { type: string, nullable: true }
+                            classification:     { type: string, nullable: true }
+                            currentBalance:     { type: number, nullable: true }
+                            currency:           { type: string }
+                            isActive:           { type: boolean }
+                            isSubAccount:       { type: boolean }
+                            parentQboId:        { type: string, nullable: true }
+                            syncedAt:           { type: string, format: date-time, nullable: true }
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          description: Insufficient permission (requires financials role)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /accounting/{slug}/transactions:
+    get:
+      summary: Bank transactions for an entity
+      description: |
+        Returns QBO-synced bank and payment transactions for the given entity.
+        Requires the `banking` permission. Supports optional `limit` query param
+        (max 500, default 100).
+
+        **Important**: Amounts are unsigned magnitudes — direction is encoded in
+        `transactionType` (e.g. "Payment" = inflow, "Purchase"/"Check" = outflow).
+        This is NOT a complete double-entry general ledger; it reflects bank account
+        activity and QBO payment records only.
+      tags: [Accounting]
+      security: [{ cookieAuth: [] }]
+      parameters:
+        - name: slug
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: limit
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 500
+            default: 100
+      responses:
+        "200":
+          description: Transaction list
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/ApiEnvelope"
+                  - type: object
+                    properties:
+                      source:
+                        type: string
+                        enum: [db]
+                      data:
+                        type: array
+                        items:
+                          type: object
+                          properties:
+                            id:              { type: string, format: uuid }
+                            qboId:           { type: string, nullable: true }
+                            accountId:       { type: string, format: uuid, nullable: true }
+                            transactionDate: { type: string, format: date, nullable: true }
+                            transactionType: { type: string, nullable: true }
+                            memo:            { type: string, nullable: true }
+                            amount:
+                              type: number
+                              nullable: true
+                              description: Unsigned magnitude; direction implied by transactionType. Null means amount missing from source record.
+                            currency:        { type: string }
+                            category:        { type: string, nullable: true }
+                            isReconciled:    { type: boolean }
+                            syncedAt:        { type: string, format: date-time, nullable: true }
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          description: Insufficient permission (requires banking role)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /accounting/{slug}/bills:
+    get:
+      summary: Open bills (AP) for an entity
+      description: |
+        Returns open bills from QBO for the given entity.
+        Requires the `vendors` permission. `balance` is the remaining unpaid amount
+        per QBO; `amount` is the original bill total.
+      tags: [Accounting]
+      security: [{ cookieAuth: [] }]
+      parameters:
+        - name: slug
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Open bills list
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/ApiEnvelope"
+                  - type: object
+                    properties:
+                      source:
+                        type: string
+                        enum: [db]
+                      data:
+                        type: array
+                        items:
+                          type: object
+                          properties:
+                            id:          { type: string, format: uuid }
+                            qboId:       { type: string }
+                            vendorName:  { type: string, nullable: true }
+                            billDate:    { type: string, format: date, nullable: true }
+                            dueDate:     { type: string, format: date, nullable: true }
+                            amount:      { type: number, nullable: true }
+                            balance:     { type: number, nullable: true }
+                            status:      { type: string, nullable: true }
+                            daysOverdue: { type: integer, nullable: true }
+                            currency:    { type: string }
+                            memo:        { type: string, nullable: true }
+                            syncedAt:    { type: string, format: date-time, nullable: true }
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          description: Insufficient permission (requires vendors role)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          $ref: "#/components/responses/NotFound"

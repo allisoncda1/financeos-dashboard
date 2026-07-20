@@ -205,7 +205,13 @@ export type AccountingTransaction = {
   transactionDate: string | null;
   transactionType: string | null;
   memo: string | null;
-  amount: number;
+  /**
+   * Unsigned magnitude from the QBO-synced `transactions` table.
+   * Direction is encoded in `transactionType` (e.g. "Payment" = inflow,
+   * "Purchase"/"Check" = outflow). A null value means amount was missing
+   * in the source record — never silently treat as 0.
+   */
+  amount: number | null;
   currency: string;
   category: string | null;
   isReconciled: boolean;
