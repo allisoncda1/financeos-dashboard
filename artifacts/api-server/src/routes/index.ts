@@ -9,6 +9,7 @@ import briefingRouter from "./briefing";
 import rulesRouter from "./rules";
 import reportsRouter from "./reports";
 import draftsRouter from "./drafts";
+import accountingRouter from "./accounting";
 import aiRouter from "./ai";
 import pipelineRouter from "./pipeline";
 import budgetRouter from "./budget";
@@ -38,5 +39,6 @@ router.use(reportsRouter);
 router.use(draftsRouter);
 router.use("/ai", aiRouter);
 router.use(budgetRouter);
+router.use(accountingRouter);
 
 export default router;

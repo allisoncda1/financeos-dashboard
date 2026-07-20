@@ -142,6 +142,91 @@ async function postForBlob(path: string, body: unknown): Promise<DownloadedFile>
   return { blob, filename };
 }
 
+// ── Accounting module types ──────────────────────────────────────────────────
+
+export type AccountingCustomer = {
+  id: string;
+  qboId: string | null;
+  displayName: string | null;
+  email: string | null;
+  phone: string | null;
+  balance: number;
+  currency: string;
+  isActive: boolean | null;
+  syncedAt: string | null;
+};
+
+export type AccountingVendor = {
+  id: string;
+  qboId: string | null;
+  displayName: string | null;
+  email: string | null;
+  balance: number;
+  currency: string;
+  isActive: boolean | null;
+  syncedAt: string | null;
+};
+
+export type AccountingInvoice = {
+  id: string;
+  qboId: string | null;
+  customerName: string | null;
+  invoiceDate: string | null;
+  dueDate: string | null;
+  amount: number;
+  balance: number;
+  status: string | null;
+  daysOverdue: number | null;
+  currency: string;
+  memo: string | null;
+  syncedAt: string | null;
+};
+
+export type AccountingAccount = {
+  id: string;
+  qboId: string | null;
+  name: string | null;
+  fullyQualifiedName: string | null;
+  accountType: string | null;
+  accountSubtype: string | null;
+  classification: string | null;
+  currentBalance: number;
+  currency: string;
+  isActive: boolean | null;
+  isSubAccount: boolean;
+  parentQboId: string | null;
+  syncedAt: string | null;
+};
+
+export type AccountingTransaction = {
+  id: string;
+  qboId: string | null;
+  accountId: string | null;
+  transactionDate: string | null;
+  transactionType: string | null;
+  memo: string | null;
+  amount: number;
+  currency: string;
+  category: string | null;
+  isReconciled: boolean;
+  syncedAt: string | null;
+};
+
+export type AccountingBill = {
+  id: string;
+  qboId: string | null;
+  vendorName: string | null;
+  billDate: string | null;
+  dueDate: string | null;
+  amount: number;
+  balance: number;
+  status: string | null;
+  daysOverdue: number | null;
+  currency: string;
+  memo: string | null;
+  syncedAt: string | null;
+};
+
 export const api = {
   model:            ()           => getSourced<DashboardData>("/model"),
   entityFinancials: (s: string)  => getSourced<FinancialsData>(`/model/${s}/financials`),
@@ -243,6 +328,20 @@ export const api = {
     post<CommentaryEntry>(`/drafts/commentary/${id}/approve`, {}),
   reorderCommentary: (ids: string[]) =>
     post<void>("/drafts/commentary/reorder", { ids }),
+
+  // ── Accounting module — live Neon data ──────────────────────────────────
+  accountingCustomers:    (slug: string) => getSourced<AccountingCustomer[]>(`/accounting/${slug}/customers`),
+  accountingVendors:      (slug: string) => getSourced<AccountingVendor[]>(`/accounting/${slug}/vendors`),
+  accountingInvoices:     (slug: string, limit?: number) => {
+    const qs = limit ? `?limit=${limit}` : "";
+    return getSourced<AccountingInvoice[]>(`/accounting/${slug}/invoices${qs}`);
+  },
+  accountingAccounts:     (slug: string) => getSourced<AccountingAccount[]>(`/accounting/${slug}/accounts`),
+  accountingTransactions: (slug: string, limit?: number) => {
+    const qs = limit ? `?limit=${limit}` : "";
+    return getSourced<AccountingTransaction[]>(`/accounting/${slug}/transactions${qs}`);
+  },
+  accountingBills:        (slug: string) => getSourced<AccountingBill[]>(`/accounting/${slug}/bills`),
 };
 
 // ── Frontend-side draft types ───────────────────────────────────────────────
