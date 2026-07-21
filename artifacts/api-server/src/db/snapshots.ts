@@ -97,27 +97,105 @@ const RECON_TOLERANCE = 0.02;
 
 type CoverageStatus = "ok" | "no_sync" | "date_mismatch";
 
+// Maps credit object type → aging report type stored in qbo_raw.
+const CREDIT_TO_REPORT: Record<"CreditMemo" | "VendorCredit", string> = {
+  CreditMemo:   "AgedReceivableSummary",
+  VendorCredit: "AgedPayableSummary",
+};
+
 /**
- * Check whether a completed sync_run exists for this entity + credit type,
- * and whether its completion date covers the official report EndPeriod.
+ * Determine credit coverage status for one entity + credit type.
  *
- * Sync coverage rules (strict):
- *   - A row in sync_runs with status='completed' and the credit type in
- *     object_types[] is the authoritative signal that the sync ran.
- *   - Zero rows in qbo_raw after a completed sync = legitimately zero credits.
- *   - No completed sync_run → normalized_data_incomplete (not zero).
- *   - Sync completed before the report EndPeriod (last_sync_at < asOf):
- *     → source_date_mismatch. Transactions between the sync and the report
- *     date may exist; RemainingCredit values are not point-in-time compatible
- *     with the older snapshot.
+ * Primary rule — shared batch lineage (preferred):
+ *   The controlling check is sync_run_id equality between the credit objects
+ *   (qbo_raw.sync_run_id) and the aging report (also in qbo_raw). Same
+ *   sync_run_id = same controlled extraction = point-in-time compatible.
+ *
+ *   A sync that completed AFTER the report's EndPeriod is NOT automatically
+ *   compatible. RemainingCredit and VendorCredit.Balance are current-state
+ *   values at extraction time. A credit applied, refunded, or deleted after
+ *   the EndPeriod changes those balances and invalidates the reconciliation.
+ *
+ * Fallback rule — timestamp (when aging report is not in qbo_raw):
+ *   sync completed_at must be >= snapshot.asOf. Weaker but safe as a fallback.
+ *
+ * Statuses:
+ *   "ok"            — shared sync_run_id (or fallback: completed_at >= asOf)
+ *   "no_sync"       — no credit objects found in qbo_raw
+ *   "date_mismatch" — different sync_run_ids, or timestamp shows sync predates EndPeriod
  */
 async function _getCreditCoverage(
   entityId: string,
   creditType: "CreditMemo" | "VendorCredit",
   reportAsOf: string | null,
 ): Promise<{ coverageStatus: CoverageStatus; lastSyncAt: string | null }> {
-  // Check for a completed sync_run that included this credit type
-  const runRows = await db.execute<{ completed_at: string | null }>(
+  // Step 1: Find the sync_run_id that most recently wrote credit objects.
+  const creditRunRows = await db.execute<{ sync_run_id: string | null; synced_at: string | null }>(
+    sql`SELECT sync_run_id::text, synced_at::text
+        FROM qbo_raw
+        WHERE entity_id = ${entityId}
+          AND object_type = ${creditType}
+          AND is_deleted = false
+        ORDER BY synced_at DESC
+        LIMIT 1`,
+  );
+  const creditRunId = creditRunRows.rows[0]?.sync_run_id ?? null;
+
+  if (!creditRunId) {
+    // No credit objects exist in qbo_raw — sync never ran or produced zero rows
+    // but we don't know which. Check for a completed sync_run to distinguish.
+    const ranRows = await db.execute<{ completed_at: string | null }>(
+      sql`SELECT completed_at::text
+          FROM sync_runs
+          WHERE entity_id = ${entityId}
+            AND ${creditType} = ANY(object_types)
+            AND status = 'completed'
+          ORDER BY completed_at DESC
+          LIMIT 1`,
+    );
+    const completedAt = ranRows.rows[0]?.completed_at ?? null;
+
+    if (!completedAt) {
+      // No completed sync_run at all → never synced
+      return { coverageStatus: "no_sync", lastSyncAt: null };
+    }
+
+    // Completed sync with 0 rows = legitimately zero credits.
+    // Still need to verify the run covers the report EndPeriod.
+    if (reportAsOf && completedAt.slice(0, 10) < reportAsOf) {
+      return { coverageStatus: "date_mismatch", lastSyncAt: completedAt };
+    }
+    return { coverageStatus: "ok", lastSyncAt: completedAt };
+  }
+
+  // Step 2: Find the sync_run_id that most recently wrote the aging report.
+  const reportType = CREDIT_TO_REPORT[creditType];
+  const reportRunRows = await db.execute<{ sync_run_id: string | null; synced_at: string | null }>(
+    sql`SELECT sync_run_id::text, synced_at::text
+        FROM qbo_raw
+        WHERE entity_id = ${entityId}
+          AND object_type = ${reportType}
+        ORDER BY synced_at DESC
+        LIMIT 1`,
+  );
+  const reportRunId = reportRunRows.rows[0]?.sync_run_id ?? null;
+  const creditSyncedAt = creditRunRows.rows[0]?.synced_at ?? null;
+
+  if (reportRunId !== null) {
+    // Primary check: shared-batch lineage.
+    if (creditRunId === reportRunId) {
+      // Same controlled batch — point-in-time compatible.
+      return { coverageStatus: "ok", lastSyncAt: creditSyncedAt };
+    } else {
+      // Different sync_run_ids — credit values are not proven compatible
+      // with the report's accounting state.
+      return { coverageStatus: "date_mismatch", lastSyncAt: creditSyncedAt };
+    }
+  }
+
+  // Step 3: Fallback — aging report not stored in qbo_raw.
+  // Use completion timestamp vs reportAsOf as a weaker but safe check.
+  const completedAtRows = await db.execute<{ completed_at: string | null }>(
     sql`SELECT completed_at::text
         FROM sync_runs
         WHERE entity_id = ${entityId}
@@ -126,22 +204,14 @@ async function _getCreditCoverage(
         ORDER BY completed_at DESC
         LIMIT 1`,
   );
-  const completedAt = runRows.rows[0]?.completed_at ?? null;
+  const completedAt = completedAtRows.rows[0]?.completed_at ?? null;
 
   if (!completedAt) {
     return { coverageStatus: "no_sync", lastSyncAt: null };
   }
-
-  // Strict date alignment: sync completion date must be >= the report EndPeriod.
-  // A sync completed before the report EndPeriod may have missed transactions
-  // between the sync and the EndPeriod — those affect RemainingCredit/Balance.
-  if (reportAsOf) {
-    const syncDate = completedAt.slice(0, 10); // ISO date portion
-    if (syncDate < reportAsOf) {
-      return { coverageStatus: "date_mismatch", lastSyncAt: completedAt };
-    }
+  if (reportAsOf && completedAt.slice(0, 10) < reportAsOf) {
+    return { coverageStatus: "date_mismatch", lastSyncAt: completedAt };
   }
-
   return { coverageStatus: "ok", lastSyncAt: completedAt };
 }
 
