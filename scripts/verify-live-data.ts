@@ -272,6 +272,99 @@ async function checkBills(entityIds: Map<string, string>) {
   }
 }
 
+// AR/AP reconciliation: compare entity_snapshots authoritative totals against
+// normalized invoices/bills. SELECT-only. Never calls QBO or modifies Neon.
+async function checkArApReconciliation(entityIds: Map<string, string>) {
+  const TOLERANCE = 0.02;
+  log("─── AR/AP Reconciliation ──────────────────────────────────────────────");
+  log(
+    "  Entity".padEnd(18) +
+    "Off.AR".padStart(12) + "Norm.AR".padStart(12) + "AR Diff".padStart(10) + "AR Sta".padStart(10) +
+    "  |  " +
+    "Off.AP".padStart(12) + "Norm.AP".padStart(12) + "AP Diff".padStart(10) + "AP Sta".padStart(10),
+  );
+  log("  " + "─".repeat(110));
+
+  for (const [slug, entityId] of entityIds) {
+    // Official totals from the latest entity_snapshot
+    const snap = await sql<{ open_ar: number | null; open_ap: number | null; as_of: string | null }[]>`
+      SELECT
+        (metrics->'ar_ap_metrics'->>'open_ar')::numeric  AS open_ar,
+        (metrics->'ar_ap_metrics'->>'open_ap')::numeric  AS open_ap,
+        report_date::text                                  AS as_of
+      FROM entity_snapshots
+      WHERE entity_id = ${entityId}
+      ORDER BY report_date DESC
+      LIMIT 1
+    `;
+
+    const official_ar = snap[0]?.open_ar ?? null;
+    const official_ap = snap[0]?.open_ap ?? null;
+    const as_of       = snap[0]?.as_of ?? "no snapshot";
+
+    // Normalized totals from typed tables
+    const inv = await sql<{ total: string }[]>`
+      SELECT COALESCE(SUM(balance::numeric), 0)::text AS total
+      FROM invoices
+      WHERE entity_id = ${entityId} AND status != 'Paid' AND is_deleted = false
+    `;
+    const bil = await sql<{ total: string }[]>`
+      SELECT COALESCE(SUM(balance::numeric), 0)::text AS total
+      FROM bills
+      WHERE entity_id = ${entityId} AND status != 'Paid' AND is_deleted = false
+    `;
+    // Credit memos and vendor credits (if synced) reduce net AR/AP
+    const cm = await sql<{ total: string }[]>`
+      SELECT COALESCE(SUM(amount::numeric), 0)::text AS total
+      FROM transactions
+      WHERE entity_id = ${entityId} AND transaction_type = 'CreditMemo'
+    `;
+    const vc = await sql<{ total: string }[]>`
+      SELECT COALESCE(SUM(amount::numeric), 0)::text AS total
+      FROM transactions
+      WHERE entity_id = ${entityId} AND transaction_type = 'VendorCredit'
+    `;
+
+    const norm_ar = parseFloat(inv[0]!.total) - parseFloat(cm[0]!.total);
+    const norm_ap = parseFloat(bil[0]!.total) - parseFloat(vc[0]!.total);
+
+    const ar_diff  = official_ar !== null ? norm_ar - Number(official_ar) : null;
+    const ap_diff  = official_ap !== null ? norm_ap - Number(official_ap) : null;
+    const ar_ok    = ar_diff !== null && Math.abs(ar_diff) <= TOLERANCE;
+    const ap_ok    = ap_diff !== null && Math.abs(ap_diff) <= TOLERANCE;
+
+    const fmt = (n: number | null) => n === null ? "N/A".padStart(12) : n.toFixed(2).padStart(12);
+    const sta = (ok: boolean, diff: number | null) =>
+      diff === null ? "no_snap".padStart(10) : ok ? "reconciled".padStart(10) : "UNRECON".padStart(10);
+
+    log(
+      `  ${slug.padEnd(16)}` +
+      fmt(official_ar !== null ? Number(official_ar) : null) + fmt(norm_ar) +
+      (ar_diff !== null ? ar_diff.toFixed(2).padStart(10) : "N/A".padStart(10)) +
+      sta(ar_ok, ar_diff) +
+      "  |  " +
+      fmt(official_ap !== null ? Number(official_ap) : null) + fmt(norm_ap) +
+      (ap_diff !== null ? ap_diff.toFixed(2).padStart(10) : "N/A".padStart(10)) +
+      sta(ap_ok, ap_diff),
+    );
+    log(`    (snapshot as_of: ${as_of})`);
+
+    const arStatus = ar_diff === null ? "no_snapshot" : ar_ok ? "reconciled" : "unreconciled";
+    const apStatus = ap_diff === null ? "no_snapshot" : ap_ok ? "reconciled" : "unreconciled";
+
+    if (ar_ok || ar_diff === null) {
+      pass("ar-reconciliation", `AR diff=${ar_diff?.toFixed(4) ?? "N/A"} (${arStatus})`, slug);
+    } else {
+      warn("ar-reconciliation", `AR unreconciled: diff=${ar_diff.toFixed(2)}, official=${Number(official_ar).toFixed(2)}, normalized=${norm_ar.toFixed(2)}`, slug);
+    }
+    if (ap_ok || ap_diff === null) {
+      pass("ap-reconciliation", `AP diff=${ap_diff?.toFixed(4) ?? "N/A"} (${apStatus})`, slug);
+    } else {
+      warn("ap-reconciliation", `AP unreconciled: diff=${ap_diff.toFixed(2)}, official=${Number(official_ap).toFixed(2)}, normalized=${norm_ap.toFixed(2)}`, slug);
+    }
+  }
+}
+
 // ─── Main ─────────────────────────────────────────────────────────────────────
 
 async function main() {
@@ -306,6 +399,8 @@ async function main() {
         checkTransactions(entityIds),
         checkBills(entityIds),
       ]);
+      // Sequential — reads from entity_snapshots after above checks complete
+      await checkArApReconciliation(entityIds);
     }
   } catch (e) {
     err("Unexpected error during checks:", e);

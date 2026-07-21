@@ -45,6 +45,24 @@ vi.mock("../db/bills", () => ({
   getApAgingBuckets:    vi.fn(),
   getTopVendorsByAp:    vi.fn(),
 }));
+// getArApReconciliation reads entity_snapshots — mock to avoid CORE_DATABASE_URL requirement.
+// Tests that specifically verify reconciliation metadata should test snapshots.ts directly.
+vi.mock("../db/snapshots", () => ({
+  getCurrentSnapshot:      vi.fn(),
+  getSnapshotHistory:      vi.fn(),
+  getCurrentPortfolioSnapshot: vi.fn(),
+  getArApReconciliation:   vi.fn().mockResolvedValue({
+    officialAr:    null,
+    officialAp:    null,
+    asOf:          null,
+    normalizedAr:  0,
+    normalizedAp:  0,
+    arDiff:        null,
+    apDiff:        null,
+    arReconciled:  false,
+    apReconciled:  false,
+  }),
+}));
 vi.mock("../services/entityCache", () => ({ getCachedEntityId: vi.fn() }));
 
 // ─── Imports after mocks ──────────────────────────────────────────────────────
@@ -392,6 +410,23 @@ describe("GET /api/accounting/:slug/invoices", () => {
       expect(row["issued"]).toBeUndefined();
     }
   });
+
+  it("response includes reconciliation metadata with required fields", async () => {
+    const res = await request(app).get(`/api/accounting/${SLUG}/invoices`);
+    expect(res.status).toBe(200);
+    const recon = res.body.reconciliation as Record<string, unknown>;
+    expect(recon).toBeDefined();
+    expect(Object.keys(recon)).toEqual(
+      expect.arrayContaining(["authoritativeTotal", "detailTotal", "difference", "reconciliationStatus", "asOf", "source"]),
+    );
+    expect(recon["source"]).toContain("ar_ap_metrics");
+  });
+
+  it("reconciliationStatus is no_snapshot when getArApReconciliation returns null official", async () => {
+    const res = await request(app).get(`/api/accounting/${SLUG}/invoices`);
+    // getArApReconciliation mock returns officialAr: null → status = no_snapshot
+    expect(res.body.reconciliation?.reconciliationStatus).toBe("no_snapshot");
+  });
 });
 
 // ─── Chart of Accounts ────────────────────────────────────────────────────────
@@ -535,6 +570,17 @@ describe("GET /api/accounting/:slug/bills", () => {
     await request(app).get(`/api/accounting/${SLUG}/bills`);
     expect(getOpenBills).toHaveBeenCalledWith(UUID["T3_Marketing"]);
     expect(getOpenBills).not.toHaveBeenCalledWith(UUID["CarDealer_ai"]);
+  });
+
+  it("bills response includes reconciliation with ap source provenance", async () => {
+    const res = await request(app).get(`/api/accounting/${SLUG}/bills`);
+    expect(res.status).toBe(200);
+    const recon = res.body.reconciliation as Record<string, unknown>;
+    expect(recon).toBeDefined();
+    expect(recon["source"]).toContain("open_ap");
+    expect(Object.keys(recon)).toEqual(
+      expect.arrayContaining(["authoritativeTotal", "detailTotal", "difference", "reconciliationStatus"]),
+    );
   });
 });
 
