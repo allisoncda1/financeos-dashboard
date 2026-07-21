@@ -10,19 +10,32 @@ const BASE = "/api";
 
 export type Sourced<T> = { data: T; source: ApiSource };
 
+export type ReconciliationStatus =
+  | "reconciled"
+  | "unreconciled"
+  | "no_official_snapshot"
+  | "normalized_data_incomplete"
+  | "source_date_mismatch";
+
 export type ArApReconciliation = {
-  /** QBO-authoritative total from entity_snapshots. Null when no snapshot exists. */
-  authoritativeTotal: number | null;
-  /** Sum of normalized table balances (invoices or bills). */
-  detailTotal: number | null;
-  /** |authoritativeTotal - detailTotal|. Null when authoritative is unavailable. */
-  difference: number | null;
-  /** "reconciled" | "unreconciled" | "no_snapshot" */
-  reconciliationStatus: string;
-  /** ISO date of the snapshot used for authoritative value. */
-  asOf: string | null;
-  /** Source path in entity_snapshots.metrics. */
-  source: string;
+  /** QBO-authoritative total from AgedReceivable/PayableSummary. Null = no snapshot. */
+  officialTotal: number | null;
+  /** SUM(invoices/bills.balance where not Paid). Applied credits already reflected. */
+  normalizedGrossTotal: number;
+  /** Unapplied customer/vendor credits from qbo_raw. Null = credits never synced. */
+  unappliedCredits: number | null;
+  /** normalizedGrossTotal − unappliedCredits. Null when credits unknown. */
+  normalizedNetTotal: number | null;
+  /** officialTotal − normalizedNetTotal (signed). Null when either is unavailable. */
+  signedDifference: number | null;
+  /** |signedDifference|. Null when either is unavailable. */
+  absoluteDifference: number | null;
+  reconciliationStatus: ReconciliationStatus;
+  officialSource: string;
+  officialAsOf: string | null;
+  normalizedAsOf: string | null;
+  /** Human-readable explanation of the current status. */
+  explanation: string;
 };
 
 export type SourcedWithRecon<T> = Sourced<T> & { reconciliation: ArApReconciliation | null };

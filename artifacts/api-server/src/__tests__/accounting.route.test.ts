@@ -48,19 +48,30 @@ vi.mock("../db/bills", () => ({
 // getArApReconciliation reads entity_snapshots — mock to avoid CORE_DATABASE_URL requirement.
 // Tests that specifically verify reconciliation metadata should test snapshots.ts directly.
 vi.mock("../db/snapshots", () => ({
-  getCurrentSnapshot:      vi.fn(),
-  getSnapshotHistory:      vi.fn(),
+  getCurrentSnapshot:          vi.fn(),
+  getSnapshotHistory:          vi.fn(),
   getCurrentPortfolioSnapshot: vi.fn(),
-  getArApReconciliation:   vi.fn().mockResolvedValue({
-    officialAr:    null,
-    officialAp:    null,
-    asOf:          null,
-    normalizedAr:  0,
-    normalizedAp:  0,
-    arDiff:        null,
-    apDiff:        null,
-    arReconciled:  false,
-    apReconciled:  false,
+  // Default mock: no snapshot available → no_official_snapshot status
+  getArApReconciliation: vi.fn().mockResolvedValue({
+    officialAr:               null,
+    officialAp:               null,
+    officialAsOf:             null,
+    normalizedGrossAr:        0,
+    unappliedCustomerCredits: null,
+    normalizedNetAr:          null,
+    normalizedGrossAp:        0,
+    unappliedVendorCredits:   null,
+    normalizedNetAp:          null,
+    arSignedDiff:             null,
+    arAbsDiff:                null,
+    arStatus:                 "no_official_snapshot",
+    apSignedDiff:             null,
+    apAbsDiff:                null,
+    apStatus:                 "no_official_snapshot",
+    normalizedArAsOf:         null,
+    normalizedApAsOf:         null,
+    arExplanation:            "No AR snapshot available.",
+    apExplanation:            "No AP snapshot available.",
   }),
 }));
 vi.mock("../services/entityCache", () => ({ getCachedEntityId: vi.fn() }));
@@ -411,21 +422,32 @@ describe("GET /api/accounting/:slug/invoices", () => {
     }
   });
 
-  it("response includes reconciliation metadata with required fields", async () => {
+  it("response includes reconciliation with all required fields", async () => {
     const res = await request(app).get(`/api/accounting/${SLUG}/invoices`);
     expect(res.status).toBe(200);
     const recon = res.body.reconciliation as Record<string, unknown>;
     expect(recon).toBeDefined();
     expect(Object.keys(recon)).toEqual(
-      expect.arrayContaining(["authoritativeTotal", "detailTotal", "difference", "reconciliationStatus", "asOf", "source"]),
+      expect.arrayContaining([
+        "officialTotal", "normalizedGrossTotal", "unappliedCredits",
+        "normalizedNetTotal", "signedDifference", "absoluteDifference",
+        "reconciliationStatus", "officialSource", "officialAsOf",
+        "normalizedAsOf", "explanation",
+      ]),
     );
-    expect(recon["source"]).toContain("ar_ap_metrics");
+    expect(recon["officialSource"]).toContain("ar_ap_metrics");
   });
 
-  it("reconciliationStatus is no_snapshot when getArApReconciliation returns null official", async () => {
+  it("reconciliationStatus is no_official_snapshot when getArApReconciliation returns null official", async () => {
     const res = await request(app).get(`/api/accounting/${SLUG}/invoices`);
-    // getArApReconciliation mock returns officialAr: null → status = no_snapshot
-    expect(res.body.reconciliation?.reconciliationStatus).toBe("no_snapshot");
+    // getArApReconciliation mock returns arStatus: "no_official_snapshot"
+    expect(res.body.reconciliation?.reconciliationStatus).toBe("no_official_snapshot");
+  });
+
+  it("null officialTotal renders as null not 0 in reconciliation", async () => {
+    const res = await request(app).get(`/api/accounting/${SLUG}/invoices`);
+    expect(res.body.reconciliation?.officialTotal).toBeNull();
+    expect(res.body.reconciliation?.officialTotal).not.toBe(0);
   });
 });
 
@@ -572,15 +594,25 @@ describe("GET /api/accounting/:slug/bills", () => {
     expect(getOpenBills).not.toHaveBeenCalledWith(UUID["CarDealer_ai"]);
   });
 
-  it("bills response includes reconciliation with ap source provenance", async () => {
+  it("bills response includes reconciliation with all required fields and ap source provenance", async () => {
     const res = await request(app).get(`/api/accounting/${SLUG}/bills`);
     expect(res.status).toBe(200);
     const recon = res.body.reconciliation as Record<string, unknown>;
     expect(recon).toBeDefined();
-    expect(recon["source"]).toContain("open_ap");
+    expect(recon["officialSource"]).toContain("open_ap");
     expect(Object.keys(recon)).toEqual(
-      expect.arrayContaining(["authoritativeTotal", "detailTotal", "difference", "reconciliationStatus"]),
+      expect.arrayContaining([
+        "officialTotal", "normalizedGrossTotal", "unappliedCredits",
+        "normalizedNetTotal", "signedDifference", "absoluteDifference",
+        "reconciliationStatus", "officialSource", "officialAsOf",
+        "normalizedAsOf", "explanation",
+      ]),
     );
+  });
+
+  it("bills null officialTotal is null not 0", async () => {
+    const res = await request(app).get(`/api/accounting/${SLUG}/bills`);
+    expect(res.body.reconciliation?.officialTotal).toBeNull();
   });
 });
 

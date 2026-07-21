@@ -183,14 +183,19 @@ router.get(
         syncedAt:     r.syncedAt?.toISOString() ?? null,
       }));
 
-      // reconciliation: compare normalized invoice totals against QBO-authoritative AR
+      // reconciliation: AR comparison against QBO-authoritative aging report
       const reconciliation = {
-        authoritativeTotal:    recon.officialAr,
-        detailTotal:           recon.normalizedAr,
-        difference:            recon.arDiff,
-        reconciliationStatus:  recon.arReconciled ? "reconciled" : recon.officialAr === null ? "no_snapshot" : "unreconciled",
-        asOf:                  recon.asOf,
-        source:                "entity_snapshots.metrics.ar_ap_metrics.open_ar",
+        officialTotal:          recon.officialAr,
+        normalizedGrossTotal:   recon.normalizedGrossAr,
+        unappliedCredits:       recon.unappliedCustomerCredits,
+        normalizedNetTotal:     recon.normalizedNetAr,
+        signedDifference:       recon.arSignedDiff,
+        absoluteDifference:     recon.arAbsDiff,
+        reconciliationStatus:   recon.arStatus,
+        officialSource:         "entity_snapshots.metrics.ar_ap_metrics.open_ar",
+        officialAsOf:           recon.officialAsOf,
+        normalizedAsOf:         recon.normalizedArAsOf,
+        explanation:            recon.arExplanation,
       };
 
       res.json({ ok: true, data, reconciliation, source: "db", ts: new Date().toISOString() });
@@ -337,14 +342,19 @@ router.get(
         syncedAt:    r.syncedAt?.toISOString() ?? null,
       }));
 
-      // reconciliation: compare normalized bill totals against QBO-authoritative AP
+      // reconciliation: AP comparison against QBO-authoritative aging report
       const reconciliation = {
-        authoritativeTotal:    recon.officialAp,
-        detailTotal:           recon.normalizedAp,
-        difference:            recon.apDiff,
-        reconciliationStatus:  recon.apReconciled ? "reconciled" : recon.officialAp === null ? "no_snapshot" : "unreconciled",
-        asOf:                  recon.asOf,
-        source:                "entity_snapshots.metrics.ar_ap_metrics.open_ap",
+        officialTotal:          recon.officialAp,
+        normalizedGrossTotal:   recon.normalizedGrossAp,
+        unappliedCredits:       recon.unappliedVendorCredits,
+        normalizedNetTotal:     recon.normalizedNetAp,
+        signedDifference:       recon.apSignedDiff,
+        absoluteDifference:     recon.apAbsDiff,
+        reconciliationStatus:   recon.apStatus,
+        officialSource:         "entity_snapshots.metrics.ar_ap_metrics.open_ap",
+        officialAsOf:           recon.officialAsOf,
+        normalizedAsOf:         recon.normalizedApAsOf,
+        explanation:            recon.apExplanation,
       };
 
       res.json({ ok: true, data, reconciliation, source: "db", ts: new Date().toISOString() });

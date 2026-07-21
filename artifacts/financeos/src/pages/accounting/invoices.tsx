@@ -3,9 +3,10 @@ import { Card, DataTable, Td, Pill, MiniKpi } from "@/components/accounting/Acco
 import { useAccountingEntity } from "@/lib/accounting-context";
 import { useAccountingInvoices } from "@/hooks/useApi";
 import { formatCurrency } from "@/lib/format";
-import type { AccountingInvoice } from "@/lib/api";
+import type { AccountingInvoice, ArApReconciliation } from "@/lib/api";
 
-const fmt = formatCurrency;
+const fmt = (v: number | null | undefined) =>
+  v === null || v === undefined ? "N/A" : formatCurrency(v);
 
 function statusTone(status: string | null, daysOverdue: number | null): string {
   const s = (status ?? "").toLowerCase();
@@ -20,26 +21,58 @@ function statusLabel(status: string | null, daysOverdue: number | null): string 
   return status ?? "Unknown";
 }
 
-function ReconBanner({ status, authoritativeTotal, detailTotal, difference, asOf }: {
-  status: string;
-  authoritativeTotal: number | null;
-  detailTotal: number | null;
-  difference: number | null;
-  asOf: string | null;
-}) {
-  if (status === "reconciled" || status === "no_snapshot") return null;
+function ReconBanner({ recon }: { recon: ArApReconciliation }) {
+  const { reconciliationStatus: status, explanation } = recon;
+
+  if (status === "reconciled" || status === "no_official_snapshot") return null;
+
+  if (status === "normalized_data_incomplete") {
+    return (
+      <div className="rounded-lg border border-blue-300 bg-blue-50 px-4 py-3 text-sm text-blue-900 flex gap-3 items-start">
+        <span className="text-blue-500 mt-0.5">ℹ</span>
+        <div>
+          <p className="font-semibold">Credit memo data not yet synced</p>
+          <p className="text-blue-800 mt-0.5">{explanation}</p>
+          <p className="text-blue-700 mt-1 text-xs">
+            Official AR: {fmt(recon.officialTotal)}
+            {recon.officialAsOf ? ` as of ${recon.officialAsOf.slice(0, 10)}` : ""}
+            {" | "}Gross invoices: {fmt(recon.normalizedGrossTotal)}
+          </p>
+        </div>
+      </div>
+    );
+  }
+
+  if (status === "source_date_mismatch") {
+    return (
+      <div className="rounded-lg border border-orange-300 bg-orange-50 px-4 py-3 text-sm text-orange-900 flex gap-3 items-start">
+        <span className="text-orange-500 mt-0.5">⚠</span>
+        <div>
+          <p className="font-semibold">AR data date mismatch</p>
+          <p className="text-orange-800 mt-0.5">{explanation}</p>
+        </div>
+      </div>
+    );
+  }
+
+  // unreconciled
   return (
     <div className="rounded-lg border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-900 flex gap-3 items-start">
       <span className="text-amber-500 mt-0.5">⚠</span>
       <div>
-        <p className="font-semibold">Invoice detail may not match QBO-authoritative AR</p>
-        <p className="text-amber-800 mt-0.5">
-          QBO reports <strong>{fmt(authoritativeTotal ?? 0)}</strong> open AR
-          {asOf ? ` as of ${asOf.slice(0, 10)}` : ""}
-          {" "}— normalized invoices total <strong>{fmt(detailTotal ?? 0)}</strong>
-          {" "}(gap: <strong>{fmt(difference ?? 0)}</strong>).
-          Credit memos or payments may not yet be synced.
-        </p>
+        <p className="font-semibold">Invoice detail does not match QBO-authoritative AR</p>
+        <div className="text-amber-800 mt-1 grid grid-cols-2 gap-x-6 gap-y-0.5 text-xs">
+          <span>Official AR (QBO):</span>
+          <span className="font-mono">{fmt(recon.officialTotal)}{recon.officialAsOf ? ` as of ${recon.officialAsOf.slice(0, 10)}` : ""}</span>
+          <span>Gross open invoices:</span>
+          <span className="font-mono">{fmt(recon.normalizedGrossTotal)}</span>
+          <span>Unapplied customer credits:</span>
+          <span className="font-mono">{recon.unappliedCredits !== null ? fmt(recon.unappliedCredits) : "N/A"}</span>
+          <span>Net normalized AR:</span>
+          <span className="font-mono">{recon.normalizedNetTotal !== null ? fmt(recon.normalizedNetTotal) : "N/A"}</span>
+          <span>Gap:</span>
+          <span className="font-mono font-semibold">{recon.absoluteDifference !== null ? fmt(recon.absoluteDifference) : "N/A"}</span>
+        </div>
       </div>
     </div>
   );
@@ -73,19 +106,11 @@ export default function InvoicesPage() {
 
   return (
     <AccountingLayout title="Invoices" subtitle="View and track customer invoices from QBO">
-      {reconciliation && (
-        <ReconBanner
-          status={reconciliation.reconciliationStatus}
-          authoritativeTotal={reconciliation.authoritativeTotal}
-          detailTotal={reconciliation.detailTotal}
-          difference={reconciliation.difference}
-          asOf={reconciliation.asOf}
-        />
-      )}
+      {reconciliation && <ReconBanner recon={reconciliation} />}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-        <MiniKpi label="Total Invoiced" value={fmt(totalAmount)} sub={`${invoices.length} invoices`} tone="blue" />
-        <MiniKpi label="Outstanding AR" value={fmt(outstanding)} sub="Open balance" tone="blue" />
-        <MiniKpi label="Overdue" value={fmt(overdue)} sub="Past due date" tone="red" />
+        <MiniKpi label="Total Invoiced" value={formatCurrency(totalAmount)} sub={`${invoices.length} invoices`} tone="blue" />
+        <MiniKpi label="Outstanding AR" value={formatCurrency(outstanding)} sub="Open balance" tone="blue" />
+        <MiniKpi label="Overdue" value={formatCurrency(overdue)} sub="Past due date" tone="red" />
       </div>
 
       <Card title={`Invoices — ${invoices.length}`}>
@@ -100,9 +125,9 @@ export default function InvoicesPage() {
               <Td className="font-semibold text-gray-900 text-[13px]">{inv.customerName ?? "—"}</Td>
               <Td>{inv.invoiceDate ?? "—"}</Td>
               <Td>{inv.dueDate ?? "—"}</Td>
-              <Td className="text-right text-gray-700">{fmt(inv.amount)}</Td>
+              <Td className="text-right text-gray-700">{formatCurrency(inv.amount)}</Td>
               <Td className={`text-right font-semibold ${inv.balance > 0 ? "text-gray-900" : "text-gray-400"}`}>
-                {fmt(inv.balance)}
+                {formatCurrency(inv.balance)}
               </Td>
               <Td>
                 <Pill tone={statusTone(inv.status, inv.daysOverdue)}>
