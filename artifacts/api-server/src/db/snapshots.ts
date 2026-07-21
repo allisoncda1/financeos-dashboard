@@ -33,7 +33,7 @@ export async function getCurrentSnapshot(entityId: string) {
  * - normalized_data_incomplete  Required QBO objects (CreditMemo/VendorCredit) have
  *                           never been synced into qbo_raw; net normalized total
  *                           cannot be calculated honestly.
- * - source_date_mismatch    Snapshot asOf and normalized data differ by > 7 days.
+ * - source_date_mismatch    Credit sync completed before the snapshot EndPeriod — point-in-time incompatible.
  */
 export type ReconciliationStatus =
   | "reconciled"
@@ -94,33 +94,67 @@ export interface ArApReconciliation {
 }
 
 const RECON_TOLERANCE = 0.02;
-const DATE_MISMATCH_DAYS = 7;
 
-function _daysBetween(a: string | null, b: string | null): number | null {
-  if (!a || !b) return null;
-  try {
-    return Math.abs(
-      (new Date(a).getTime() - new Date(b).getTime()) / (1000 * 60 * 60 * 24),
-    );
-  } catch {
-    return null;
+type CoverageStatus = "ok" | "no_sync" | "date_mismatch";
+
+/**
+ * Check whether a completed sync_run exists for this entity + credit type,
+ * and whether its completion date covers the official report EndPeriod.
+ *
+ * Sync coverage rules (strict):
+ *   - A row in sync_runs with status='completed' and the credit type in
+ *     object_types[] is the authoritative signal that the sync ran.
+ *   - Zero rows in qbo_raw after a completed sync = legitimately zero credits.
+ *   - No completed sync_run → normalized_data_incomplete (not zero).
+ *   - Sync completed before the report EndPeriod (last_sync_at < asOf):
+ *     → source_date_mismatch. Transactions between the sync and the report
+ *     date may exist; RemainingCredit values are not point-in-time compatible
+ *     with the older snapshot.
+ */
+async function _getCreditCoverage(
+  entityId: string,
+  creditType: "CreditMemo" | "VendorCredit",
+  reportAsOf: string | null,
+): Promise<{ coverageStatus: CoverageStatus; lastSyncAt: string | null }> {
+  // Check for a completed sync_run that included this credit type
+  const runRows = await db.execute<{ completed_at: string | null }>(
+    sql`SELECT completed_at::text
+        FROM sync_runs
+        WHERE entity_id = ${entityId}
+          AND ${creditType} = ANY(object_types)
+          AND status = 'completed'
+        ORDER BY completed_at DESC
+        LIMIT 1`,
+  );
+  const completedAt = runRows.rows[0]?.completed_at ?? null;
+
+  if (!completedAt) {
+    return { coverageStatus: "no_sync", lastSyncAt: null };
   }
+
+  // Strict date alignment: sync completion date must be >= the report EndPeriod.
+  // A sync completed before the report EndPeriod may have missed transactions
+  // between the sync and the EndPeriod — those affect RemainingCredit/Balance.
+  if (reportAsOf) {
+    const syncDate = completedAt.slice(0, 10); // ISO date portion
+    if (syncDate < reportAsOf) {
+      return { coverageStatus: "date_mismatch", lastSyncAt: completedAt };
+    }
+  }
+
+  return { coverageStatus: "ok", lastSyncAt: completedAt };
 }
 
-function _arStatus(
-  officialAr: number | null,
-  normalizedNetAr: number | null,
-  unappliedCredits: number | null,
-  officialAsOf: string | null,
-  normalizedAsOf: string | null,
+function _classifyStatus(
+  official: number | null,
+  normalizedNet: number | null,
+  coverageStatus: CoverageStatus,
 ): ReconciliationStatus {
-  if (officialAr === null) return "no_official_snapshot";
-  if (unappliedCredits === null) return "normalized_data_incomplete";
-  if (normalizedNetAr === null) return "normalized_data_incomplete";
-  const days = _daysBetween(officialAsOf, normalizedAsOf);
-  if (days !== null && days > DATE_MISMATCH_DAYS) return "source_date_mismatch";
-  const diff = Math.abs(officialAr - normalizedNetAr);
-  return diff <= RECON_TOLERANCE ? "reconciled" : "unreconciled";
+  if (official === null) return "no_official_snapshot";
+  if (coverageStatus === "no_sync") return "normalized_data_incomplete";
+  if (coverageStatus === "date_mismatch") return "source_date_mismatch";
+  if (normalizedNet === null) return "normalized_data_incomplete";
+  return Math.abs(official - normalizedNet) <= RECON_TOLERANCE ? "reconciled" : "unreconciled";
 }
 
 function _statusExplanation(
@@ -131,23 +165,28 @@ function _statusExplanation(
   unappliedCredits: number | null,
   normalizedNet: number | null,
   absDiff: number | null,
+  lastSyncAt: string | null,
+  reportAsOf: string | null,
 ): string {
+  const creditType = side === "AR" ? "CreditMemo" : "VendorCredit";
   switch (status) {
     case "reconciled":
       return `${side} reconciles within $${RECON_TOLERANCE.toFixed(2)}.`;
     case "no_official_snapshot":
       return `No ${side} snapshot available. Run the Python pipeline to generate entity_snapshots.`;
     case "normalized_data_incomplete":
-      return `${side} credit data (${side === "AR" ? "CreditMemo" : "VendorCredit"}) has not been synced to qbo_raw. ` +
-        `Net normalized ${side} cannot be computed honestly. Run the pipeline with the updated TRANSACTION_OBJECT_TYPES.`;
+      return `No completed sync_run found for ${creditType}. ` +
+        `Zero rows in qbo_raw is ambiguous without sync evidence — run the pipeline with the updated TRANSACTION_OBJECT_TYPES.`;
     case "source_date_mismatch":
-      return `${side} snapshot and normalized data dates differ by more than ${DATE_MISMATCH_DAYS} days. ` +
-        `Re-sync normalized data to align with the official report period.`;
+      return `${creditType} sync (${lastSyncAt?.slice(0, 10) ?? "unknown"}) ran before the ` +
+        `official report EndPeriod (${reportAsOf ?? "unknown"}). ` +
+        `RemainingCredit values are not point-in-time compatible with the ${reportAsOf} snapshot. ` +
+        `Re-sync on or after ${reportAsOf} to reconcile.`;
     case "unreconciled": {
-      const diff = absDiff !== null ? `$${absDiff.toFixed(2)}` : "unknown";
-      const credStr = unappliedCredits !== null ? `$${unappliedCredits.toFixed(2)}` : "unknown";
-      return `${side} gap of ${diff}. Official: $${(officialTotal ?? 0).toFixed(2)}, ` +
-        `gross detail: $${normalizedGross.toFixed(2)}, unapplied ${side === "AR" ? "customer" : "vendor"} credits: ${credStr}, ` +
+      const gap = absDiff !== null ? `$${absDiff.toFixed(2)}` : "unknown";
+      const credStr = unappliedCredits !== null ? `$${unappliedCredits.toFixed(2)}` : "N/A";
+      return `${side} gap of ${gap}. Official: $${(officialTotal ?? 0).toFixed(2)}, ` +
+        `gross detail: $${normalizedGross.toFixed(2)}, unapplied ${creditType}: ${credStr}, ` +
         `net detail: $${(normalizedNet ?? 0).toFixed(2)}.`;
     }
   }
@@ -156,16 +195,15 @@ function _statusExplanation(
 /**
  * Returns full AR/AP reconciliation data for one entity.
  *
- * Correct data contract (QBO accounting treatment):
- *   1. Invoice.Balance already reflects applied CreditMemos — QBO reduces Balance
- *      when a CreditMemo is applied to an invoice. Do NOT subtract applied amounts again.
- *   2. Only the RemainingCredit (unapplied portion) of a CreditMemo is not yet
- *      in Invoice.Balance and must be subtracted separately.
- *   3. Same for VendorCredit: Bill.Balance already reflects applied amounts;
- *      only VendorCredit.Balance (remaining) is subtracted separately.
- *   4. If CreditMemo/VendorCredit data has never been synced (qbo_raw has 0 rows
- *      for that type), the reconciliation status is normalized_data_incomplete —
- *      never coerce to zero.
+ * Correct QBO accounting treatment:
+ *   1. Invoice.Balance already reflects applied CreditMemos. Only RemainingCredit
+ *      (unapplied portion) is subtracted separately.
+ *   2. VendorCredit uses Balance field for the same purpose.
+ *   3. Zero rows in qbo_raw after a COMPLETED sync = legitimately zero credits.
+ *      Zero rows without sync evidence = normalized_data_incomplete.
+ *   4. Sync completed before the report EndPeriod = source_date_mismatch.
+ *      RemainingCredit values captured after the EndPeriod are not point-in-time
+ *      compatible with the snapshot.
  *
  * Read-only — never writes to any table.
  */
@@ -180,8 +218,7 @@ export async function getArApReconciliation(entityId: string): Promise<ArApRecon
   const officialAp = typeof arApMetrics?.["open_ap"] === "number" ? arApMetrics["open_ap"] : null;
   const officialAsOf = snapshot?.asOf ? String(snapshot.asOf) : null;
 
-  // ── Gross normalized AR from invoices table ────────────────────────────────
-  // Invoice.Balance already reflects applied CreditMemos (QBO reduces it on application).
+  // ── Gross normalized AR — Invoice.Balance already reflects applied CreditMemos ──
   const arRows = await db.execute<{ total: string | null; asof: string | null }>(
     sql`SELECT COALESCE(SUM(balance), 0)::text AS total,
                MAX(synced_at)::text AS asof
@@ -191,17 +228,13 @@ export async function getArApReconciliation(entityId: string): Promise<ArApRecon
   const normalizedGrossAr = parseFloat(arRows.rows[0]?.total ?? "0") || 0;
   const normalizedArAsOf = arRows.rows[0]?.asof ?? null;
 
-  // ── Unapplied customer credits from qbo_raw ────────────────────────────────
-  // RemainingCredit = portion not yet applied to any invoice.
-  // Returns null (not 0) when no CreditMemo rows exist → normalized_data_incomplete.
-  const cmCountRows = await db.execute<{ n: string }>(
-    sql`SELECT COUNT(*)::text AS n FROM qbo_raw
-        WHERE entity_id = ${entityId} AND object_type = 'CreditMemo' AND is_deleted = false`,
-  );
-  const cmCount = parseInt(cmCountRows.rows[0]?.n ?? "0", 10);
+  // ── CreditMemo sync coverage and unapplied credits ─────────────────────────
+  const { coverageStatus: arCoverageStatus, lastSyncAt: arLastSyncAt } =
+    await _getCreditCoverage(entityId, "CreditMemo", officialAsOf);
 
   let unappliedCustomerCredits: number | null = null;
-  if (cmCount > 0) {
+  if (arCoverageStatus === "ok") {
+    // Sync ran and covers the EndPeriod. 0 rows = legitimately zero credits.
     const cmRows = await db.execute<{ total: string | null }>(
       sql`SELECT COALESCE(SUM(
               CASE WHEN (payload->>'RemainingCredit') IS NOT NULL
@@ -212,7 +245,7 @@ export async function getArApReconciliation(entityId: string): Promise<ArApRecon
           FROM qbo_raw
           WHERE entity_id = ${entityId} AND object_type = 'CreditMemo' AND is_deleted = false`,
     );
-    unappliedCustomerCredits = parseFloat(cmRows.rows[0]?.total ?? "0") || 0;
+    unappliedCustomerCredits = parseFloat(cmRows.rows[0]?.total ?? "0");
   }
 
   const normalizedNetAr =
@@ -220,7 +253,7 @@ export async function getArApReconciliation(entityId: string): Promise<ArApRecon
       ? normalizedGrossAr - unappliedCustomerCredits
       : null;
 
-  // ── Gross normalized AP from bills table ───────────────────────────────────
+  // ── Gross normalized AP — Bill.Balance already reflects applied VendorCredits ──
   const apRows = await db.execute<{ total: string | null; asof: string | null }>(
     sql`SELECT COALESCE(SUM(balance), 0)::text AS total,
                MAX(synced_at)::text AS asof
@@ -230,16 +263,12 @@ export async function getArApReconciliation(entityId: string): Promise<ArApRecon
   const normalizedGrossAp = parseFloat(apRows.rows[0]?.total ?? "0") || 0;
   const normalizedApAsOf = apRows.rows[0]?.asof ?? null;
 
-  // ── Unapplied vendor credits from qbo_raw ─────────────────────────────────
-  // VendorCredit uses Balance field (not RemainingCredit) for the unapplied portion.
-  const vcCountRows = await db.execute<{ n: string }>(
-    sql`SELECT COUNT(*)::text AS n FROM qbo_raw
-        WHERE entity_id = ${entityId} AND object_type = 'VendorCredit' AND is_deleted = false`,
-  );
-  const vcCount = parseInt(vcCountRows.rows[0]?.n ?? "0", 10);
+  // ── VendorCredit sync coverage and unapplied credits ──────────────────────
+  const { coverageStatus: apCoverageStatus, lastSyncAt: apLastSyncAt } =
+    await _getCreditCoverage(entityId, "VendorCredit", officialAsOf);
 
   let unappliedVendorCredits: number | null = null;
-  if (vcCount > 0) {
+  if (apCoverageStatus === "ok") {
     const vcRows = await db.execute<{ total: string | null }>(
       sql`SELECT COALESCE(SUM(
               CASE WHEN (payload->>'Balance') IS NOT NULL
@@ -250,7 +279,7 @@ export async function getArApReconciliation(entityId: string): Promise<ArApRecon
           FROM qbo_raw
           WHERE entity_id = ${entityId} AND object_type = 'VendorCredit' AND is_deleted = false`,
     );
-    unappliedVendorCredits = parseFloat(vcRows.rows[0]?.total ?? "0") || 0;
+    unappliedVendorCredits = parseFloat(vcRows.rows[0]?.total ?? "0");
   }
 
   const normalizedNetAp =
@@ -268,8 +297,8 @@ export async function getArApReconciliation(entityId: string): Promise<ArApRecon
   const apAbsDiff = apSignedDiff !== null ? Math.abs(apSignedDiff) : null;
 
   // ── Status ─────────────────────────────────────────────────────────────────
-  const arStatus = _arStatus(officialAr, normalizedNetAr, unappliedCustomerCredits, officialAsOf, normalizedArAsOf);
-  const apStatus = _arStatus(officialAp, normalizedNetAp, unappliedVendorCredits, officialAsOf, normalizedApAsOf);
+  const arStatus = _classifyStatus(officialAr, normalizedNetAr, arCoverageStatus);
+  const apStatus = _classifyStatus(officialAp, normalizedNetAp, apCoverageStatus);
 
   return {
     officialAr,
@@ -291,9 +320,11 @@ export async function getArApReconciliation(entityId: string): Promise<ArApRecon
     normalizedApAsOf,
     arExplanation: _statusExplanation(
       arStatus, "AR", officialAr, normalizedGrossAr, unappliedCustomerCredits, normalizedNetAr, arAbsDiff,
+      arLastSyncAt, officialAsOf,
     ),
     apExplanation: _statusExplanation(
       apStatus, "AP", officialAp, normalizedGrossAp, unappliedVendorCredits, normalizedNetAp, apAbsDiff,
+      apLastSyncAt, officialAsOf,
     ),
   };
 }
