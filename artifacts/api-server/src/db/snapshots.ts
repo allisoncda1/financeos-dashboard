@@ -33,7 +33,10 @@ export async function getCurrentSnapshot(entityId: string) {
  * - normalized_data_incomplete  Required QBO objects (CreditMemo/VendorCredit) have
  *                           never been synced into qbo_raw; net normalized total
  *                           cannot be calculated honestly.
- * - source_date_mismatch    Credit sync completed before the snapshot EndPeriod — point-in-time incompatible.
+ * - source_date_mismatch    Credit objects and aging report do not share a sync_run_id —
+ *                           point-in-time compatibility cannot be proven. Includes cases where
+ *                           the aging report is absent from qbo_raw (lineage_unavailable) or
+ *                           where different sync batches were used (date_mismatch).
  */
 export type ReconciliationStatus =
   | "reconciled"
@@ -95,7 +98,7 @@ export interface ArApReconciliation {
 
 const RECON_TOLERANCE = 0.02;
 
-type CoverageStatus = "ok" | "no_sync" | "date_mismatch";
+type CoverageStatus = "ok" | "no_sync" | "date_mismatch" | "lineage_unavailable";
 
 // Maps credit object type → aging report type stored in qbo_raw.
 const CREDIT_TO_REPORT: Record<"CreditMemo" | "VendorCredit", string> = {
@@ -106,30 +109,33 @@ const CREDIT_TO_REPORT: Record<"CreditMemo" | "VendorCredit", string> = {
 /**
  * Determine credit coverage status for one entity + credit type.
  *
- * Primary rule — shared batch lineage (preferred):
- *   The controlling check is sync_run_id equality between the credit objects
- *   (qbo_raw.sync_run_id) and the aging report (also in qbo_raw). Same
- *   sync_run_id = same controlled extraction = point-in-time compatible.
+ * Lineage contract (strict — no timestamp fallback):
+ *   Reconciliation is allowed ONLY when the credit type (CreditMemo / VendorCredit)
+ *   AND the corresponding aging report (AgedReceivableSummary / AgedPayableSummary)
+ *   were extracted in the SAME controlled sync_run_id. Timestamp comparison alone
+ *   never proves point-in-time compatibility.
  *
- *   A sync that completed AFTER the report's EndPeriod is NOT automatically
- *   compatible. RemainingCredit and VendorCredit.Balance are current-state
- *   values at extraction time. A credit applied, refunded, or deleted after
- *   the EndPeriod changes those balances and invalidates the reconciliation.
- *
- * Fallback rule — timestamp (when aging report is not in qbo_raw):
- *   sync completed_at must be >= snapshot.asOf. Weaker but safe as a fallback.
+ *   RemainingCredit and VendorCredit.Balance are current-state values at extraction
+ *   time. A credit applied, refunded, or deleted after the report EndPeriod changes
+ *   those balances, making a later extraction incompatible with an earlier report.
  *
  * Statuses:
- *   "ok"            — shared sync_run_id (or fallback: completed_at >= asOf)
- *   "no_sync"       — no credit objects found in qbo_raw
- *   "date_mismatch" — different sync_run_ids, or timestamp shows sync predates EndPeriod
+ *   "ok"                  — shared sync_run_id; same controlled extraction batch.
+ *                           Zero credit rows = legitimately zero (not incomplete).
+ *   "no_sync"             — no completed (status='success') sync_run covered this type.
+ *                           Partial (status='partial') and failed runs are excluded.
+ *   "date_mismatch"       — credit objects and aging report have different sync_run_ids;
+ *                           point-in-time compatibility not proven.
+ *   "lineage_unavailable" — a completed sync exists but aging report is absent from
+ *                           qbo_raw; shared-batch lineage cannot be verified.
  */
 async function _getCreditCoverage(
   entityId: string,
   creditType: "CreditMemo" | "VendorCredit",
   reportAsOf: string | null,
 ): Promise<{ coverageStatus: CoverageStatus; lastSyncAt: string | null }> {
-  // Step 1: Find the sync_run_id that most recently wrote credit objects.
+  // Step 1: Find the sync_run_id of the most recently synced active credit objects.
+  // Returns null when zero active rows exist (zero-row or never-synced).
   const creditRunRows = await db.execute<{ sync_run_id: string | null; synced_at: string | null }>(
     sql`SELECT sync_run_id::text, synced_at::text
         FROM qbo_raw
@@ -140,38 +146,41 @@ async function _getCreditCoverage(
         LIMIT 1`,
   );
   const creditRunId = creditRunRows.rows[0]?.sync_run_id ?? null;
+  const creditSyncedAt = creditRunRows.rows[0]?.synced_at ?? null;
 
-  if (!creditRunId) {
-    // No credit objects exist in qbo_raw — sync never ran or produced zero rows
-    // but we don't know which. Check for a completed sync_run to distinguish.
-    const ranRows = await db.execute<{ completed_at: string | null }>(
-      sql`SELECT completed_at::text
-          FROM sync_runs
-          WHERE entity_id = ${entityId}
-            AND ${creditType} = ANY(object_types)
-            AND status = 'completed'
-          ORDER BY completed_at DESC
-          LIMIT 1`,
-    );
-    const completedAt = ranRows.rows[0]?.completed_at ?? null;
+  // Step 2: Find the most recent completed (status='success') sync_run for this type.
+  // Authoritative answer to "did we ever successfully sync this type?"
+  // Partial (status='partial') and failed (status='failed') runs are excluded.
+  const completedRunRows = await db.execute<{
+    id: string | null;
+    completed_at: string | null;
+    object_types: string[] | null;
+  }>(
+    sql`SELECT id::text, completed_at::text, object_types
+        FROM sync_runs
+        WHERE entity_id = ${entityId}
+          AND ${creditType} = ANY(object_types)
+          AND status = 'success'
+        ORDER BY completed_at DESC
+        LIMIT 1`,
+  );
+  const completedRun = completedRunRows.rows[0] ?? null;
 
-    if (!completedAt) {
-      // No completed sync_run at all → never synced
-      return { coverageStatus: "no_sync", lastSyncAt: null };
-    }
-
-    // Completed sync with 0 rows = legitimately zero credits.
-    // Still need to verify the run covers the report EndPeriod.
-    if (reportAsOf && completedAt.slice(0, 10) < reportAsOf) {
-      return { coverageStatus: "date_mismatch", lastSyncAt: completedAt };
-    }
-    return { coverageStatus: "ok", lastSyncAt: completedAt };
+  if (!completedRun?.id) {
+    // No successful sync_run ever covered this type.
+    return { coverageStatus: "no_sync", lastSyncAt: null };
   }
 
-  // Step 2: Find the sync_run_id that most recently wrote the aging report.
+  // Anchor: prefer credit rows' run_id (when rows exist), else use the completed_run.id.
+  const anchorRunId = creditRunId ?? completedRun.id;
+  const lastSyncAt = creditSyncedAt ?? completedRun.completed_at;
+
+  // Step 3: Find the aging report's sync_run_id in qbo_raw.
+  // The aging report MUST be present and share the anchor run_id.
+  // Do NOT fall back to timestamp comparison.
   const reportType = CREDIT_TO_REPORT[creditType];
-  const reportRunRows = await db.execute<{ sync_run_id: string | null; synced_at: string | null }>(
-    sql`SELECT sync_run_id::text, synced_at::text
+  const reportRunRows = await db.execute<{ sync_run_id: string | null }>(
+    sql`SELECT sync_run_id::text
         FROM qbo_raw
         WHERE entity_id = ${entityId}
           AND object_type = ${reportType}
@@ -179,40 +188,21 @@ async function _getCreditCoverage(
         LIMIT 1`,
   );
   const reportRunId = reportRunRows.rows[0]?.sync_run_id ?? null;
-  const creditSyncedAt = creditRunRows.rows[0]?.synced_at ?? null;
 
-  if (reportRunId !== null) {
-    // Primary check: shared-batch lineage.
-    if (creditRunId === reportRunId) {
-      // Same controlled batch — point-in-time compatible.
-      return { coverageStatus: "ok", lastSyncAt: creditSyncedAt };
-    } else {
-      // Different sync_run_ids — credit values are not proven compatible
-      // with the report's accounting state.
-      return { coverageStatus: "date_mismatch", lastSyncAt: creditSyncedAt };
-    }
+  if (reportRunId === null) {
+    // No aging report in qbo_raw — cannot verify shared-batch lineage.
+    // Do NOT fall back to timestamp comparison.
+    return { coverageStatus: "lineage_unavailable", lastSyncAt };
   }
 
-  // Step 3: Fallback — aging report not stored in qbo_raw.
-  // Use completion timestamp vs reportAsOf as a weaker but safe check.
-  const completedAtRows = await db.execute<{ completed_at: string | null }>(
-    sql`SELECT completed_at::text
-        FROM sync_runs
-        WHERE entity_id = ${entityId}
-          AND ${creditType} = ANY(object_types)
-          AND status = 'completed'
-        ORDER BY completed_at DESC
-        LIMIT 1`,
-  );
-  const completedAt = completedAtRows.rows[0]?.completed_at ?? null;
+  if (anchorRunId !== reportRunId) {
+    // Different sync_run_ids — credit values not proven compatible with the report.
+    return { coverageStatus: "date_mismatch", lastSyncAt };
+  }
 
-  if (!completedAt) {
-    return { coverageStatus: "no_sync", lastSyncAt: null };
-  }
-  if (reportAsOf && completedAt.slice(0, 10) < reportAsOf) {
-    return { coverageStatus: "date_mismatch", lastSyncAt: completedAt };
-  }
-  return { coverageStatus: "ok", lastSyncAt: completedAt };
+  // Same controlled batch — point-in-time compatible.
+  // Zero credit rows = legitimately zero (entity has no open unapplied credits).
+  return { coverageStatus: "ok", lastSyncAt };
 }
 
 function _classifyStatus(
@@ -222,7 +212,9 @@ function _classifyStatus(
 ): ReconciliationStatus {
   if (official === null) return "no_official_snapshot";
   if (coverageStatus === "no_sync") return "normalized_data_incomplete";
-  if (coverageStatus === "date_mismatch") return "source_date_mismatch";
+  if (coverageStatus === "date_mismatch" || coverageStatus === "lineage_unavailable") {
+    return "source_date_mismatch";
+  }
   if (normalizedNet === null) return "normalized_data_incomplete";
   return Math.abs(official - normalizedNet) <= RECON_TOLERANCE ? "reconciled" : "unreconciled";
 }
@@ -248,10 +240,11 @@ function _statusExplanation(
       return `No completed sync_run found for ${creditType}. ` +
         `Zero rows in qbo_raw is ambiguous without sync evidence — run the pipeline with the updated TRANSACTION_OBJECT_TYPES.`;
     case "source_date_mismatch":
-      return `${creditType} sync (${lastSyncAt?.slice(0, 10) ?? "unknown"}) ran before the ` +
-        `official report EndPeriod (${reportAsOf ?? "unknown"}). ` +
-        `RemainingCredit values are not point-in-time compatible with the ${reportAsOf} snapshot. ` +
-        `Re-sync on or after ${reportAsOf} to reconcile.`;
+      return `${creditType} and aging report do not share a sync_run_id — ` +
+        `point-in-time compatibility cannot be proven. ` +
+        `Either the aging report is absent from qbo_raw, or the credit objects ` +
+        `and report were extracted in different sync batches. ` +
+        `Run a controlled sync that fetches all eight required types together.`;
     case "unreconciled": {
       const gap = absDiff !== null ? `$${absDiff.toFixed(2)}` : "unknown";
       const credStr = unappliedCredits !== null ? `$${unappliedCredits.toFixed(2)}` : "N/A";
