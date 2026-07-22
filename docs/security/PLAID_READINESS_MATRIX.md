@@ -26,11 +26,11 @@
 
 | Field | Status |
 |---|---|
-| Honest current answer | **Partial** |
-| Technical evidence | `SECURITY_ROLES_AND_RESPONSIBILITIES.md` defines Allison Fabbri as Security Owner. |
-| Operational evidence | ❌ No dedicated security@ email address. No security.txt at /.well-known/security.txt. |
-| Remaining action | Establish a dedicated security contact email. Add security.txt. |
-| Safe to submit now | **No** — no public security contact established. |
+| Honest current answer | **Yes** |
+| Technical evidence | `SECURITY_ROLES_AND_RESPONSIBILITIES.md`: Security Owner = Allison Fabbri, Controller & FinanceOS Project Lead, `allison@cardealer.ai`. Single-person team; all security responsibilities are assigned to this contact. |
+| Operational evidence | ❌ No dedicated `security@` alias (all security mail goes to `allison@cardealer.ai`). No `/.well-known/security.txt` published yet. |
+| Remaining action | Optional: add `/.well-known/security.txt` pointing to `allison@cardealer.ai`. Not required for submission — Plaid does not mandate a separate security alias, only a designated contact person. |
+| Safe to submit now | **Yes** — Allison Fabbri is the designated security contact. Can be stated: "Security contact: Allison Fabbri, allison@cardealer.ai." |
 
 ---
 
@@ -55,10 +55,10 @@
 | Field | Status |
 |---|---|
 | Honest current answer | **Partial** |
-| Technical evidence | `src/auth/permissions.ts`: 6 roles (admin, cfo, controller, editor, bookkeeper, readonly) with explicit permission sets. `src/auth/middleware.ts`: requireAuth/requirePermission enforce session and role gates. `src/auth/service.ts`: bcrypt-only password comparison (plaintext throws). `lib/db/src/index.ts`: CORE_DATABASE_URL is read-only from Dashboard. |
-| Operational evidence | ❌ MFA not deployed (code on branch, migration not applied). ❌ Platform account MFA status unverified. ❌ `financeos_dashboard` DB role privilege audit not confirmed. |
-| Remaining action | Deploy MFA (Steps 1–10 in DEPLOYMENT_RUNBOOK.md). Allison completes MFA_VERIFICATION_CHECKLIST.md. Confirm DB role privileges in Neon. |
-| Safe to submit now | **No** — controls exist in code but are not operationally active. |
+| Technical evidence | **RBAC:** `src/auth/permissions.ts`: 6 roles (admin, cfo, controller, editor, bookkeeper, readonly), each with an explicit permission set. **Session enforcement:** `src/auth/middleware.ts`: `requireAuth` checks active session; `requirePermission` checks role. **Password security:** `src/auth/service.ts`: bcrypt comparison only — plaintext comparison throws. **Database separation:** `lib/db/src/index.ts`: `CORE_DATABASE_URL` is used read-only; writes go only to `DATABASE_URL` (Replit PostgreSQL). **Secret storage:** Replit Secrets for all credentials (not hardcoded). |
+| Operational evidence | ❌ MFA not deployed (code on this branch, migration not yet applied — separate from access controls above). ❌ Admin password bcrypt status unconfirmed (cannot read Replit Secrets externally). ❌ `financeos_dashboard` DB role privilege audit in Neon not confirmed. ❌ Platform account MFA (GitHub, Replit, Neon) not yet verified. |
+| Remaining action | (For access controls specifically, not MFA) Confirm `financeos_dashboard` DB role is read-only in Neon: run `SELECT rolsuper, rolcreatedb FROM pg_roles WHERE rolname='financeos_dashboard';` in Neon SQL Editor. Confirm admin password in Replit Secrets starts with `$2b$` (bcrypt). MFA deployment is tracked separately in Q4. |
+| Safe to submit now | **Partial yes** — RBAC, session enforcement, bcrypt, and DB separation are implemented in code. Cannot claim "fully operational" because DB role and bcrypt status are unconfirmed in the live environment. |
 
 ---
 
@@ -98,9 +98,9 @@
 |---|---|
 | Honest current answer | **Yes (inferred)** |
 | Technical evidence | `src/app.ts`: `secure: true` cookie flag in production. `app.set("trust proxy", 1)` for Replit's HTTPS reverse proxy. `.replit`: `modules = ["nodejs-24", "python-3.11", "postgresql-16"]` — Replit's platform terminates HTTPS. Neon PostgreSQL requires TLS on all connections. All external API calls (QBO, GCP) use HTTPS endpoints. |
-| Operational evidence | ❌ No SSL Labs scan or TLS version report run against deployed URL. Replit's actual TLS configuration not directly verified. |
-| Remaining action | Run `ssllabs.com` scan against deployed Replit URL. Capture screenshot as evidence. |
-| Safe to submit now | **Conditionally yes** — TLS is enforced by the platform (Replit, Neon). Can state Yes with the caveat that a scan has not been run. Recommend running the scan before submission. |
+| Operational evidence | ❌ No SSL Labs scan or TLS version report run against deployed URL. Replit's actual TLS configuration not independently verified. |
+| Remaining action | Before submission, run: `curl -sI https://<your-replit-url> \| grep -i "strict-transport\|server"` to confirm HTTPS is active. For a full TLS report, submit the URL to https://www.ssllabs.com/ssltest/. Capture the result as evidence. |
+| Safe to submit now | **Conditionally yes** — TLS is enforced by the platform (Replit terminates HTTPS). Can state Yes, but run the verification command above against the actual deployed URL before submitting. |
 
 ---
 
@@ -111,7 +111,7 @@
 | Field | Status |
 |---|---|
 | Honest current answer | **Partial** |
-| Technical evidence | **Provider-managed (confirmed by documentation):** Neon PostgreSQL encrypts data at rest using AES-256. Replit Secrets are encrypted at rest by Replit. GCP Secret Manager encrypts secrets. GitHub Encrypted Secrets are encrypted. **Application-layer:** `src/auth/mfaCrypto.ts`: AES-256-GCM encryption for TOTP secrets (`totp_secret_encrypted` column). Recovery codes: SHA-256 hashed, never stored plaintext. Admin password: bcrypt. **NOT YET:** Plaid access tokens (`plaid_connections.access_token_encrypted` column defined in migration schema but column and encryption code not connected — routes are stubs). |
+| Technical evidence | **1. Provider-managed encryption (confirmed by platform documentation):** Neon PostgreSQL encrypts data at rest (AES-256). Replit Secrets encrypted at rest by Replit. GCP Secret Manager (used for QBO tokens) encrypts secrets. GitHub Encrypted Secrets are encrypted. **2. Application-layer encryption for TOTP secrets (code on this branch, not yet deployed):** `src/auth/mfaCrypto.ts`: AES-256-GCM, unique random IV per secret, authenticated encryption. Column: `totp_secret_encrypted TEXT`. Key: `TOTP_ENCRYPTION_KEY` (64-char hex = 32 bytes). **3. Application-layer hashing for recovery codes and passwords:** Recovery codes SHA-256 hashed. Admin password bcrypt. **4. Plaid access tokens — NOT YET IMPLEMENTED:** `security_002_consent.sql` defines `plaid_connections.access_token_encrypted TEXT` column. No encryption code exists. Routes are stubs. Plaid SDK not installed. |
 | Operational evidence | ❌ MFA migration not applied. ❌ TOTP_ENCRYPTION_KEY not provisioned. ❌ Plaid token encryption not implemented. ❌ Admin password bcrypt status unknown (may be plaintext in Replit Secrets). |
 | Remaining action | Apply migrations. Provision TOTP_ENCRYPTION_KEY. Apply safe password hash procedure. Implement Plaid token encryption when Plaid SDK is installed. |
 | Safe to submit now | **Partial yes** — provider-managed encryption is real. Application-layer encryption for Plaid access tokens is not yet implemented. Answer should note this distinction. |
@@ -178,7 +178,7 @@
 
 | Q | Question | Honest Answer | Safe to Submit |
 |---|---|---|---|
-| 1 | Security contact | No dedicated contact | ❌ No |
+| 1 | Security contact | Allison Fabbri, allison@cardealer.ai | ✅ Yes |
 | 2 | Information security policy | Draft documents, not approved | ❌ No |
 | 3 | Access controls | Partial (code exists, not deployed with MFA) | ❌ No |
 | 4 | Consumer-facing MFA | No (code on unmerged branch, not deployed) | ❌ No |
@@ -190,7 +190,7 @@
 | 10 | Consumer consent | No (Plaid not integrated) | ❌ No |
 | 11 | Data retention/deletion | No (deletion not implemented) | ❌ No |
 
-**Current safe-to-submit count: 0 out of 11 questions (conditionally 1–2 for TLS/encryption).**
+**Current safe-to-submit count: 1 out of 11 (Q1); conditionally 2–3 for TLS/encryption/access-controls pending live verification.**
 
 ---
 
@@ -206,8 +206,8 @@
 | last_totp_step prevents replay | `src/auth/mfaRoutes.ts` — rejects if `row.last_totp_step >= step` |
 | CORS restricted to ALLOWED_ORIGINS in prod | `src/app.ts:104` — origin callback checks allowlist only when `NODE_ENV === 'production'` |
 | Plaid routes are stubs | `src/routes/plaid.ts` — all 4 routes have `// TODO:` comments; Plaid SDK not in package.json |
-| 871 unit tests pass, 0 fail | `node_modules/.bin/vitest run` — 31 test files, 871 tests |
-| Typecheck: 10 pre-existing frontend TS errors | All in `artifacts/financeos/src/App.tsx`, pre-date this security branch |
+| 871+ unit tests pass, 0 fail | backend vitest (31 files, 871 tests) + frontend vitest (8 tests) |
+| Frontend typecheck: 0 errors | Branch-introduced errors in `accounting/invoices.tsx`, `transactions.tsx`, `reconciliation.tsx` fixed by adding optional `filter?`/`view?` props |
 
 ## Unverified assumptions
 

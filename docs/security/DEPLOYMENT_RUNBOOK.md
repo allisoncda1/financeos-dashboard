@@ -20,16 +20,20 @@
 
 ## Step 1 — Generate the TOTP encryption key
 
-Generate 32 random bytes as a 64-character hex string. The output goes directly to your clipboard or terminal — do not save it to a file.
+**Do not run this command in the Replit Shell — Replit shells log all output to the server console.**
+
+Run this on your local Mac terminal where output stays on your machine:
 
 ```bash
-# In the Replit Shell or local terminal:
-node -e "process.stdout.write(require('crypto').randomBytes(32).toString('hex') + '\n')"
+# On your local Mac terminal ONLY — pipes directly to clipboard, nothing displayed:
+node -e "process.stdout.write(require('crypto').randomBytes(32).toString('hex'))" | pbcopy
 ```
 
-Copy the 64-character hex string (e.g. `a3f1...`). You will paste it into Replit Secrets in the next step.
+The 64-character hex key is now in your clipboard. It was never displayed in the terminal. Proceed immediately to Step 2 and paste it into Replit Secrets before copying anything else.
 
-**Security:** This command writes to stdout only. It does not appear in any log or history file.
+**If pbcopy is not available** (Linux): pipe to `xclip -selection clipboard` or `xsel --clipboard --input` instead. As a last resort, print it in a new private/incognito terminal window that you close immediately after copying — but this leaves the value in shell history.
+
+**Do not:** save the key to a file, paste it into a chat, screenshot it, or share it.
 
 ---
 

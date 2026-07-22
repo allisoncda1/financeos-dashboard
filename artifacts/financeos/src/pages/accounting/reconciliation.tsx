@@ -6,7 +6,7 @@ import { formatCurrency } from "@/lib/format";
 
 const fmt = formatCurrency;
 
-export default function ReconciliationPage() {
+export default function ReconciliationPage(_props: { view?: string } = {}) {
   const { activeSlug } = useAccountingEntity();
   const { data: accounts }    = useAccountingAccounts(activeSlug);
   const { data: transactions } = useAccountingTransactions(activeSlug);

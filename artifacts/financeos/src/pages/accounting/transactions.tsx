@@ -31,7 +31,7 @@ function amountClass(transactionType: string | null): string {
   return "text-gray-900";
 }
 
-export default function TransactionsPage() {
+export default function TransactionsPage(_props: { view?: string } = {}) {
   const { activeSlug } = useAccountingEntity();
   const { data: transactions, source } = useAccountingTransactions(activeSlug);
 

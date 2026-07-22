@@ -168,90 +168,67 @@ describe("ReportDraftEditor", () => {
     expect(bodyContains("Jun 2025")).toBe(true);
   });
 
-  // ── 3. Analysis block in section overlay ───────────────────────────────────
+  // ── 3. Commentary is fetched and preview is requested ─────────────────────
+  // The editor passes commentary data to the preview API; the preview is shown
+  // in an iframe. There is no section nav — content is in the rendered iframe.
 
-  it("analysis block content is visible after clicking its section in the nav", async () => {
+  it("fetches analysis commentary and requests a preview when blocks are present", async () => {
     setupMocks({}, [makeAnalysisBlock()]);
     render(<ReportDraftEditor />);
     await waitForLoad();
 
-    // Click the "executive_summary" section button (appears as "executive_summary" since
-    // it's not in SECTION_META and falls through to the raw key as label)
-    const sectionBtn = await screen.findByText("executive_summary", {}, { timeout: 3000 });
-    await userEvent.click(sectionBtn);
-
+    // Commentary was fetched with (entitySlug, period, templateId) from the draft
+    expect(getCommentaryMock).toHaveBeenCalledWith("T3_Marketing", "Jun 2025 (Latest)", "monthly-close");
+    // Preview was requested for the same draft
+    expect(getDraftPreviewMock).toHaveBeenCalledWith("draft-test-001");
+    // The iframe is rendered (preview HTML present)
     await waitFor(
-      () => expect(bodyContains("Revenue analysis from FinanceOS engine.")).toBe(true),
+      () => expect(document.querySelector("iframe")).not.toBeNull(),
       { timeout: 3000 },
     );
   });
 
-  // ── 4. FinanceOS Analysis block shows lock label, not an editable textarea ──
+  // ── 4. Preview iframe renders when getDraftPreview resolves ───────────────
 
-  it("shows FinanceOS Analysis label when an analysis block is clicked", async () => {
+  it("renders an iframe with the preview html once the draft loads", async () => {
     setupMocks({}, [makeAnalysisBlock()]);
     render(<ReportDraftEditor />);
     await waitForLoad();
 
-    // Open the section
-    const sectionBtn = await screen.findByText("executive_summary", {}, { timeout: 3000 });
-    await userEvent.click(sectionBtn);
-
-    // Click the block to open the right-panel details
-    const blockEl = await screen.findByText("Revenue analysis from FinanceOS engine.", {}, { timeout: 3000 });
-    await userEvent.click(blockEl);
-
-    // Right panel should show the "FinanceOS Analysis" lock callout
     await waitFor(
-      () => expect(bodyContains("FinanceOS Analysis")).toBe(true),
+      () => {
+        const iframe = document.querySelector("iframe");
+        expect(iframe).not.toBeNull();
+        expect(iframe?.getAttribute("srcDoc") ?? iframe?.getAttribute("srcdoc")).toContain("Report Preview");
+      },
       { timeout: 3000 },
     );
-
-    // The block's content should NOT appear inside an editable textarea
-    const textareas = Array.from(document.querySelectorAll("textarea"));
-    for (const ta of textareas) {
-      expect(ta.value).not.toBe("Revenue analysis from FinanceOS engine.");
-    }
   });
 
-  // ── 5. Management commentary content visible after clicking section ─────────
+  // ── 5. Management commentary is fetched ───────────────────────────────────
 
-  it("included management commentary content appears after clicking its section", async () => {
+  it("fetches management commentary and requests preview when mc blocks are present", async () => {
     setupMocks({}, [makeCommentaryBlock()]);
     render(<ReportDraftEditor />);
     await waitForLoad();
 
-    const sectionBtn = await screen.findByText("management_comments", {}, { timeout: 3000 });
-    await userEvent.click(sectionBtn);
-
-    await waitFor(
-      () => expect(bodyContains("Management campaign note for testing.")).toBe(true),
-      { timeout: 3000 },
-    );
+    expect(getCommentaryMock).toHaveBeenCalledWith("T3_Marketing", "Jun 2025 (Latest)", "monthly-close");
+    expect(getDraftPreviewMock).toHaveBeenCalledWith("draft-test-001");
   });
 
-  // ── 6. Excluded blocks are hidden from the section overlay ─────────────────
+  // ── 6. Excluded blocks: preview still requested ────────────────────────────
 
-  it("excluded commentary block does NOT appear in section overlay", async () => {
+  it("requests preview even when all commentary blocks are excluded", async () => {
     setupMocks({}, [makeCommentaryBlock({ included: false })]);
     render(<ReportDraftEditor />);
     await waitForLoad();
 
-    // The excluded block's sectionKey button appears (the section itself exists)
-    // but clicking it should not show the excluded block's content
-    const sectionBtn = await screen.findByText("management_comments", {}, { timeout: 3000 });
-    await userEvent.click(sectionBtn);
-
-    // excluded blocks are rendered with opacity-50 but the content IS rendered in the DOM;
-    // validate what the component actually does — check the block count label shows 1 block
-    // (excluded blocks are still in sectionsByKey) but visually de-emphasized
+    expect(getDraftPreviewMock).toHaveBeenCalledWith("draft-test-001");
+    // Iframe rendered with whatever the preview API returned
     await waitFor(
-      () => expect(bodyContains("1 block")).toBe(true),
+      () => expect(document.querySelector("iframe")).not.toBeNull(),
       { timeout: 3000 },
     );
-    // The content is in the DOM (opacity-50) — the "hidden" behavior is visual-only
-    // This test documents that and serves as a regression anchor
-    expect(bodyContains("Management campaign note for testing.")).toBe(true);
   });
 
   // ── 7. Approval badge ────────────────────────────────────────────────────────
@@ -270,8 +247,9 @@ describe("ReportDraftEditor", () => {
     setupMocks({ isStale: true, staleReason: "Financial data changed since draft creation." });
     render(<ReportDraftEditor />);
     await waitForLoad();
+    // Component renders "Data Changed — Re-approval Required" when isStale=true
     expect(
-      bodyContains("stale") || bodyContains("Stale") || bodyContains("changed"),
+      bodyContains("Data Changed") || bodyContains("Re-approval"),
     ).toBe(true);
   });
 });

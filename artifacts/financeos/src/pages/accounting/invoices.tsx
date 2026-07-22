@@ -78,7 +78,7 @@ function ReconBanner({ recon }: { recon: ArApReconciliation }) {
   );
 }
 
-export default function InvoicesPage() {
+export default function InvoicesPage(_props: { filter?: string } = {}) {
   const { activeSlug } = useAccountingEntity();
   const { data: invoices, source, reconciliation } = useAccountingInvoices(activeSlug);
 
