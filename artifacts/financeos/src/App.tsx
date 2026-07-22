@@ -3,6 +3,8 @@ import { AppShell } from "@/components/layout/AppShell";
 import { CommandBar } from "@/components/layout/CommandBar";
 import NotFound from "@/pages/not-found";
 import LoginPage from "@/pages/login";
+import MfaSetupPage from "@/pages/mfa-setup";
+import MfaChallengePage from "@/pages/mfa-challenge";
 import HomePage from "@/pages/home";
 import { AuthProvider } from "@/lib/auth";
 import { ProtectedRoute } from "@/components/auth/ProtectedRoute";
@@ -273,6 +275,8 @@ function Router() {
   return (
     <Switch>
       <Route path="/login" component={LoginPage} />
+      <Route path="/mfa/setup" component={MfaSetupPage} />
+      <Route path="/mfa/challenge" component={MfaChallengePage} />
       <Route path="/home">
         <ProtectedRoute>
           <HomePage />

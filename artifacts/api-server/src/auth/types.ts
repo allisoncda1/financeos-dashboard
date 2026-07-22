@@ -39,5 +39,7 @@ declare module "express-session" {
     mfaPending?: boolean;
     /** Holds the authenticated user identity while MFA challenge is pending. */
     pendingUser?: AuthUser;
+    /** Password is valid, but first-time TOTP enrollment must finish before app access. */
+    mfaEnrollmentRequired?: boolean;
   }
 }

@@ -28,10 +28,17 @@ export type AuthedUser = {
 
 type AuthStatus = "loading" | "authenticated" | "unauthenticated";
 
+export type LoginResult =
+  | { next: "authenticated" }
+  | { next: "mfa_challenge" }
+  | { next: "mfa_enrollment" };
+
 type AuthContextValue = {
   user: AuthedUser | null;
   status: AuthStatus;
-  login: (email: string, password: string) => Promise<void>;
+  login: (email: string, password: string) => Promise<LoginResult>;
+  completeMfaChallenge: (token: string, recoveryCode?: string) => Promise<void>;
+  refresh: () => Promise<void>;
   logout: () => Promise<void>;
   hasPermission: (permission: Permission) => boolean;
 };
@@ -86,7 +93,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return () => window.removeEventListener(SESSION_EXPIRED_EVENT, handler);
   }, []);
 
-  const login = useCallback(async (email: string, password: string) => {
+  const login = useCallback(async (email: string, password: string): Promise<LoginResult> => {
     const res = await fetch(`${BASE}/login`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -97,6 +104,21 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     if (!res.ok || !json.ok) {
       throw new Error(json.error ?? "Invalid email or password");
     }
+    if (json.mfaEnrollmentRequired) return { next: "mfa_enrollment" };
+    if (json.mfaRequired) return { next: "mfa_challenge" };
+    await refresh();
+    return { next: "authenticated" };
+  }, [refresh]);
+
+  const completeMfaChallenge = useCallback(async (token: string, recoveryCode?: string) => {
+    const res = await fetch(`${BASE}/mfa/challenge`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      credentials: "include",
+      body: JSON.stringify(recoveryCode ? { recoveryCode } : { token }),
+    });
+    const json = await res.json().catch(() => ({ ok: false, error: `Verification failed (${res.status})` }));
+    if (!res.ok || !json.ok) throw new Error(json.error ?? "Verification failed");
     await refresh();
   }, [refresh]);
 
@@ -112,8 +134,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   );
 
   const value = useMemo(
-    () => ({ user, status, login, logout, hasPermission }),
-    [user, status, login, logout, hasPermission],
+    () => ({ user, status, login, completeMfaChallenge, refresh, logout, hasPermission }),
+    [user, status, login, completeMfaChallenge, refresh, logout, hasPermission],
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

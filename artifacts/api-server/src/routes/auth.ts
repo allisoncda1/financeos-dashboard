@@ -66,16 +66,21 @@ router.post("/login", loginLimiter, async (req, res) => {
     res.status(202).json({
       ok: true,
       mfaRequired: true,
+      mfaEnrollmentRequired: false,
       ts: new Date().toISOString(),
     });
     return;
   }
 
+  // MFA is mandatory. Keep a narrowly scoped enrollment session so the user
+  // can obtain and verify a TOTP secret, but block every normal protected route.
   req.session.user = user;
+  req.session.mfaEnrollmentRequired = true;
 
-  res.json({
+  res.status(202).json({
     ok: true,
-    data: { email: user.email, role: user.role, name: user.name },
+    mfaRequired: false,
+    mfaEnrollmentRequired: true,
     ts: new Date().toISOString(),
   });
 });
@@ -95,11 +100,15 @@ router.post("/logout", (req, res) => {
 router.get("/me", (req, res) => {
   const user = req.session.user;
 
-  if (!user) {
+  if (!user || req.session.mfaEnrollmentRequired || req.session.mfaPending) {
     res.status(401).json({
       ok: false,
       error: "Unauthorized",
-      code: "NOT_AUTHENTICATED",
+      code: req.session.mfaEnrollmentRequired
+        ? "MFA_ENROLLMENT_REQUIRED"
+        : req.session.mfaPending
+          ? "MFA_REQUIRED"
+          : "NOT_AUTHENTICATED",
       ts: new Date().toISOString(),
     });
     return;

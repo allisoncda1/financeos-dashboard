@@ -30,7 +30,7 @@ import {
   verifyRecoveryCode,
 } from "./mfa.js";
 import { encryptTotpSecret, decryptTotpSecret } from "./mfaCrypto.js";
-import { requireAuth } from "./middleware.js";
+import { requireAuth, requireMfaEnrollment } from "./middleware.js";
 import type { AuthUser } from "./types.js";
 
 // ---------------------------------------------------------------------------
@@ -178,7 +178,7 @@ router.get("/status", requireAuth, async (req, res) => {
 });
 
 // POST /api/auth/mfa/enroll/totp — begin enrollment
-router.post("/enroll/totp", requireAuth, async (req, res) => {
+router.post("/enroll/totp", requireMfaEnrollment, async (req, res) => {
   const user = req.session.user!;
   try {
     const enrollment = await generateTotpSecret(user.email);
@@ -222,7 +222,7 @@ router.post("/enroll/totp", requireAuth, async (req, res) => {
 });
 
 // POST /api/auth/mfa/enroll/totp/verify — activate TOTP after scanning QR
-router.post("/enroll/totp/verify", requireAuth, async (req, res) => {
+router.post("/enroll/totp/verify", requireMfaEnrollment, async (req, res) => {
   const user = req.session.user!;
   const body = req.body as Record<string, unknown>;
   const token = typeof body["token"] === "string" ? body["token"].trim() : "";
@@ -266,6 +266,14 @@ router.post("/enroll/totp/verify", requireAuth, async (req, res) => {
     );
 
     await logMfaEvent(user.email, "enrolled", req.ip, req.headers["user-agent"]);
+
+    // Enrollment is now complete. Regenerate again at the authentication-state
+    // boundary, then promote the same user into a fully authenticated session.
+    const promotedUser = user;
+    await new Promise<void>((resolve, reject) => {
+      req.session.regenerate((err) => (err ? reject(err) : resolve()));
+    });
+    req.session.user = promotedUser;
 
     // Return plaintext codes ONCE — frontend must prompt user to save them.
     // These are never logged.
