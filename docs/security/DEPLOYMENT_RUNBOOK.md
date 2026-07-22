@@ -49,15 +49,17 @@ The 64-character hex key is now in your clipboard. It was never displayed in the
 **Verify (without printing the value):**
 ```bash
 # In Replit Shell — confirms key is present and correct length:
-node -e "
-const k = process.env['TOTP_ENCRYPTION_KEY'];
-if (!k) { console.error('NOT SET'); process.exit(1); }
-if (!/^[0-9a-fA-F]{64}\$/.test(k)) { console.error('WRONG FORMAT — expected 64 hex chars, got', k.length); process.exit(1); }
-console.log('OK — 64-char hex key present');
-"
+node -e '
+const k = process.env["TOTP_ENCRYPTION_KEY"];
+if (!k) { console.error("NOT SET"); process.exit(1); }
+if (!/^[0-9a-fA-F]{64}$/.test(k)) { console.error("WRONG FORMAT — expected 64 hex chars, got", k.length); process.exit(1); }
+console.log("OK — 64-char hex key present");
+'
 ```
 
 Expected output: `OK — 64-char hex key present`
+
+> **Note on the regex:** `/^[0-9a-fA-F]{64}$/` — the trailing `$` is the JavaScript end-of-string anchor, not a literal dollar-sign character. The script is wrapped in single quotes so no shell variable expansion occurs, and the regex reaches Node exactly as written.
 
 ---
 
@@ -74,39 +76,34 @@ Expected output: `OK — 64-char hex key present`
 
 ## Step 4 — Generate the admin password hash
 
-This procedure does NOT put the password in shell history or process arguments.
+**Run this on your local Mac terminal only. Do not run it in Replit Shell.**
+
+The committed script `scripts/gen-bcrypt-hash.sh` handles all of the following safely:
+
+- Disables terminal echo using `read -s` (bash built-in) and `stty -echo` (belt-and-suspenders), so keystrokes are never visible.
+- Requires you to type the password twice; exits without producing a hash if the two entries do not match.
+- The plaintext password flows from your keyboard → bash variable → Node stdin pipe and is never placed in command arguments, environment variables, files, logs, clipboard, or shell history.
+- Sends the bcrypt hash directly to your clipboard via `pbcopy`. The hash is never displayed.
+- Restores terminal echo unconditionally via a cleanup trap, even on Ctrl-C or error.
 
 ```bash
-# In the Replit Shell:
-node -e "
-const bcrypt = require('bcryptjs');
-const readline = require('readline');
-const rl = readline.createInterface({ input: process.stdin, output: process.stderr });
-rl.question('Enter admin password (not echoed): ', async (pw) => {
-  rl.close();
-  const hash = await bcrypt.hash(pw, 12);
-  process.stdout.write(hash + '\n');
-});
-"
+# On your local Mac terminal — from the repo root:
+bash scripts/gen-bcrypt-hash.sh
 ```
 
-Type the password when prompted. The hash (starts with `$2b$12$`) is printed to stdout. Copy it.
+The script prompts for the password twice, confirms they match, then prints:
 
-**Verify the hash works before saving:**
-```bash
-# Set HASH to the output of the step above (note the leading space suppresses history on bash/zsh):
- HASH='$2b$12$<paste-hash-here>' node -e "
-const bcrypt = require('bcryptjs');
-const readline = require('readline');
-const rl = readline.createInterface({ input: process.stdin, output: process.stderr });
-rl.question('Re-enter password to verify: ', async (pw) => {
-  rl.close();
-  const ok = await bcrypt.compare(pw, process.env.HASH);
-  console.log(ok ? 'MATCH — hash is correct' : 'MISMATCH — do not save this hash');
-  process.exit(ok ? 0 : 1);
-});
-"
 ```
+Done. Bcrypt hash copied to clipboard (starts with $2b$12$).
+
+Next steps:
+  1. Paste the hash into Replit Secrets as FINANCEOS_ADMIN_PASSWORD.
+  2. Clear your clipboard immediately after: open any text editor,
+     type or copy any character, then discard the document without saving.
+  3. Verify the secret is set (see DEPLOYMENT_RUNBOOK.md Step 5).
+```
+
+> **Why not readline.createInterface?** Node's `readline.createInterface` with `output: process.stderr` only redirects the prompt string. It does NOT disable terminal echo — keystrokes remain visible. The committed script uses `read -s` which is the standard bash mechanism for genuinely hidden input.
 
 ---
 

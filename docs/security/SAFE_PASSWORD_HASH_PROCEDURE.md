@@ -2,7 +2,7 @@
 
 # Safe Admin Password Hash Procedure
 
-**Purpose:** Generate a bcrypt hash of the FinanceOS admin password to store in Replit Secrets as `FINANCEOS_ADMIN_PASSWORD`. This procedure is designed so the plaintext password is never written to disk, never appears in shell history, and never appears in log output.
+**Purpose:** Generate a bcrypt hash of the FinanceOS admin password to store in Replit Secrets as `FINANCEOS_ADMIN_PASSWORD`. This procedure ensures the plaintext password is never written to disk, never appears in shell history, and is never visible in the terminal.
 
 ---
 
@@ -15,86 +15,100 @@ Shell command history (`.bash_history`, `.zsh_history`) and process listings (`p
 node -e "require('bcryptjs').hash('mypassword', 12).then(console.log)"
 ```
 
-…embeds `mypassword` in your shell history file permanently. On a multi-user system or if history is synced (e.g., via dotfiles), this exposes the credential.
+…embeds `mypassword` in your shell history file permanently.
+
+Similarly, Node's `readline.createInterface({ input: process.stdin, output: process.stderr })` does **not** disable terminal echo. Despite routing the prompt to stderr, the terminal remains in its default echo mode and every keystroke is visible on screen. **Do not use readline for password input.**
 
 ---
 
-## Safe procedure (interactive — no plaintext in shell args)
+## Safe procedure — use the committed script
 
-**Step 1.** Open a terminal (local Mac terminal, NOT a Replit shell).
+The repository includes a reviewed bash script that handles all security requirements:
 
-**Step 2.** Run Node in interactive mode — this reads input from stdin and does not log it:
-
-```bash
-node -e "
-const bcrypt = require('bcryptjs');
-const readline = require('readline');
-const rl = readline.createInterface({ input: process.stdin, output: process.stderr });
-rl.question('Enter admin password: ', async (pw) => {
-  rl.close();
-  const hash = await bcrypt.hash(pw, 12);
-  process.stdout.write(hash + '\n');
-});
-"
+```
+scripts/gen-bcrypt-hash.sh
 ```
 
-**Step 3.** Type the password when prompted. The typed characters are not echoed to the terminal (stderr-only prompt).
+**Run this on your LOCAL Mac terminal only. Do not run it in Replit Shell** (Replit logs all console output server-side).
 
-**Step 4.** The hash is printed to stdout only. Copy it immediately.
+```bash
+# From the repo root on your local Mac:
+bash scripts/gen-bcrypt-hash.sh
+```
 
-**Step 5.** In Replit Secrets, set `FINANCEOS_ADMIN_PASSWORD` to the hash (begins with `$2b$12$`).
+### What the script does
 
-**Step 6.** Verify the secret was saved. Do not paste the hash anywhere else.
+| Property | How it is achieved |
+|---|---|
+| Terminal echo disabled | `read -s` (bash built-in) + `stty -echo` (belt-and-suspenders) |
+| Echo restored on any exit | `trap _cleanup EXIT INT TERM HUP` calls `stty echo` |
+| Password not in shell history | Never passed as a command argument; read via `read -rs` |
+| Password not in process args | Flows to Node via stdin pipe (`printf '%s' "$PASSWORD" \| node -e ...`) |
+| Password not in env vars | Only `BCRYPT_PATH` (the bcryptjs module path) is exported, not the password |
+| Confirmation required | Exits with code 1 and produces no hash if entries do not match |
+| Hash not displayed | Piped directly to `pbcopy` (clipboard); never written to stdout or a variable |
+| Plaintext cleared | Shell variable set to `""` after the hash is produced |
+
+### Step-by-step
+
+**Step 1.** Open a local Mac terminal (Terminal.app or iTerm2). Close any screen-sharing or recording sessions.
+
+**Step 2.** Navigate to the repo root:
+```bash
+cd ~/path/to/financeos-dashboard
+```
+
+**Step 3.** Run the script:
+```bash
+bash scripts/gen-bcrypt-hash.sh
+```
+
+**Step 4.** Type the password when prompted. No characters are displayed. Press Enter.
+
+**Step 5.** Type the password again to confirm. Press Enter.
+
+**Step 6.** On success, the script prints:
+```
+Done. Bcrypt hash copied to clipboard (starts with $2b$12$).
+```
+The hash is now in your clipboard.
+
+**Step 7.** Immediately open Replit Secrets for the `financeos-dashboard` project and paste into `FINANCEOS_ADMIN_PASSWORD`.
+
+**Step 8.** Clear your clipboard: open any text editor, type or copy any character, then close the document without saving.
 
 ---
 
-## Verification (confirm the hash works before relying on it)
+## Verify the hash was saved correctly (in Replit Shell)
 
-Run the following to verify the hash without printing the password:
-
-```bash
-node -e "
-const bcrypt = require('bcryptjs');
-const hash = process.env.HASH;
-const readline = require('readline');
-const rl = readline.createInterface({ input: process.stdin, output: process.stderr });
-rl.question('Enter password to verify: ', async (pw) => {
-  rl.close();
-  const ok = await bcrypt.compare(pw, hash);
-  console.log(ok ? 'MATCH: hash is correct' : 'MISMATCH: hash does not match');
-});
-" 
-```
-
-Set `HASH` inline as an environment variable (not saved to history if prefixed with a space on bash/zsh):
+After restarting the application (DEPLOYMENT_RUNBOOK.md Step 8), verify the secret is a bcrypt hash without revealing its value:
 
 ```bash
- HASH='$2b$12$<your-hash-here>' node -e "..."
+node -e '
+const pw = process.env["FINANCEOS_ADMIN_PASSWORD"];
+if (!pw) { console.error("NOT SET"); process.exit(1); }
+if (!pw.startsWith("$2b$") && !pw.startsWith("$2a$")) {
+  console.error("NOT A BCRYPT HASH — prefix is", pw.slice(0, 7));
+  process.exit(1);
+}
+console.log("OK — bcrypt hash present, prefix:", pw.slice(0, 7));
+'
 ```
 
-Note: leading space before the command suppresses it from bash/zsh history (only if `HISTCONTROL=ignorespace` is set, which is the default on most systems).
+Expected output: `OK — bcrypt hash present, prefix: $2b$12$`
+
+> **Note on the regex:** The `$` characters inside the single-quoted Node script are literal dollar signs in the JavaScript string, not shell variable expansions. Single quotes prevent shell interpretation.
 
 ---
 
-## bcrypt package availability
-
-The procedure above uses `bcryptjs` (pure JavaScript). If it is not installed globally:
-
-```bash
-# In the financeos-dashboard repo:
-pnpm --filter api-server exec node -e "..."
-```
-
----
-
-## Rotation
+## Password rotation
 
 When rotating the admin password:
 
-1. Generate the new hash using the safe procedure above.
-2. Update `FINANCEOS_ADMIN_PASSWORD` in Replit Secrets.
-3. Verify the new hash works.
-4. Confirm the old hash is no longer accepted.
+1. Run `bash scripts/gen-bcrypt-hash.sh` again on your local Mac.
+2. Update `FINANCEOS_ADMIN_PASSWORD` in Replit Secrets with the new hash.
+3. Restart the application.
+4. Verify the new hash is accepted and the old password is rejected.
 5. Document the rotation date in the Security Roles document.
 
 Do NOT store the old password or hash anywhere.
