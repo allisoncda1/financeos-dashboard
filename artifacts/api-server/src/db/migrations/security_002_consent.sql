@@ -1,7 +1,13 @@
 -- MANUAL MIGRATION: security_002_consent.sql
--- DO NOT APPLY AUTOMATICALLY. Run via Neon SQL Editor after approval.
--- Preflight: SELECT COUNT(*) FROM information_schema.tables WHERE table_name='plaid_consent_records';
--- Expected: 0 rows
+-- =============================================================================
+-- DATABASE: Dashboard OPERATIONAL database (DATABASE_URL) — NOT Core (CORE_DATABASE_URL).
+-- See security_001_mfa.sql header for full apply/verify/rollback instructions.
+-- Prerequisite: security_001_mfa.sql applied first.
+-- =============================================================================
+-- PREFLIGHT: expected 0 rows if migration not yet applied.
+-- SELECT table_name FROM information_schema.tables
+-- WHERE table_schema='public' AND table_name IN
+--   ('plaid_consent_records','plaid_connections','data_deletion_requests');
 
 BEGIN;
 

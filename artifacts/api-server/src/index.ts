@@ -2,6 +2,7 @@ import app, { initSession } from "./app";
 import { logger } from "./lib/logger";
 import { warmEntityCache } from "./services/entityCache";
 import { validatePasswordConfig } from "./auth/service";
+import { validateEncryptionKey } from "./auth/mfaCrypto";
 
 const rawPort = process.env["PORT"];
 
@@ -20,6 +21,9 @@ if (Number.isNaN(port) || port <= 0) {
 // Validate password configuration at startup — logs a warning if admin password
 // is not a bcrypt hash without printing the actual value.
 validatePasswordConfig();
+
+// Validate TOTP encryption key — logs a warning if missing or malformed.
+validateEncryptionKey();
 
 warmEntityCache().catch((err) => {
   logger.warn({ err }, "Entity cache pre-warm failed; will retry lazily on first request");
