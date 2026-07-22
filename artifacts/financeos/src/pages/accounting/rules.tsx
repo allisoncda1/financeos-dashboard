@@ -1,39 +1,25 @@
 import { AccountingLayout } from "@/components/accounting/AccountingLayout";
-import { Card, DataTable, Td, Pill, PrimaryButton, MiniKpi } from "@/components/accounting/AccountingUI";
-import { CATEGORIZATION_RULES } from "@/lib/accountingMockData";
-import { Plus } from "lucide-react";
+import { AlertCircle } from "lucide-react";
 
 export default function RulesPage() {
-  const activeCount = CATEGORIZATION_RULES.filter(r => r.active).length;
-  const totalApplied = CATEGORIZATION_RULES.reduce((s, r) => s + r.applied, 0);
-
   return (
     <AccountingLayout title="Categorization Rules" subtitle="Automate transaction categorization">
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-        <MiniKpi label="Active rules" value={String(activeCount)} sub={`${CATEGORIZATION_RULES.length} total rules`} tone="emerald" />
-        <MiniKpi label="Transactions auto-categorized" value={String(totalApplied)} sub="All time" tone="blue" />
-        <MiniKpi label="Auto-approval accuracy" value="95%" sub="Last 30 days" tone="gray" />
+      <div className="bg-white rounded-xl border border-amber-100 shadow-sm p-8 flex items-start gap-4">
+        <AlertCircle className="w-5 h-5 text-amber-500 shrink-0 mt-0.5" />
+        <div>
+          <p className="text-[14px] font-semibold text-gray-900">Categorization rules engine not configured</p>
+          <p className="text-[13px] text-gray-500 mt-2 max-w-xl">
+            Transaction categorization rules require a rule engine that matches transaction patterns
+            (payee name, memo, amount range) to GL accounts. This is a FinanceOS-native feature
+            that does not exist in QBO's data model and must be built as a separate service.
+            This feature is planned for a future release.
+          </p>
+          <p className="text-[12px] text-gray-400 mt-3">
+            Data source requirement: FinanceOS categorization rules engine (operational DB table
+            <code className="bg-gray-100 px-1 rounded text-[11px] ml-1">categorization_rules</code>) — not yet implemented.
+          </p>
+        </div>
       </div>
-
-      <Card
-        title="Rules"
-        action={<PrimaryButton testId="button-new-rule"><Plus className="w-3.5 h-3.5" /> New Rule</PrimaryButton>}
-      >
-        <DataTable headers={[
-          { label: "Rule" }, { label: "Condition" }, { label: "Category" },
-          { label: "Applied", className: "text-right" }, { label: "Status" },
-        ]}>
-          {CATEGORIZATION_RULES.map(rule => (
-            <tr key={rule.id} data-testid={`row-rule-${rule.id}`} className="hover:bg-gray-50 transition-colors">
-              <Td className="font-semibold text-gray-900 text-[13px]">{rule.name}</Td>
-              <Td className="text-gray-500 whitespace-normal">{rule.condition}</Td>
-              <Td><Pill tone={rule.categoryTone}>{rule.category}</Pill></Td>
-              <Td className="text-right">{rule.applied}</Td>
-              <Td>{rule.active ? <Pill tone="emerald">Active</Pill> : <Pill tone="gray">Paused</Pill>}</Td>
-            </tr>
-          ))}
-        </DataTable>
-      </Card>
     </AccountingLayout>
   );
 }

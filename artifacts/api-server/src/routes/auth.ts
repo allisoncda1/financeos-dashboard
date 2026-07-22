@@ -46,6 +46,31 @@ router.post("/login", loginLimiter, async (req, res) => {
     return;
   }
 
+  // Session fixation fix: regenerate the session ID after a successful credential
+  // check so the pre-login session token cannot be reused post-login.
+  // CSRF protection note: this app relies on sameSite:lax + httpOnly cookies for
+  // CSRF protection, which is adequate for same-origin form posts without external
+  // embeds. No separate CSRF token is required under this configuration.
+  await new Promise<void>((resolve, reject) => {
+    req.session.regenerate((err) => (err ? reject(err) : resolve()));
+  });
+
+  // Check if MFA is enabled for this user. If so, set mfaPending state and
+  // return 202 so the frontend can prompt for the TOTP/recovery code.
+  const { getUserMfaStatus } = await import("../auth/mfaRoutes.js");
+  const mfaStatus = await getUserMfaStatus(user.email).catch(() => null);
+
+  if (mfaStatus?.totpEnabled) {
+    req.session.mfaPending = true;
+    req.session.pendingUser = user;
+    res.status(202).json({
+      ok: true,
+      mfaRequired: true,
+      ts: new Date().toISOString(),
+    });
+    return;
+  }
+
   req.session.user = user;
 
   res.json({

@@ -76,6 +76,18 @@ export type ReportHistoryEntry = {
   errorMessage: string | null;
   completedAt: string | null;
   createdAt: string;
+  // Draft linkage (nullable — pre-draft history rows)
+  draftId: string | null;
+  draftVersion: number | null;
+  approvalStatus: string | null;
+  approvedBy: string | null;
+  approvedAt: string | null;
+  // Artifact storage (nullable — pre-storage or unavailable)
+  storageKey: string | null;
+  fileName: string | null;
+  contentType: string | null;
+  fileSize: number | null;
+  storedAt: string | null;
 };
 
 export type BuiltReport = {

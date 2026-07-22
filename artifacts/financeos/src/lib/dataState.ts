@@ -10,6 +10,12 @@ export type FetchState<T> = {
   data: T | null;
   source: DataSourceState;
   lastSuccessfulFetch: string | null;
+  /**
+   * AR/AP reconciliation metadata, present only on accounting invoices and bills
+   * endpoints that compare normalized table totals against QBO-authoritative
+   * entity_snapshots. Absent (undefined) on all other endpoints.
+   */
+  reconciliation?: import("@/lib/api").ArApReconciliation | null;
   /** Manually re-runs the fetch (same endpoint, no side effects). */
   refetch?: () => Promise<void>;
 };

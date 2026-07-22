@@ -18,12 +18,71 @@
  *                   – NEW SVGs: svgSimpleBars, svgGroupedBars, svgHBarRef, svgLineRef
  */
 
-import { readFileSync } from "fs";
+import { readFileSync, statSync } from "fs";
 import { resolve, join, sep, dirname } from "path";
 import { fileURLToPath } from "url";
+import { getBakedLogo } from "./logoAssets.generated.js";
 
-const __filename = fileURLToPath(import.meta.url);
-const __dirname  = dirname(__filename);
+// import.meta.url is always correct in ESM (bundle or source).
+// In the esbuild bundle dist/index.mjs, it resolves to the bundle file URL.
+const _META_DIR = dirname(fileURLToPath(import.meta.url));
+
+// ─── Logo root resolution (path-safe, env-overridable) ───────────────────────
+//
+// FINANCEOS_PUBLIC_DIR env var is the authoritative override (set in Replit).
+// Otherwise we probe multiple candidate paths via statSync().
+//
+// Runtime layouts:
+//   bundle (dist/):   _META_DIR = artifacts/api-server/dist  → ../../financeos/public ✓
+//   source (tsx):     _META_DIR = artifacts/api-server/src/reports/renderers → ../../../../financeos/public ✓
+//   CWD = repo root:  process.cwd()/artifacts/financeos/public ✓
+//   CWD = api-server: process.cwd()/../financeos/public ✓
+//   CWD = artifacts:  process.cwd()/financeos/public ✓
+//   Vite build output also checked as last-resort fallback.
+
+function _findLogoRoot(): string {
+  if (process.env.FINANCEOS_PUBLIC_DIR) {
+    console.info(`[FinanceOS] Logo root from env: ${process.env.FINANCEOS_PUBLIC_DIR}`);
+    return process.env.FINANCEOS_PUBLIC_DIR;
+  }
+
+  const candidates = [
+    // ESM bundle: _META_DIR = dist/ → 2 up = artifacts/ → financeos/public
+    resolve(_META_DIR, "../../financeos/public"),
+    // Source tsx: _META_DIR = src/reports/renderers/ → 4 up = api-server/ → ../../financeos/public
+    resolve(_META_DIR, "../../../../financeos/public"),
+    // CWD = repo root (production node run from workspace root)
+    resolve(process.cwd(), "artifacts/financeos/public"),
+    // CWD = artifacts/api-server (pnpm workspace script)
+    resolve(process.cwd(), "../financeos/public"),
+    // CWD = artifacts/
+    resolve(process.cwd(), "financeos/public"),
+    // Vite build output — available even when source tree isn't deployed
+    resolve(_META_DIR, "../../financeos/dist/public"),
+    resolve(_META_DIR, "../../../../financeos/dist/public"),
+    resolve(process.cwd(), "artifacts/financeos/dist/public"),
+    resolve(process.cwd(), "../financeos/dist/public"),
+  ];
+
+  for (const candidate of candidates) {
+    try {
+      const st = statSync(candidate);
+      if (st.isDirectory()) {
+        console.info(`[FinanceOS] Logo root resolved: ${candidate}`);
+        return candidate;
+      }
+    } catch { /* not found, try next */ }
+  }
+
+  // None found — log all attempted paths for diagnostics
+  console.warn(
+    `[FinanceOS] Logo root not found. Attempted:\n${candidates.map((c) => `  ${c}`).join("\n")}\n` +
+    `  Set FINANCEOS_PUBLIC_DIR to the absolute path of artifacts/financeos/public.`,
+  );
+  return candidates[0]!;
+}
+
+const _LOGO_ROOT = _findLogoRoot();
 
 // ─── Brand tokens ─────────────────────────────────────────────────────────────
 
@@ -78,11 +137,20 @@ const _LOGO_CACHE = new Map<string, string | null>();
 export function embedLogoPath(logoPath: string | null): string | null {
   if (!logoPath) return null;
   if (_LOGO_CACHE.has(logoPath)) return _LOGO_CACHE.get(logoPath) ?? null;
+
+  // Primary: use pre-baked asset (inlined at build time — no filesystem access)
+  const baked = getBakedLogo(logoPath);
+  if (baked) {
+    _LOGO_CACHE.set(logoPath, baked);
+    return baked;
+  }
+
+  // Fallback: runtime filesystem read (dev mode, custom logos)
   try {
     const relative = logoPath.replace(/^\//, "");
-    const logoRoot = resolve(__dirname, "../../../../financeos/public");
-    const diskPath = resolve(join(logoRoot, relative));
-    if (!diskPath.startsWith(logoRoot + sep)) { _LOGO_CACHE.set(logoPath, null); return null; }
+    const diskPath = resolve(join(_LOGO_ROOT, relative));
+    // Path-traversal guard
+    if (!diskPath.startsWith(_LOGO_ROOT + sep)) { _LOGO_CACHE.set(logoPath, null); return null; }
     const bytes = readFileSync(diskPath);
     const ext = diskPath.split(".").pop()?.toLowerCase() ?? "png";
     const mime = ext === "svg" ? "image/svg+xml" : ext === "jpg" || ext === "jpeg" ? "image/jpeg" : "image/png";
@@ -90,6 +158,7 @@ export function embedLogoPath(logoPath: string | null): string | null {
     _LOGO_CACHE.set(logoPath, dataUrl);
     return dataUrl;
   } catch {
+    console.warn(`[FinanceOS] Logo not found: ${logoPath} (baked asset missing, filesystem read failed)`);
     _LOGO_CACHE.set(logoPath, null);
     return null;
   }
@@ -827,7 +896,7 @@ html, body {
 
 /* ── Page header — logo left, report name right, rule below ── */
 .page-hdr { display: flex; align-items: center; justify-content: space-between; padding: 14pt 0 10pt; border-bottom: 0.75pt solid #e5e7eb; margin-bottom: 22pt; }
-.page-hdr__logo img, .page-hdr__logo-img { height: 18pt; width: auto; object-fit: contain; display: block; }
+.page-hdr__logo img, .page-hdr__logo-img { height: 18pt; width: auto; object-fit: contain; display: block; filter: brightness(0); }
 .page-hdr__logo-text { font-size: 11pt; font-weight: 700; color: #111827; }
 .page-hdr__right { font-size: 8pt; color: #9ca3af; }
 /* legacy compat */
@@ -1275,6 +1344,32 @@ export function refRecommendationCallout(label: string, body: string): string {
 /** Wrap paragraphs in a narrative div. */
 export function refNarrative(...paragraphs: string[]): string {
   return `<div class="narrative">${paragraphs.map((p) => `<p>${escHtml(p)}</p>`).join("")}</div>`;
+}
+
+/**
+ * Render narrative blocks with inline-edit markers for the draft preview.
+ * Blocks with commentaryType management_commentary or recommended_action
+ * receive data-editable="true" and data-block-id so the iframe editing
+ * script can make them click-to-edit. FinanceOS Analysis blocks are locked.
+ * In final generation (isPreview=false) all blocks render as plain <p> tags.
+ */
+export type NarrativeBlockSpec = {
+  id:   string | null;
+  text: string;
+  type: string;
+  editable: boolean;
+};
+
+export function refNarrativeBlocks(blocks: NarrativeBlockSpec[], isPreview: boolean): string {
+  if (blocks.length === 0) return "";
+  const items = blocks.map((b) => {
+    const p = `<p>${escHtml(b.text)}</p>`;
+    if (isPreview && b.editable && b.id) {
+      return `<div class="narrative-block" data-editable="true" data-block-id="${escHtml(b.id)}" data-block-type="${escHtml(b.type)}">${p}</div>`;
+    }
+    return `<div class="narrative-block">${p}</div>`;
+  });
+  return `<div class="narrative">${items.join("")}</div>`;
 }
 
 /** Small italic note paragraph. */

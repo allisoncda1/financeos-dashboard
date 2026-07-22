@@ -3,6 +3,7 @@ import { api } from '@/lib/api';
 import { getMockData, getFinancials, getCustomers, getVendors, getBanking } from '@/lib/mock';
 import { ENTITY_SLUGS } from '@/lib/entities';
 import type { DashboardData, FinancialsData, CustomersData, VendorsData, BankingData, EntitySlug, BriefingResponse, Alert, ValidationMatrixData, EntityHistoryData, MetricSnapshotsData, EntityBudget, BvsAData, PortfolioBudget, BudgetPeriodInput, ConsolidatedCashFlow, HistoryResponse } from '@/lib/types';
+import type { AccountingCustomer, AccountingVendor, AccountingInvoice, AccountingAccount, AccountingTransaction, AccountingBill } from '@/lib/api';
 import type { ReportTemplateSummary, ReportGenerateRequest, BuiltReport, ReportHistoryEntry } from '@/lib/reportTypes';
 import type { AIStatus } from '@/lib/aiTypes';
 import type { PipelineStatus } from '@/lib/pipelineTypes';
@@ -24,7 +25,7 @@ import {
  */
 function useTrackedFetch<T>(
   key: string,
-  fetcher: () => Promise<{ data: T; source: 'db' | 'live' | 'cache' | 'mock' }>,
+  fetcher: () => Promise<{ data: T; source: 'db' | 'live' | 'cache' | 'mock'; reconciliation?: import('@/lib/api').ArApReconciliation | null }>,
   mockInit: (() => T) | null,
   deps: unknown[],
   reportGlobal: boolean = true,
@@ -44,10 +45,10 @@ function useTrackedFetch<T>(
   useEffect(() => {
     let cancelled = false;
     fetcher()
-      .then(({ data, source }) => {
+      .then(({ data, source, reconciliation }) => {
         if (cancelled) return;
         lastGoodRef.current = data;
-        setState({ data, source, lastSuccessfulFetch: new Date().toISOString() });
+        setState({ data, source, lastSuccessfulFetch: new Date().toISOString(), reconciliation });
       })
       .catch(() => {
         if (cancelled) return;
@@ -66,10 +67,10 @@ function useTrackedFetch<T>(
   // effect; hits the same endpoint with no extra side effects.
   const refetch = useCallback(async () => {
     try {
-      const { data, source } = await fetcher();
+      const { data, source, reconciliation } = await fetcher();
       if (!mountedRef.current) return;
       lastGoodRef.current = data;
-      setState({ data, source, lastSuccessfulFetch: new Date().toISOString() });
+      setState({ data, source, lastSuccessfulFetch: new Date().toISOString(), reconciliation });
     } catch {
       if (!mountedRef.current) return;
       setState((prev) => ({
@@ -450,4 +451,32 @@ export function useBudgetMutation() {
   const reset = useCallback(() => setError(null), []);
 
   return { save, saving, error, reset, refreshKey };
+}
+
+// ── Accounting module hooks — live Neon data, no mock fallback ───────────────
+// These hooks serve the /accounting/* pages with authoritative QBO-derived data.
+// No mock fallback: if data is unavailable the page renders an honest empty state.
+
+export function useAccountingCustomers(slug: EntitySlug): FetchState<AccountingCustomer[]> {
+  return useTrackedFetch(`accountingCustomers:${slug}`, () => api.accountingCustomers(slug), null, [slug]);
+}
+
+export function useAccountingVendors(slug: EntitySlug): FetchState<AccountingVendor[]> {
+  return useTrackedFetch(`accountingVendors:${slug}`, () => api.accountingVendors(slug), null, [slug]);
+}
+
+export function useAccountingInvoices(slug: EntitySlug): FetchState<AccountingInvoice[]> {
+  return useTrackedFetch(`accountingInvoices:${slug}`, () => api.accountingInvoices(slug), null, [slug]);
+}
+
+export function useAccountingAccounts(slug: EntitySlug): FetchState<AccountingAccount[]> {
+  return useTrackedFetch(`accountingAccounts:${slug}`, () => api.accountingAccounts(slug), null, [slug]);
+}
+
+export function useAccountingTransactions(slug: EntitySlug): FetchState<AccountingTransaction[]> {
+  return useTrackedFetch(`accountingTransactions:${slug}`, () => api.accountingTransactions(slug), null, [slug]);
+}
+
+export function useAccountingBills(slug: EntitySlug): FetchState<AccountingBill[]> {
+  return useTrackedFetch(`accountingBills:${slug}`, () => api.accountingBills(slug), null, [slug]);
 }

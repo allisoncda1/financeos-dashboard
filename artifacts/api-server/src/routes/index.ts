@@ -12,6 +12,9 @@ import draftsRouter from "./drafts";
 import aiRouter from "./ai";
 import pipelineRouter from "./pipeline";
 import budgetRouter from "./budget";
+import accountingRouter from "./accounting";
+import plaidRouter from "./plaid";
+import mfaRouter from "../auth/mfaRoutes";
 import { requireAuth } from "../auth/middleware";
 
 const router: IRouter = Router();
@@ -19,6 +22,8 @@ const router: IRouter = Router();
 // Public: no session required.
 router.use(healthRouter);
 router.use("/auth", authRouter);
+// MFA challenge is public (called before full session auth); enrollment/status enforce requireAuth internally.
+router.use("/auth/mfa", mfaRouter);
 
 // Pipeline webhook has its own auth (shared token, for the external pipeline
 // job) layered with an in-route permission check for authenticated
@@ -38,5 +43,7 @@ router.use(reportsRouter);
 router.use(draftsRouter);
 router.use("/ai", aiRouter);
 router.use(budgetRouter);
+router.use(accountingRouter);
+router.use("/plaid", plaidRouter);
 
 export default router;

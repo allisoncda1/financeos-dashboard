@@ -28,10 +28,16 @@ export type AuthUser = {
   email: string;
   role: Role;
   name: string;
+  mfaEnabled?: boolean;
+  mfaPending?: boolean;
 };
 
 declare module "express-session" {
   interface SessionData {
     user?: AuthUser;
+    /** Set after password success when MFA is required; cleared after TOTP/recovery challenge. */
+    mfaPending?: boolean;
+    /** Holds the authenticated user identity while MFA challenge is pending. */
+    pendingUser?: AuthUser;
   }
 }

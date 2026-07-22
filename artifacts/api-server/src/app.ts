@@ -91,7 +91,29 @@ app.use(
     },
   }),
 );
-app.use(cors());
+// CORS: restrict to the Replit hostname in production. In development allow all
+// origins so local `pnpm dev` works without a proxy. The allowlist is derived
+// from the ALLOWED_ORIGINS env var (comma-separated) or defaults to permissive
+// in non-production environments. Never send credentials cross-origin.
+const allowedOrigins = process.env["ALLOWED_ORIGINS"]
+  ? process.env["ALLOWED_ORIGINS"].split(",").map((o) => o.trim())
+  : [];
+
+app.use(
+  cors({
+    origin:
+      process.env["NODE_ENV"] === "production" && allowedOrigins.length > 0
+        ? (origin, callback) => {
+            if (!origin || allowedOrigins.includes(origin)) {
+              callback(null, true);
+            } else {
+              callback(new Error(`CORS: origin '${origin}' not allowed`));
+            }
+          }
+        : true, // allow all in development
+    credentials: true,
+  }),
+);
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 

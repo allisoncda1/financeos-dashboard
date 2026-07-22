@@ -4,9 +4,15 @@ import { transactions } from "@workspace/db";
 
 export type { Transaction } from "@workspace/db";
 
-function n(v: string | null | undefined): number {
-  const parsed = parseFloat(v ?? "0");
-  return Number.isFinite(parsed) ? parsed : 0;
+/**
+ * Parse a Drizzle numeric string to a number, preserving null.
+ * amounts in the `transactions` table are unsigned magnitudes — never coerce
+ * a null amount to 0, which would mask missing data.
+ */
+function parseAmount(v: string | null | undefined): number | null {
+  if (v == null) return null;
+  const parsed = parseFloat(v);
+  return Number.isFinite(parsed) ? parsed : null;
 }
 
 /**
@@ -25,7 +31,7 @@ export async function getRecentTransactions(entityId: string, limit = 50) {
     .orderBy(desc(transactions.transactionDate))
     .limit(limit);
 
-  return rows.map((r) => ({ ...r, amount: n(r.amount) }));
+  return rows.map((r) => ({ ...r, amount: parseAmount(r.amount) }));
 }
 
 /**
@@ -44,7 +50,7 @@ export async function getTransactionsByAccount(entityId: string, accountId: stri
     )
     .orderBy(desc(transactions.transactionDate));
 
-  return rows.map((r) => ({ ...r, amount: n(r.amount) }));
+  return rows.map((r) => ({ ...r, amount: parseAmount(r.amount) }));
 }
 
 /**
@@ -82,5 +88,5 @@ export async function getTransactionsByType(entityId: string, type: string) {
     )
     .orderBy(desc(transactions.transactionDate));
 
-  return rows.map((r) => ({ ...r, amount: n(r.amount) }));
+  return rows.map((r) => ({ ...r, amount: parseAmount(r.amount) }));
 }

@@ -103,3 +103,27 @@ export async function getInvoiceById(entityId: string, invoiceId: string) {
     .limit(1);
   return rows[0] ?? null;
 }
+
+/**
+ * All non-deleted invoices for one entity, newest first.
+ * Used by the Accounting module invoice list (all statuses, not just open).
+ */
+export async function getAllInvoices(entityId: string, limit = 200) {
+  const rows = await db
+    .select()
+    .from(invoices)
+    .where(
+      and(
+        eq(invoices.entityId, entityId),
+        eq(invoices.isDeleted, false),
+      ),
+    )
+    .orderBy(desc(invoices.invoiceDate))
+    .limit(limit);
+
+  return rows.map((r) => ({
+    ...r,
+    amount:  parseNumeric(r.amount),
+    balance: parseNumeric(r.balance),
+  }));
+}
