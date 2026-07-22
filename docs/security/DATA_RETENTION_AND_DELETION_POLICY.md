@@ -1,8 +1,8 @@
-> **DRAFT — REVIEWED FOR ACCURACY, PENDING FORMAL APPROVAL.** Effective date: [PENDING APPROVAL]
+> **APPROVED AND EFFECTIVE.** Effective date: 2026-07-22.
 
 # FinanceOS Data Retention and Deletion Policy
 
-**Version:** 0.9-review<br>
+**Version:** 1.0<br>
 **Owner:** Allison Fabbri, Controller & FinanceOS Project Lead (allison@cardealer.ai)<br>
 **Last Updated:** 2026-07-22<br>
 **Review Frequency:** At least annually and whenever legal requirements or data practices materially change
@@ -115,7 +115,7 @@ Exceptions require written approval from the policy owner and must state the dat
 ## 11. Approval
 
 **Approver:** Allison Fabbri<br>
-**Approval date:** [PENDING APPROVAL]
+**Approval date:** 2026-07-22
 
 ---
 

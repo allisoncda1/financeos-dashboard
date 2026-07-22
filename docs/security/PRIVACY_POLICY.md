@@ -1,8 +1,8 @@
-> **DRAFT — REVIEWED FOR ACCURACY, PENDING FORMAL APPROVAL AND PUBLICATION.** Effective date: [PENDING APPROVAL]
+> **APPROVED FOR INTERNAL USE.** Effective date: 2026-07-22. Public publication remains pending.
 
 # FinanceOS Privacy Policy
 
-**Version:** 0.9-review<br>
+**Version:** 1.0<br>
 **Owner and privacy contact:** Allison Fabbri, Controller & FinanceOS Project Lead (allison@cardealer.ai)<br>
 **Last Updated:** 2026-07-22<br>
 **Review Frequency:** At least annually and whenever FinanceOS materially changes its data practices
@@ -119,7 +119,7 @@ Material changes are versioned, reviewed, approved, and communicated to authoriz
 ## 11. Approval
 
 **Approver:** Allison Fabbri<br>
-**Approval date:** [PENDING APPROVAL]<br>
+**Approval date:** 2026-07-22<br>
 **Public URL:** [PENDING PUBLICATION]
 
 ---
