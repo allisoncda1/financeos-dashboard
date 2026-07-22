@@ -16,7 +16,6 @@ import {
   refSectionHeader,
   refKpiRow,
   refNarrative,
-  refNarrativeBlocks,
   refSubHeading,
   svgGroupedBars,
 } from "./designSystem.js";
@@ -30,10 +29,9 @@ import {
 } from "./reportShell.js";
 import {
   getCtxParagraphs,
-  getCtxBlocks,
   getCtxHeading,
   getCtxTitle,
-  isPreviewMode,
+  renderApprovalBadge,
 } from "./narrativeRendering.js";
 
 // ─── Local types ──────────────────────────────────────────────────────────────
@@ -139,13 +137,14 @@ function buildExecOverviewPage(
       )
     : "";
 
-  const execBlocks  = getCtxBlocks(report, "executive_summary", narrative);
-  const execHeading = getCtxHeading(report, "executive_summary", "Executive Overview");
+  const execNarrative = getCtxParagraphs(report, "executive_summary", narrative);
+  const execHeading   = getCtxHeading(report, "executive_summary", "Executive Overview");
 
   return wrapPage(`
     ${headerFn(`${report.period} Executive Package`)}
+    ${renderApprovalBadge(report)}
     ${refSectionHeader(1, "EXECUTIVE OVERVIEW", execHeading)}
-    ${refNarrativeBlocks(execBlocks, isPreviewMode(report))}
+    ${refNarrative(...execNarrative)}
     ${kpis}
     ${chartHtml ? `<div style="margin:12pt 0 8pt;">${chartHtml}</div>` : ""}
   `);

@@ -1,4 +1,4 @@
-import { desc, sql, eq } from "drizzle-orm";
+import { desc, sql } from "drizzle-orm";
 import { opsDb as db } from "./connection";
 import { reportHistory } from "@workspace/db";
 
@@ -28,14 +28,6 @@ export type ReportHistoryEntry = {
   approvedAt: string | null;
   dataFingerprint: string | null;
   commentaryVersion: number | null;
-  // Artifact storage — null when not stored or pre-storage rows
-  storageProvider: string | null;
-  storageKey: string | null;
-  fileName: string | null;
-  contentType: string | null;
-  fileSize: number | null;
-  checksum: string | null;
-  storedAt: string | null;
 };
 
 function toEntry(row: typeof reportHistory.$inferSelect): ReportHistoryEntry {
@@ -62,13 +54,6 @@ function toEntry(row: typeof reportHistory.$inferSelect): ReportHistoryEntry {
     approvedAt:        row.approvedAt ? row.approvedAt.toISOString() : null,
     dataFingerprint:   row.dataFingerprint ?? null,
     commentaryVersion: row.commentaryVersion ?? null,
-    storageProvider:   row.storageProvider ?? null,
-    storageKey:        row.storageKey ?? null,
-    fileName:          row.fileName ?? null,
-    contentType:       row.contentType ?? null,
-    fileSize:          row.fileSize ?? null,
-    checksum:          row.checksum ?? null,
-    storedAt:          row.storedAt ? row.storedAt.toISOString() : null,
   };
 }
 
@@ -80,41 +65,6 @@ export async function insertReportHistory(
     .values(data)
     .returning();
   return toEntry(rows[0]!);
-}
-
-export async function getReportHistoryById(id: string): Promise<ReportHistoryEntry | null> {
-  const rows = await db
-    .select()
-    .from(reportHistory)
-    .where(eq(reportHistory.id, id))
-    .limit(1);
-  return rows[0] ? toEntry(rows[0]) : null;
-}
-
-export async function updateStorageMetadata(
-  historyId: string,
-  storage: {
-    storageProvider: string;
-    storageKey: string;
-    fileName: string;
-    contentType: string;
-    fileSize: number;
-    checksum: string;
-    storedAt: Date;
-  },
-): Promise<void> {
-  await db
-    .update(reportHistory)
-    .set({
-      storageProvider: storage.storageProvider,
-      storageKey:      storage.storageKey,
-      fileName:        storage.fileName,
-      contentType:     storage.contentType,
-      fileSize:        storage.fileSize,
-      checksum:        storage.checksum,
-      storedAt:        storage.storedAt,
-    })
-    .where(eq(reportHistory.id, historyId));
 }
 
 export async function listReportHistory(opts?: {

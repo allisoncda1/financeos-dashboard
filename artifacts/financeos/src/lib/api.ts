@@ -10,36 +10,6 @@ const BASE = "/api";
 
 export type Sourced<T> = { data: T; source: ApiSource };
 
-export type ReconciliationStatus =
-  | "reconciled"
-  | "unreconciled"
-  | "no_official_snapshot"
-  | "normalized_data_incomplete"
-  | "source_date_mismatch";
-
-export type ArApReconciliation = {
-  /** QBO-authoritative total from AgedReceivable/PayableSummary. Null = no snapshot. */
-  officialTotal: number | null;
-  /** SUM(invoices/bills.balance where not Paid). Applied credits already reflected. */
-  normalizedGrossTotal: number;
-  /** Unapplied customer/vendor credits from qbo_raw. Null = credits never synced. */
-  unappliedCredits: number | null;
-  /** normalizedGrossTotal − unappliedCredits. Null when credits unknown. */
-  normalizedNetTotal: number | null;
-  /** officialTotal − normalizedNetTotal (signed). Null when either is unavailable. */
-  signedDifference: number | null;
-  /** |signedDifference|. Null when either is unavailable. */
-  absoluteDifference: number | null;
-  reconciliationStatus: ReconciliationStatus;
-  officialSource: string;
-  officialAsOf: string | null;
-  normalizedAsOf: string | null;
-  /** Human-readable explanation of the current status. */
-  explanation: string;
-};
-
-export type SourcedWithRecon<T> = Sourced<T> & { reconciliation: ArApReconciliation | null };
-
 function normalizeSource(value: unknown): ApiSource {
   return value === "db" || value === "live" || value === "cache" || value === "mock" ? value : "live";
 }
@@ -80,22 +50,6 @@ async function getSourced<T>(path: string): Promise<Sourced<T>> {
   const json = await res.json();
   if (!json.ok) throw new Error(json.error ?? "API error");
   return { data: json.data as T, source: normalizeSource(json.source) };
-}
-
-async function getSourcedWithRecon<T>(path: string): Promise<SourcedWithRecon<T>> {
-  const res = await fetch(`${BASE}${path}`, { credentials: "include" });
-  if (res.status === 401) {
-    handleUnauthorized();
-    throw new Error("Session expired");
-  }
-  if (!res.ok) throw new Error(`API ${path} → ${res.status}`);
-  const json = await res.json();
-  if (!json.ok) throw new Error(json.error ?? "API error");
-  return {
-    data:           json.data as T,
-    source:         normalizeSource(json.source),
-    reconciliation: (json.reconciliation as ArApReconciliation) ?? null,
-  };
 }
 
 async function put<T>(path: string, body: unknown): Promise<T> {
@@ -188,97 +142,6 @@ async function postForBlob(path: string, body: unknown): Promise<DownloadedFile>
   return { blob, filename };
 }
 
-// ── Accounting module types ──────────────────────────────────────────────────
-
-export type AccountingCustomer = {
-  id: string;
-  qboId: string | null;
-  displayName: string | null;
-  email: string | null;
-  phone: string | null;
-  balance: number;
-  currency: string;
-  isActive: boolean | null;
-  syncedAt: string | null;
-};
-
-export type AccountingVendor = {
-  id: string;
-  qboId: string | null;
-  displayName: string | null;
-  email: string | null;
-  balance: number;
-  currency: string;
-  isActive: boolean | null;
-  syncedAt: string | null;
-};
-
-export type AccountingInvoice = {
-  id: string;
-  qboId: string | null;
-  customerName: string | null;
-  invoiceDate: string | null;
-  dueDate: string | null;
-  amount: number;
-  balance: number;
-  status: string | null;
-  daysOverdue: number | null;
-  currency: string;
-  memo: string | null;
-  syncedAt: string | null;
-};
-
-export type AccountingAccount = {
-  id: string;
-  qboId: string | null;
-  name: string | null;
-  fullyQualifiedName: string | null;
-  accountType: string | null;
-  accountSubtype: string | null;
-  classification: string | null;
-  currentBalance: number;
-  currency: string;
-  isActive: boolean | null;
-  isSubAccount: boolean;
-  parentQboId: string | null;
-  syncedAt: string | null;
-};
-
-export type AccountingTransaction = {
-  id: string;
-  qboId: string | null;
-  accountId: string | null;
-  transactionDate: string | null;
-  transactionType: string | null;
-  memo: string | null;
-  /**
-   * Unsigned magnitude from the QBO-synced `transactions` table.
-   * Direction is encoded in `transactionType` (e.g. "Payment" = inflow,
-   * "Purchase"/"Check" = outflow). A null value means amount was missing
-   * in the source record — never silently treat as 0.
-   */
-  amount: number | null;
-  currency: string;
-  category: string | null;
-  isReconciled: boolean;
-  syncedAt: string | null;
-};
-
-export type AccountingBill = {
-  id: string;
-  qboId: string | null;
-  vendorName: string | null;
-  billDate: string | null;
-  dueDate: string | null;
-  amount: number;
-  balance: number;
-  status: string | null;
-  daysOverdue: number | null;
-  currency: string;
-  memo: string | null;
-  syncedAt: string | null;
-};
-
 export const api = {
   model:            ()           => getSourced<DashboardData>("/model"),
   entityFinancials: (s: string)  => getSourced<FinancialsData>(`/model/${s}/financials`),
@@ -307,9 +170,8 @@ export const api = {
     const qs = params.toString();
     return getSourced<ReportHistoryEntry[]>(`/reports/history${qs ? `?${qs}` : ""}`);
   },
-  generateReport:    (req: ReportGenerateRequest) => post<BuiltReport>("/reports/generate", req),
-  downloadReport:    (req: ReportGenerateRequest) => postForBlob("/reports/generate", req),
-  downloadHistoryArtifact: (historyId: string) => fetch(`/api/reports/history/${encodeURIComponent(historyId)}/download`, { credentials: "include" }),
+  generateReport:   (req: ReportGenerateRequest) => post<BuiltReport>("/reports/generate", req),
+  downloadReport:   (req: ReportGenerateRequest) => postForBlob("/reports/generate", req),
   aiStatus:         ()           => getSourced<AIStatus>("/ai/status"),
   pipelineStatus:   ()           => getSourced<PipelineStatus>("/pipeline/status"),
 
@@ -338,23 +200,14 @@ export const api = {
     postForBlob(`/drafts/${id}/generate`, { format }),
   getDraft: (id: string) =>
     get<ReportDraft>(`/drafts/${id}`),
-  listDrafts: (opts: { template?: string; period?: string; archived?: boolean | "all" } = {}) => {
-    const params = new URLSearchParams();
-    if (opts.template) params.set("template", opts.template);
-    if (opts.period)   params.set("period",   opts.period);
-    if (opts.archived !== undefined) params.set("archived", String(opts.archived));
-    return get<ReportDraft[]>(`/drafts?${params}`);
-  },
+  listDrafts: (template: string, period: string) =>
+    get<ReportDraft[]>(`/drafts?template=${encodeURIComponent(template)}&period=${encodeURIComponent(period)}`),
   saveDraftEdits: (id: string, editableContent: unknown, changeSummary?: string) =>
     patch<ReportDraft>(`/drafts/${id}/edits`, { editableContent, changeSummary }),
   getDraftVersions: (id: string) =>
     get<ReportDraftVersion[]>(`/drafts/${id}/versions`),
   restoreDraftVersion: (id: string, versionNumber: number) =>
     post<ReportDraft>(`/drafts/${id}/restore`, { versionNumber }),
-  archiveDraft: (id: string, reason?: string) =>
-    post<ReportDraft>(`/drafts/${id}/archive`, { reason }),
-  unarchiveDraft: (id: string) =>
-    post<ReportDraft>(`/drafts/${id}/unarchive`, {}),
   submitDraftForReview: (id: string) =>
     post<ReportDraft>(`/drafts/${id}/submit`, {}),
   approveDraft: (id: string) =>
@@ -372,28 +225,12 @@ export const api = {
   }) => post<CommentaryEntry>("/drafts/commentary", data),
   toggleCommentary: (id: string, included: boolean) =>
     patch<CommentaryEntry>(`/drafts/commentary/${id}/toggle`, { included }),
-  updateCommentaryContent: (id: string, content: string) =>
-    patch<CommentaryEntry>(`/drafts/commentary/${id}/content`, { content }),
   deleteCommentary: (id: string) =>
     del(`/drafts/commentary/${id}`),
   approveCommentary: (id: string) =>
     post<CommentaryEntry>(`/drafts/commentary/${id}/approve`, {}),
   reorderCommentary: (ids: string[]) =>
     post<void>("/drafts/commentary/reorder", { ids }),
-
-  // ── Accounting module — live Neon data ──────────────────────────────────
-  accountingCustomers:    (slug: string) => getSourced<AccountingCustomer[]>(`/accounting/${slug}/customers`),
-  accountingVendors:      (slug: string) => getSourced<AccountingVendor[]>(`/accounting/${slug}/vendors`),
-  accountingInvoices:     (slug: string, limit?: number) => {
-    const qs = limit ? `?limit=${limit}` : "";
-    return getSourcedWithRecon<AccountingInvoice[]>(`/accounting/${slug}/invoices${qs}`);
-  },
-  accountingAccounts:     (slug: string) => getSourced<AccountingAccount[]>(`/accounting/${slug}/accounts`),
-  accountingTransactions: (slug: string, limit?: number) => {
-    const qs = limit ? `?limit=${limit}` : "";
-    return getSourced<AccountingTransaction[]>(`/accounting/${slug}/transactions${qs}`);
-  },
-  accountingBills:        (slug: string) => getSourcedWithRecon<AccountingBill[]>(`/accounting/${slug}/bills`),
 };
 
 // ── Frontend-side draft types ───────────────────────────────────────────────
@@ -441,9 +278,6 @@ export type ReportDraft = {
   createdAt: string;
   updatedAt: string;
   approvedAt: string | null;
-  archivedAt: string | null;
-  archivedBy: string | null;
-  archiveReason: string | null;
 };
 
 export type ReportDraftVersion = {

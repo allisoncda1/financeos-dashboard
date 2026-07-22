@@ -23,7 +23,6 @@ import {
   refKpiRow,
   refInsightPanel,
   refNarrative,
-  refNarrativeBlocks,
   refSmallNote,
   refSubHeading,
   badge,
@@ -40,10 +39,9 @@ import {
 } from "./reportShell.js";
 import {
   getCtxParagraphs,
-  getCtxBlocks,
   getCtxHeading,
   getCtxTitle,
-  isPreviewMode,
+  renderApprovalBadge,
 } from "./narrativeRendering.js";
 
 // ─── Local types ──────────────────────────────────────────────────────────────
@@ -415,14 +413,14 @@ function buildExecSummaryPage(report: BuiltReport, entities: { slug: string; m: 
     tr(td("Open AP"), tdRaw(ac(first.m.open_ap), "right"), td("—", "right")),
   ].join("");
 
-  const execNarrativeBlocks = getCtxBlocks(report, "executive_summary", narrativeExecSummary(first.m, first.fin, report.period));
-  const execHeading         = getCtxHeading(report, "executive_summary", "Executive Financial Summary");
-  const previewMode         = isPreviewMode(report);
+  const execNarrative = getCtxParagraphs(report, "executive_summary", narrativeExecSummary(first.m, first.fin, report.period));
+  const execHeading   = getCtxHeading(report, "executive_summary", "Executive Financial Summary");
 
   return wrapPage(`
     ${headerFn(`${report.period} Monthly Close Report`)}
+    ${renderApprovalBadge(report)}
     ${refSectionHeader(null, "OWNER SUMMARY", execHeading)}
-    ${refNarrativeBlocks(execNarrativeBlocks, previewMode)}
+    ${refNarrative(...execNarrative)}
     ${kpis}
     <div style="margin:16pt 0 8pt;">${chartHtml}</div>
     <div class="no-break">
@@ -446,13 +444,13 @@ function buildExecInsightsPage(report: BuiltReport, entities: { slug: string; m:
     entityTable = `${refSubHeading("Entity Performance Snapshot — Year to Date")}${refTable(tr(th("Entity"), th("Revenue YTD", "right"), th("Net Income YTD", "right"), th("Cash on Hand", "right"), th("Net Margin", "right")), tableRows)}`;
   }
 
-  const insightBlocks  = getCtxBlocks(report, "management_comments", paragraphs);
-  const insightHeading = getCtxHeading(report, "management_comments", "Executive Insights");
+  const insightNarrative = getCtxParagraphs(report, "management_comments", paragraphs);
+  const insightHeading   = getCtxHeading(report, "management_comments", "Executive Insights");
 
   return wrapPage(`
     ${headerFn(`${report.period} Monthly Close Report`)}
     ${refSectionHeader(null, "MANAGEMENT COMMENTARY", insightHeading)}
-    ${refNarrativeBlocks(insightBlocks, isPreviewMode(report))}
+    ${refNarrative(...insightNarrative)}
     ${entityTable}
   `);
 }
@@ -974,14 +972,14 @@ function buildRecommendationsPage(report: BuiltReport, alerts: Alert[], entities
   recs.push({ recommendation: "Export and archive this close package for the owner record", basis: "Maintain a permanent digital record for audit readiness", priority: "Before Close" });
 
   // Override recommendations table with NarrativeContext blocks if present
-  const ctxRecsBlocks = getCtxBlocks(report, "recommended_actions", []);
-  const recHeading    = getCtxHeading(report, "recommended_actions", "Management Recommendations");
+  const ctxRecs = getCtxParagraphs(report, "recommended_actions", []);
+  const recHeading = getCtxHeading(report, "recommended_actions", "Management Recommendations");
 
-  if (ctxRecsBlocks.length > 0) {
+  if (ctxRecs.length > 0) {
     return wrapPage(`
       ${headerFn(`${report.period} Monthly Close Report`)}
       ${refSectionHeader(11, "MANAGEMENT RECOMMENDATIONS", recHeading)}
-      ${refNarrativeBlocks(ctxRecsBlocks, isPreviewMode(report))}
+      ${refNarrative(...ctxRecs)}
     `);
   }
 

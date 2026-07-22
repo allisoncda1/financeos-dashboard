@@ -65,9 +65,6 @@ export type DraftEntry = {
   createdAt: string;
   updatedAt: string;
   approvedAt: string | null;
-  archivedAt: string | null;
-  archivedBy: string | null;
-  archiveReason: string | null;
 };
 
 export type DraftVersionEntry = {
@@ -124,9 +121,6 @@ function toDraftEntry(row: ReportDraftRow): DraftEntry {
     createdAt:        row.createdAt.toISOString(),
     updatedAt:        row.updatedAt.toISOString(),
     approvedAt:       row.approvedAt ? row.approvedAt.toISOString() : null,
-    archivedAt:       row.archivedAt ? row.archivedAt.toISOString() : null,
-    archivedBy:       row.archivedBy ?? null,
-    archiveReason:    row.archiveReason ?? null,
   };
 }
 
@@ -149,27 +143,6 @@ export const CommentaryService = {
   async bulkUpsertCommentary(entries: InsertReportCommentary[]): Promise<CommentaryEntry[]> {
     if (entries.length === 0) return [];
     const rows = await db.insert(reportCommentary).values(entries).returning();
-    return rows.map(toCommentaryEntry);
-  },
-
-  /**
-   * Seed placeholder management commentary rows for a new draft.
-   * Uses INSERT ... ON CONFLICT DO NOTHING so re-creating a draft for the same
-   * scope does not duplicate placeholders that already exist.
-   * Only creates rows for management_commentary and recommended_action types —
-   * never for financeos_analysis (which is generated, not authored).
-   */
-  async seedPlaceholderCommentary(entries: InsertReportCommentary[]): Promise<CommentaryEntry[]> {
-    if (entries.length === 0) return [];
-    const safe = entries.filter(
-      (e) => e.commentaryType === "management_commentary" || e.commentaryType === "recommended_action",
-    );
-    if (safe.length === 0) return [];
-    const rows = await db
-      .insert(reportCommentary)
-      .values(safe)
-      .onConflictDoNothing()
-      .returning();
     return rows.map(toCommentaryEntry);
   },
 
@@ -248,28 +221,6 @@ export const CommentaryService = {
     return toCommentaryEntry(rows[0]!);
   },
 
-  /**
-   * Update the prose content of a user-authored commentary block.
-   * FinanceOS Analysis blocks are locked and cannot be updated here.
-   */
-  async updateContent(id: string, content: string, userEmail: string): Promise<CommentaryEntry> {
-    const existing = await db
-      .select({ commentaryType: reportCommentary.commentaryType })
-      .from(reportCommentary)
-      .where(eq(reportCommentary.id, id))
-      .limit(1);
-    if (!existing[0]) throw new Error(`Commentary ${id} not found`);
-    if (existing[0].commentaryType === "financeos_analysis") {
-      throw new Error("FinanceOS Analysis statements cannot be edited. Financial values are locked.");
-    }
-    const rows = await db
-      .update(reportCommentary)
-      .set({ content, updatedBy: userEmail, updatedAt: new Date() })
-      .where(eq(reportCommentary.id, id))
-      .returning();
-    return toCommentaryEntry(rows[0]!);
-  },
-
   /** Toggle a commentary block's included state. */
   async toggleIncluded(id: string, included: boolean, userEmail: string): Promise<CommentaryEntry> {
     const rows = await db
@@ -334,40 +285,21 @@ export const DraftService = {
   },
 
   /** List non-superseded drafts for a (template, period). */
-  /**
-   * List drafts. Supports filtering by template, period, status, and archive state.
-   * By default excludes superseded drafts and archived drafts.
-   * Pass `archived: true` for archived-only, `archived: "all"` for both.
-   */
   async listDrafts(opts: {
-    templateId?: string;
-    reportingPeriod?: string;
-    status?: DraftStatus;
-    archived?: boolean | "all";
-    limit?: number;
-    offset?: number;
-  } = {}): Promise<DraftEntry[]> {
-    const { templateId, reportingPeriod, status, archived = false, limit = 50, offset = 0 } = opts;
-    const conditions: any[] = [];
-
-    if (templateId)      conditions.push(eq(reportDrafts.templateId, templateId));
-    if (reportingPeriod) conditions.push(eq(reportDrafts.reportingPeriod, reportingPeriod));
-    if (status)          conditions.push(eq(reportDrafts.status, status));
-    else                 conditions.push(sql`${reportDrafts.status} != 'superseded'`);
-
-    if (archived === false) {
-      conditions.push(sql`${reportDrafts.archivedAt} IS NULL`);
-    } else if (archived === true) {
-      conditions.push(sql`${reportDrafts.archivedAt} IS NOT NULL`);
-    }
-
+    templateId: string;
+    reportingPeriod: string;
+  }): Promise<DraftEntry[]> {
     const rows = await db
       .select()
       .from(reportDrafts)
-      .where(and(...conditions))
-      .orderBy(desc(reportDrafts.updatedAt))
-      .limit(limit)
-      .offset(offset);
+      .where(
+        and(
+          eq(reportDrafts.templateId, opts.templateId),
+          eq(reportDrafts.reportingPeriod, opts.reportingPeriod),
+          sql`${reportDrafts.status} != 'superseded'`,
+        ),
+      )
+      .orderBy(desc(reportDrafts.createdAt));
     return rows.map(toDraftEntry);
   },
 
@@ -593,55 +525,4 @@ export const DraftService = {
       })
       .where(eq(reportHistory.id, opts.historyId));
   },
-
-  /** Soft-archive a draft. Archived drafts are excluded from active list by default. */
-  async archiveDraft(opts: {
-    draftId: string;
-    userEmail: string;
-    reason?: string;
-  }): Promise<DraftEntry> {
-    const existing = await DraftService.getDraft(opts.draftId);
-    if (!existing) throw new Error(`Draft ${opts.draftId} not found`);
-    if (existing.archivedAt) throw new Error(`Draft ${opts.draftId} is already archived`);
-    if (existing.status === "approved") {
-      throw new Error(`Draft ${opts.draftId} is approved. Withdraw approval before archiving.`);
-    }
-
-    const rows = await db
-      .update(reportDrafts)
-      .set({
-        archivedAt:    new Date(),
-        archivedBy:    opts.userEmail,
-        archiveReason: opts.reason ?? null,
-        updatedBy:     opts.userEmail,
-        updatedAt:     new Date(),
-      })
-      .where(eq(reportDrafts.id, opts.draftId))
-      .returning();
-    return toDraftEntry(rows[0]!);
-  },
-
-  /** Restore a soft-archived draft (clears archived_at). */
-  async restoreDraft(opts: {
-    draftId: string;
-    userEmail: string;
-  }): Promise<DraftEntry> {
-    const existing = await DraftService.getDraft(opts.draftId);
-    if (!existing) throw new Error(`Draft ${opts.draftId} not found`);
-    if (!existing.archivedAt) throw new Error(`Draft ${opts.draftId} is not archived`);
-
-    const rows = await db
-      .update(reportDrafts)
-      .set({
-        archivedAt:    null,
-        archivedBy:    null,
-        archiveReason: null,
-        updatedBy:     opts.userEmail,
-        updatedAt:     new Date(),
-      })
-      .where(eq(reportDrafts.id, opts.draftId))
-      .returning();
-    return toDraftEntry(rows[0]!);
-  },
-
 };

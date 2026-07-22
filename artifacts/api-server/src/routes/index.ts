@@ -9,10 +9,10 @@ import briefingRouter from "./briefing";
 import rulesRouter from "./rules";
 import reportsRouter from "./reports";
 import draftsRouter from "./drafts";
-import accountingRouter from "./accounting";
 import aiRouter from "./ai";
 import pipelineRouter from "./pipeline";
 import budgetRouter from "./budget";
+import accountingRouter from "./accounting";
 import plaidRouter from "./plaid";
 import mfaRouter from "../auth/mfaRoutes";
 import { requireAuth } from "../auth/middleware";
@@ -22,8 +22,7 @@ const router: IRouter = Router();
 // Public: no session required.
 router.use(healthRouter);
 router.use("/auth", authRouter);
-// MFA routes: challenge is public (called before session.user is set);
-// enrollment/status/disable routes enforce their own requireAuth internally.
+// MFA challenge is public (called before full session auth); enrollment/status enforce requireAuth internally.
 router.use("/auth/mfa", mfaRouter);
 
 // Pipeline webhook has its own auth (shared token, for the external pipeline

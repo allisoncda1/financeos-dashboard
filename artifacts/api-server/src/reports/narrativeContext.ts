@@ -65,13 +65,6 @@ export type NarrativeContext = {
     conclusion?: string;
     notes?: string;
   }>;
-  /**
-   * True when rendering for the live draft preview (not final generation).
-   * Enables inline-edit data attributes on management-authored blocks.
-   * Final HTML/PDF generation always uses false so no editing scaffolding
-   * appears in the delivered document.
-   */
-  isPreview?: boolean;
 };
 
 // ─── Source labels ────────────────────────────────────────────────────────────

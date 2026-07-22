@@ -14,17 +14,11 @@
 
 import type { BuiltReport } from "../builder.js";
 import type { NarrativeContext } from "../narrativeContext.js";
-import { getSectionBlocks, getSectionTexts, getSectionOverride } from "../narrativeContext.js";
-import type { NarrativeBlockSpec } from "./designSystem.js";
+import { getSectionTexts, getSectionOverride } from "../narrativeContext.js";
 
 /** Extract the NarrativeContext attached to a report (set by the preview/draft route). */
 export function getCtx(report: BuiltReport): NarrativeContext | null {
   return (report as any).__narrativeContext ?? null;
-}
-
-/** True when rendering for the live draft preview (enables inline-edit markers). */
-export function isPreviewMode(report: BuiltReport): boolean {
-  return getCtx(report)?.isPreview ?? false;
 }
 
 /**
@@ -68,47 +62,21 @@ export function getCtxTitle(
   return ctx.reportTitle ?? defaultTitle;
 }
 
-const EDITABLE_TYPES = new Set(["management_commentary", "recommended_action"]);
-
 /**
- * Returns narrative blocks for a section, carrying id/type metadata for
- * inline editing. Management-authored blocks are marked editable=true;
- * FinanceOS Analysis blocks are always locked.
- *
- * Falls back to plain text specs when no ctx is present (final generation
- * without a draft, or auto-generated reports). Fallback blocks have
- * editable=false and id=null.
+ * Render a provenance citation badge for use inside HTML report pages.
+ * Only shown when NarrativeContext is present (draft preview mode).
  */
-export function getCtxBlocks(
-  report: BuiltReport,
-  sectionKey: string,
-  fallback: string[],
-): NarrativeBlockSpec[] {
+export function renderApprovalBadge(report: BuiltReport): string {
   const ctx = getCtx(report);
-  const isPreview = ctx?.isPreview ?? false;
-  if (!ctx) {
-    return fallback.map((t) => ({ id: null, text: t, type: "financeos_analysis", editable: false }));
-  }
-  const blocks = getSectionBlocks(ctx, sectionKey);
-  if (blocks.length > 0) {
-    return blocks.map((b) => ({
-      id:       b.id,
-      text:     b.content,
-      type:     b.commentaryType,
-      editable: isPreview && EDITABLE_TYPES.has(b.commentaryType),
-    }));
-  }
-  return fallback.map((t) => ({ id: null, text: t, type: "financeos_analysis", editable: false }));
-}
+  if (!ctx) return "";
+  if (ctx.approvalStatus !== "approved") return "";
 
-/**
- * Formerly rendered an approval badge inside the report body.
- * Now returns "" unconditionally — approval is operational metadata
- * and must not appear inside generated report content or PDFs.
- * Approval is still stored in draft metadata, Report History, and API responses.
- *
- * @deprecated All call sites have been removed; function kept for test coverage continuity.
- */
-export function renderApprovalBadge(_report: BuiltReport): string {
-  return "";
+  const approvedBy = ctx.approvedBy ?? "FinanceOS";
+  const approvedAt = ctx.approvedAt
+    ? new Date(ctx.approvedAt).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })
+    : "";
+
+  return `<div style="margin:0 0 16pt;padding:8pt 12pt;background:#f0fdf4;border-left:3px solid #16a34a;font-size:8pt;color:#15803d;font-family:system-ui,Arial,sans-serif;">
+    ✓ Approved by ${approvedBy}${approvedAt ? ` &middot; ${approvedAt}` : ""} &middot; FinanceOS Draft Review
+  </div>`;
 }

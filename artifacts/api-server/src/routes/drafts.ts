@@ -21,124 +21,11 @@ import { CommentaryService, DraftService } from "../db/reportDrafts.js";
 import { ReportHistoryService } from "../db/index.js";
 import { sanitizeErrorMessage } from "./reports.js";
 import { requirePermission } from "../auth/permissions.js";
-import { storeArtifact, retrieveArtifact } from "../services/reportStorage.js";
 import type { Role } from "../auth/types.js";
 import type { CommentaryType } from "../db/reportDrafts.js";
 import type { ReportOutputFormat } from "../reports/templates.js";
 
 const router: IRouter = Router();
-
-// ── Placeholder management commentary seeded on every new draft ──────────────
-// Maps each template ID to the management-authored narrative sections
-// that should have an editable placeholder created on draft creation.
-// Without these rows the preview has zero data-editable elements.
-const TEMPLATE_MANAGEMENT_PLACEHOLDERS: Record<string, Array<{ sectionKey: string; commentaryType: CommentaryType; content: string }>> = {
-  "monthly-close": [
-    { sectionKey: "management_comments", commentaryType: "management_commentary", content: "Add management commentary for this period." },
-    { sectionKey: "recommended_actions", commentaryType: "recommended_action",   content: "Add recommended actions for leadership review." },
-  ],
-  "quarterly-close": [
-    { sectionKey: "management_comments", commentaryType: "management_commentary", content: "Add management commentary for this quarter." },
-    { sectionKey: "recommended_actions", commentaryType: "recommended_action",   content: "Add recommended actions for this quarter." },
-  ],
-  "board-package": [
-    { sectionKey: "management_comments", commentaryType: "management_commentary", content: "Add management commentary for board review." },
-    { sectionKey: "recommended_actions", commentaryType: "recommended_action",   content: "Add recommended actions for the board." },
-  ],
-  "investor-update": [
-    { sectionKey: "management_comments", commentaryType: "management_commentary", content: "Add investor narrative for this period." },
-    { sectionKey: "recommended_actions", commentaryType: "recommended_action",   content: "Add strategic priorities for investors." },
-  ],
-  "bank-package": [
-    { sectionKey: "management_comments", commentaryType: "management_commentary", content: "Add management commentary for the bank package." },
-    { sectionKey: "recommended_actions", commentaryType: "recommended_action",   content: "Add recommended actions for this report." },
-  ],
-  "executive-package": [
-    { sectionKey: "management_comments", commentaryType: "management_commentary", content: "Add executive management commentary." },
-    { sectionKey: "recommended_actions", commentaryType: "recommended_action",   content: "Add recommended executive actions." },
-  ],
-};
-
-/**
- * Inject a small inline-editing script into preview HTML.
- * When canEdit=false (approved/generated drafts) the script is omitted —
- * the data attributes remain in the HTML but clicks produce no UI.
- * The script is sandboxed inside the iframe and posts messages to the
- * parent React component for save/cancel operations.
- */
-function injectPreviewScript(html: string, canEdit: boolean): string {
-  const script = canEdit ? `
-<script>
-(function() {
-  var EDITABLE_SELECTOR = '[data-editable="true"]';
-  document.querySelectorAll(EDITABLE_SELECTOR).forEach(function(el) {
-    el.style.cursor = 'text';
-    el.setAttribute('title', 'Click to edit');
-    el.addEventListener('mouseenter', function() {
-      if (!el.classList.contains('fo-editing')) {
-        el.style.outline = '2px dashed rgba(109,40,217,0.35)';
-        el.style.borderRadius = '3px';
-      }
-    });
-    el.addEventListener('mouseleave', function() {
-      if (!el.classList.contains('fo-editing')) el.style.outline = '';
-    });
-    el.addEventListener('click', function(e) {
-      if (el.classList.contains('fo-editing')) return;
-      e.preventDefault();
-      startEdit(el);
-    });
-  });
-
-  function startEdit(el) {
-    el.classList.add('fo-editing');
-    el.style.outline = '2px solid rgba(109,40,217,0.6)';
-    el.style.borderRadius = '3px';
-    var blockId = el.getAttribute('data-block-id');
-    var orig = el.querySelector('p') ? el.querySelector('p').textContent : el.textContent;
-    el.innerHTML = '';
-
-    var ta = document.createElement('textarea');
-    ta.value = orig;
-    ta.style.cssText = 'width:100%;min-height:4em;font-size:inherit;font-family:inherit;line-height:1.6;border:1px solid rgba(109,40,217,0.3);border-radius:4px;padding:6px 8px;background:#faf9ff;resize:vertical;box-sizing:border-box;outline:none;';
-    ta.setAttribute('data-fo-editor', 'true');
-
-    var row = document.createElement('div');
-    row.style.cssText = 'display:flex;gap:8px;margin-top:6px;';
-
-    var saveBtn = document.createElement('button');
-    saveBtn.textContent = 'Save';
-    saveBtn.style.cssText = 'padding:3px 14px;font-size:11px;font-family:system-ui,Arial,sans-serif;background:#5b21b6;color:#fff;border:none;border-radius:4px;cursor:pointer;font-weight:600;';
-
-    var cancelBtn = document.createElement('button');
-    cancelBtn.textContent = 'Cancel';
-    cancelBtn.style.cssText = 'padding:3px 14px;font-size:11px;font-family:system-ui,Arial,sans-serif;background:#e5e7eb;color:#374151;border:none;border-radius:4px;cursor:pointer;';
-
-    row.appendChild(saveBtn);
-    row.appendChild(cancelBtn);
-    el.appendChild(ta);
-    el.appendChild(row);
-    ta.focus();
-
-    saveBtn.onclick = function() {
-      var text = ta.value.trim();
-      window.parent.postMessage({type:'fo-edit-save', blockId: blockId, text: text}, '*');
-      el.innerHTML = '<p>' + text.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;') + '</p>';
-      el.classList.remove('fo-editing');
-      el.style.outline = '';
-    };
-    cancelBtn.onclick = function() {
-      window.parent.postMessage({type:'fo-edit-cancel', blockId: blockId}, '*');
-      el.innerHTML = '<p>' + orig.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;') + '</p>';
-      el.classList.remove('fo-editing');
-      el.style.outline = '';
-    };
-  }
-})();
-</script>` : "";
-
-  return html.replace("</body>", `${script}\n</body>`);
-}
 
 /** Coerce Express 5 params (string | string[]) to a plain string. */
 function paramStr(v: string | string[] | undefined): string {
@@ -225,10 +112,9 @@ router.post("/drafts", requirePermission("reports"), async (req, res) => {
 
     // Persist generated analysis as commentary rows
     const now = new Date();
-    const entitySlugForCommentary = entitySlugsArray[0] ?? "portfolio";
     await CommentaryService.bulkUpsertCommentary(
       analysis.map((stmt) => ({
-        entitySlug:      entitySlugForCommentary,
+        entitySlug:      entitySlugsArray[0] ?? "portfolio",
         reportingPeriod: body.period as string,
         templateId:      body.template as string,
         sectionKey:      stmt.sectionKey,
@@ -242,28 +128,6 @@ router.post("/drafts", requirePermission("reports"), async (req, res) => {
         updatedAt:       now,
       })),
     );
-
-    // Seed editable placeholder management commentary so the preview immediately
-    // has data-editable elements. Without these rows a new draft has zero editable
-    // content and the "Click narrative text to edit inline" hint is misleading.
-    const placeholders = TEMPLATE_MANAGEMENT_PLACEHOLDERS[body.template as string] ?? [];
-    if (placeholders.length > 0) {
-      await CommentaryService.seedPlaceholderCommentary(
-        placeholders.map((p, i) => ({
-          entitySlug:      entitySlugForCommentary,
-          reportingPeriod: body.period as string,
-          templateId:      body.template as string,
-          sectionKey:      p.sectionKey,
-          commentaryType:  p.commentaryType,
-          content:         p.content,
-          sortOrder:       i,
-          createdBy:       user.email,
-          updatedBy:       user.email,
-          createdAt:       now,
-          updatedAt:       now,
-        })),
-      );
-    }
 
     res.status(201).json({ ok: true, data: draft, ts: new Date().toISOString() });
   } catch (err) {
@@ -429,26 +293,6 @@ router.post("/drafts/commentary/:id/approve", requirePermission("reports"), asyn
   }
 });
 
-// PATCH /api/drafts/commentary/:id/content — inline-edit a management block
-router.patch("/drafts/commentary/:id/content", requirePermission("reports"), async (req, res) => {
-  const user = req.session.user!;
-  if (!userCanEdit(user.role)) {
-    res.status(403).json({ ok: false, error: "Only admin, cfo, or controller roles can edit commentary.", ts: new Date().toISOString() });
-    return;
-  }
-  const { content } = req.body as { content?: string };
-  if (typeof content !== "string" || !content.trim()) {
-    res.status(400).json({ ok: false, error: "content must be a non-empty string.", ts: new Date().toISOString() });
-    return;
-  }
-  try {
-    const entry = await CommentaryService.updateContent(paramStr(req.params["id"]), content.trim(), user.email);
-    res.json({ ok: true, data: entry, ts: new Date().toISOString() });
-  } catch (err) {
-    res.status(400).json({ ok: false, error: String(err), ts: new Date().toISOString() });
-  }
-});
-
 // ─── GET /api/drafts/:id — Get a single draft ─────────────────────────────────
 router.get("/drafts/:id", requirePermission("reports"), async (req, res) => {
   try {
@@ -465,16 +309,14 @@ router.get("/drafts/:id", requirePermission("reports"), async (req, res) => {
 
 // ─── GET /api/drafts — List drafts for a template+period ─────────────────────
 router.get("/drafts", requirePermission("reports"), async (req, res) => {
-  const templateId      = typeof req.query["template"]  === "string" ? req.query["template"]  : undefined;
-  const reportingPeriod = typeof req.query["period"]    === "string" ? req.query["period"]    : undefined;
-  const archivedParam   = typeof req.query["archived"]  === "string" ? req.query["archived"]  : undefined;
-
-  const archived: boolean | "all" =
-    archivedParam === "true"  ? true  :
-    archivedParam === "all"   ? "all" : false;
-
+  const templateId      = typeof req.query["template"] === "string" ? req.query["template"] : null;
+  const reportingPeriod = typeof req.query["period"] === "string"   ? req.query["period"]   : null;
+  if (!templateId || !reportingPeriod) {
+    res.status(400).json({ ok: false, error: "`template` and `period` query params are required", ts: new Date().toISOString() });
+    return;
+  }
   try {
-    const drafts = await DraftService.listDrafts({ templateId, reportingPeriod, archived });
+    const drafts = await DraftService.listDrafts({ templateId, reportingPeriod });
     res.json({ ok: true, data: drafts, ts: new Date().toISOString() });
   } catch (err) {
     res.status(500).json({ ok: false, error: String(err), ts: new Date().toISOString() });
@@ -541,44 +383,6 @@ router.post("/drafts/:id/restore", requirePermission("reports"), async (req, res
       draftId:             paramStr(req.params["id"]),
       targetVersionNumber: versionNumber,
       userEmail:           user.email,
-    });
-    res.json({ ok: true, data: draft, ts: new Date().toISOString() });
-  } catch (err) {
-    res.status(400).json({ ok: false, error: String(err), ts: new Date().toISOString() });
-  }
-});
-
-// ─── POST /api/drafts/:id/archive — Soft-archive a draft ─────────────────────
-router.post("/drafts/:id/archive", requirePermission("reports"), async (req, res) => {
-  const user = req.session.user!;
-  if (!userCanEdit(user.role)) {
-    res.status(403).json({ ok: false, error: "Your role cannot archive drafts.", ts: new Date().toISOString() });
-    return;
-  }
-  const { reason } = req.body as { reason?: unknown };
-  try {
-    const draft = await DraftService.archiveDraft({
-      draftId:   paramStr(req.params["id"]),
-      userEmail: user.email,
-      reason:    typeof reason === "string" ? reason : undefined,
-    });
-    res.json({ ok: true, data: draft, ts: new Date().toISOString() });
-  } catch (err) {
-    res.status(400).json({ ok: false, error: String(err), ts: new Date().toISOString() });
-  }
-});
-
-// ─── POST /api/drafts/:id/unarchive — Restore a soft-archived draft ──────────
-router.post("/drafts/:id/unarchive", requirePermission("reports"), async (req, res) => {
-  const user = req.session.user!;
-  if (!userCanEdit(user.role)) {
-    res.status(403).json({ ok: false, error: "Your role cannot restore drafts.", ts: new Date().toISOString() });
-    return;
-  }
-  try {
-    const draft = await DraftService.restoreDraft({
-      draftId:   paramStr(req.params["id"]),
-      userEmail: user.email,
     });
     res.json({ ok: true, data: draft, ts: new Date().toISOString() });
   } catch (err) {
@@ -656,8 +460,7 @@ router.get("/drafts/:id/preview", requirePermission("reports"), async (req, res)
       templateId:      draft.templateId,
     });
 
-    // Build narrative context with approved edits overlaid.
-    // isPreview=true enables inline-edit data attributes on management blocks.
+    // Build narrative context with approved edits overlaid
     const narrativeCtx = buildNarrativeContext({
       draftId:          draft.id,
       draftVersion:     draft.currentVersion,
@@ -668,15 +471,11 @@ router.get("/drafts/:id/preview", requirePermission("reports"), async (req, res)
       dbEntries:        dbCommentary,
       generatedAnalysis: (draft.generatedAnalysis ?? []) as any,
     });
-    narrativeCtx.isPreview = true;
 
     // Attach narrative context to the report for the renderer
     (report as any).__narrativeContext = narrativeCtx;
 
-    const rawHtml = HtmlRenderer.render(report) as string;
-    // Inject inline-editing script before </body>
-    const canEdit = draft.status === "draft" || draft.status === "ready_for_review";
-    const html = injectPreviewScript(rawHtml, canEdit);
+    const html = HtmlRenderer.render(report) as string;
 
     if (req.query["format"] === "html") {
       res.setHeader("Content-Type", "text/html; charset=utf-8");
@@ -871,43 +670,6 @@ router.post("/drafts/:id/generate", requirePermission("reports"), async (req, re
       dataFingerprint:   draft.dataFingerprint ?? liveFingerprint,
       commentaryVersion,
     });
-
-    // ── 11b. Store artifact when format is html or pdf ───────────────────────
-    // Non-blocking: storage failure never prevents the download response.
-    // The history row metadata is updated only when storage succeeds.
-    if (format === "html" || format === "pdf") {
-      const titleSlugForStorage = (report.template.name ?? report.template.id)
-        .toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 40) || "report";
-      const fileNameForStorage = `financeos-${titleSlugForStorage}-${draft.reportingPeriod.replace(/\s+/g, "-").replace(/[^a-z0-9-]/gi, "").toLowerCase()}.${format}`;
-
-      storeArtifact({
-        historyId:  historyRow.id,
-        templateId: report.template.id,
-        period:     draft.reportingPeriod,
-        format,
-        fileName:   fileNameForStorage,
-        data:       Buffer.isBuffer(output) ? output : Buffer.from(output as string, "utf-8"),
-      }).then((result) => {
-        if (result.stored) {
-          // Best-effort metadata update — not awaited so it never blocks the response
-          ReportHistoryService.updateStorageMetadata(historyRow.id, {
-            storageProvider: result.provider,
-            storageKey:      result.storageKey,
-            fileName:        result.fileName,
-            contentType:     result.contentType,
-            fileSize:        result.fileSize,
-            checksum:        result.checksum,
-            storedAt:        result.storedAt,
-          }).catch((e) => {
-            req.log?.warn({ err: e }, "Failed to update history storage metadata");
-          });
-        } else {
-          req.log?.info({ reason: result.reason }, "Report artifact not stored (storage unavailable)");
-        }
-      }).catch((e) => {
-        req.log?.warn({ err: e }, "Report artifact storage threw unexpectedly");
-      });
-    }
 
     // ── 12. Return file or JSON ────────────────────────────────────────────────
     // NOTE: Draft status is intentionally NOT transitioned to "generated" here.

@@ -66,14 +66,13 @@ vi.mock("../db/reportDrafts.js", () => ({
     linkHistoryToDraft: vi.fn(),
   },
   CommentaryService: {
-    getCommentaryByScope:       getCommentaryMock,
-    bulkUpsertCommentary:       vi.fn(),
-    seedPlaceholderCommentary:  vi.fn(),
-    saveCommentary:             upsertCommentaryMock,
-    toggleIncluded:             toggleIncludedMock,
-    deleteCommentary:           deleteCommentaryMock,
-    reorderCommentary:          reorderCommentaryMock,
-    approveCommentary:          approveCommentaryMock,
+    getCommentaryByScope: getCommentaryMock,
+    bulkUpsertCommentary: vi.fn(),
+    saveCommentary:       upsertCommentaryMock,
+    toggleIncluded:       toggleIncludedMock,
+    deleteCommentary:     deleteCommentaryMock,
+    reorderCommentary:    reorderCommentaryMock,
+    approveCommentary:    approveCommentaryMock,
   },
 }));
 
@@ -283,15 +282,14 @@ describe("GET /api/drafts", () => {
     expect(Array.isArray(res.body.data)).toBe(true);
   });
 
-  it("omitting template returns all drafts (no validation required) → 200", async () => {
-    // GET /api/drafts does not require template/period — they are optional filters.
+  it("missing template → 400", async () => {
     const res = await request(createApp(CFO)).get("/api/drafts?period=Jun+2026");
-    expect(res.status).toBe(200);
+    expect(res.status).toBe(400);
   });
 
-  it("omitting period returns all drafts (no validation required) → 200", async () => {
+  it("missing period → 400", async () => {
     const res = await request(createApp(CFO)).get("/api/drafts?template=monthly-close");
-    expect(res.status).toBe(200);
+    expect(res.status).toBe(400);
   });
 });
 

@@ -190,19 +190,10 @@ export const reportDrafts = pgTable(
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
     approvedAt: timestamp("approved_at", { withTimezone: true }),
-
-    // ── Soft-archive (nullable — unarchived rows have null) ──────────────────
-    /** When this draft was archived. NULL = active draft. */
-    archivedAt: timestamp("archived_at", { withTimezone: true }),
-    /** User who archived this draft. */
-    archivedBy: text("archived_by"),
-    /** Optional reason provided when archiving. */
-    archiveReason: text("archive_reason"),
   },
   (t) => [
     index("idx_rdraft_template_period").on(t.templateId, t.reportingPeriod),
     index("idx_rdraft_status").on(t.status, t.createdAt),
-    index("idx_rdraft_archived").on(t.archivedAt),
     check(
       "chk_rdraft_status",
       sql`${t.status} IN ('draft', 'ready_for_review', 'approved', 'superseded', 'generated')`,
