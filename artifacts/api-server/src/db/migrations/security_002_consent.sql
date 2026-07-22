@@ -1,8 +1,10 @@
 -- MANUAL MIGRATION: security_002_consent.sql
 -- =============================================================================
--- DATABASE: Dashboard OPERATIONAL database (DATABASE_URL) — NOT Core (CORE_DATABASE_URL).
--- See security_001_mfa.sql header for full apply/verify/rollback instructions.
--- Prerequisite: security_001_mfa.sql applied first.
+-- DATABASE: DATABASE_URL — same Replit-provisioned operational database as
+-- security_001_mfa.sql. See that file's header for full database ownership proof.
+-- Apply via: psql $DATABASE_URL -f security_002_consent.sql  (in Replit Shell)
+-- Prerequisite: security_001_mfa.sql must be applied first.
+-- NOT CORE_DATABASE_URL. These tables do not belong in the financial database.
 -- =============================================================================
 -- PREFLIGHT: expected 0 rows if migration not yet applied.
 -- SELECT table_name FROM information_schema.tables

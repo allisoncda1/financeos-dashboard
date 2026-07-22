@@ -1,20 +1,39 @@
 -- MANUAL MIGRATION: security_001_mfa.sql
 -- =============================================================================
--- DATABASE: The Dashboard OPERATIONAL database (DATABASE_URL / connect-pg-simple
--- session store). This is NOT the Core financial data database (CORE_DATABASE_URL).
--- Both are hosted on Neon but are separate databases with separate connection strings.
+-- DATABASE: DATABASE_URL — the Dashboard's writable operational PostgreSQL
+-- database, provisioned by Replit (or overridden by a Replit Secret pointing
+-- to your own Postgres instance).
 --
--- HOW TO APPLY:
---   1. Open the Neon console → select the PROJECT that contains your Dashboard
---      operational database (the one referenced by DATABASE_URL in Replit Secrets).
---   2. Open the SQL Editor for that database.
---   3. Run the PREFLIGHT query first. If it returns a row, this migration is
---      already applied — do NOT run it again.
---   4. Run the BEGIN … COMMIT block.
---   5. Run the VERIFICATION queries.
+-- PROOF OF OWNERSHIP:
+--   lib/db/src/index.ts: "Writable operational database (Replit-provisioned,
+--   DATABASE_URL). Holds Dashboard-owned tables: sessions, metric_snapshots, budgets."
+--   lib/db/drizzle/migrations/0001_add_budgets.sql: "Runs against the Dashboard
+--   operational database (DATABASE_URL)."
+--   artifacts/api-server/src/app.ts: uses DATABASE_URL for connect-pg-simple
+--   sessions — the same database this migration targets.
+--   artifacts/api-server/src/auth/mfaRoutes.ts: uses DATABASE_URL for all MFA ops.
 --
--- DO NOT apply this to the Core financial database.
--- DO NOT apply this automatically or via migration runners.
+-- THIS IS NOT the FinanceOS Core financial database (CORE_DATABASE_URL). Core
+-- contains financial tables (entities, financial_periods, sync_runs etc.) and is
+-- read-only from the Dashboard. Target: DATABASE_URL only. Do not target CORE_DATABASE_URL.
+--
+-- HOW TO APPLY (choose ONE method):
+--
+--   Method A — Replit Shell (recommended):
+--     In the Replit console, run:
+--       psql $DATABASE_URL -f artifacts/api-server/src/db/migrations/security_001_mfa.sql
+--     (Run PREFLIGHT SELECT first in a separate psql session to confirm idempotency.)
+--
+--   Method B — psql with explicit connection string:
+--     psql "$(replit_secrets get DATABASE_URL)" \
+--       -f artifacts/api-server/src/db/migrations/security_001_mfa.sql
+--
+--   Method C — Replit Database panel:
+--     Open the Database tab in the Replit sidebar → SQL Editor → paste and run.
+--
+-- DO NOT apply this to the Core financial database (CORE_DATABASE_URL).
+-- DO NOT run this via Drizzle's migrate command (it targets Core via DATABASE_URL
+--   in the lib/db package, not this operational database for auth tables).
 -- =============================================================================
 
 -- PREFLIGHT: confirm tables do not yet exist.

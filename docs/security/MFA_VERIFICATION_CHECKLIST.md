@@ -187,21 +187,62 @@ Complete each section below. Mark ✅ when confirmed, ❌ if not yet enabled, �
 
 ---
 
+## 9. Notion
+
+**Why critical:** Contains the FinanceOS Blueprint and operational documentation. Exposure could reveal system architecture.
+
+**Steps:**
+1. Go to: https://www.notion.so → Settings → My account → Security
+2. Look for **"Two-factor authentication"**
+3. Verify status
+
+**What to record:**
+- [ ] Notion 2FA: Enabled / Disabled
+- [ ] 2FA method: ______________________
+- [ ] Workspace sharing: restricted to known members only: Yes / No
+
+---
+
+## 10. Password Manager / Secrets Management
+
+**Why critical:** The master key to all other credentials.
+
+If you use a password manager (1Password, Bitwarden, etc.) or a separate secrets vault:
+
+1. Verify the password manager account has MFA enabled.
+2. Confirm the recovery method (emergency kit, recovery key) is stored securely offline.
+3. Confirm recovery codes for FinanceOS systems are stored here.
+
+**What to record:**
+- [ ] Password manager in use: ______________________
+- [ ] Password manager MFA: Enabled / Disabled
+- [ ] MFA method: ______________________
+- [ ] Recovery codes for all FinanceOS accounts stored here: Yes / No
+- [ ] Emergency access / recovery kit stored offline: Yes / No
+
+---
+
 ## Summary Table (fill in after verification)
 
-| System | MFA Status | MFA Method | Phishing-Resistant | Verified Date | Notes |
-|---|---|---|---|---|---|
-| Google Account | | | | | |
-| Google Cloud | | (inherited) | | | |
-| GitHub | | | | | |
-| Replit | | | | | |
-| Neon | | | | | |
-| Intuit Developer | | | | | |
-| QBO T3 Marketing | | | | | |
-| QBO CarDealer.AI | | | | | |
-| QBO TopMrktr | | | | | |
-| QBO Smile More | | | | | |
-| Plaid | N/A | N/A | N/A | | Not yet integrated |
+| System | MFA Enabled? | MFA Method | Phishing-Resistant? | Recovery Secured? | Admin Owner | Verified Date |
+|---|---|---|---|---|---|---|
+| Google Account | ❓ | | | | Allison Fabbri | |
+| Google Cloud | ❓ | (inherited from Google) | | | Allison Fabbri | |
+| GitHub (allisoncda1) | ❓ | | | | Allison Fabbri | |
+| Replit | ❓ | | | | Allison Fabbri | |
+| Neon | ❓ | | | | Allison Fabbri | |
+| Intuit Developer | ❓ | | | | Allison Fabbri | |
+| QBO T3 Marketing | ❓ | | | | Allison Fabbri | |
+| QBO CarDealer.AI | ❓ | | | | Allison Fabbri | |
+| QBO TopMrktr | ❓ | | | | Allison Fabbri | |
+| QBO Smile More | ❓ | | | | Allison Fabbri | |
+| Plaid | ❌ | N/A | N/A | N/A | — | Not yet integrated |
+| Notion | ❓ | | | | Allison Fabbri | |
+| Password Manager | ❓ | | | | Allison Fabbri | |
+
+**Legend:** ❓ = not yet verified · ✅ = verified enabled · ❌ = verified disabled / not applicable
+
+**IMPORTANT:** Do not mark any platform ✅ without personally navigating to its security settings and confirming the status. The ❓ values above are the honest current state — nothing has been verified.
 
 ---
 
@@ -210,6 +251,8 @@ Complete each section below. Mark ✅ when confirmed, ❌ if not yet enabled, �
 1. **Google Account** — highest risk (controls GCP, Gmail, entire identity)
 2. **GitHub** — controls code and secrets
 3. **Replit** — controls production environment
-4. **Intuit Developer** — controls QBO API access
-5. **QBO company admins** — controls financial data directly
-6. **Neon** — database access
+4. **Intuit Developer** — controls QBO API access for all 4 entities
+5. **QBO company admins** — direct access to financial data
+6. **Neon** — database admin access
+7. **Notion** — operational documentation
+8. **Password Manager** — master vault (should already have MFA)
