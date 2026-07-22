@@ -32,8 +32,10 @@ export default function LoginPage() {
     setError(null);
     setSubmitting(true);
     try {
-      await login(email, password);
-      router.replace("/home");
+      const result = await login(email, password);
+      if (result.next === "mfa_enrollment") router.replace("/mfa/setup");
+      else if (result.next === "mfa_challenge") router.replace("/mfa/challenge");
+      else router.replace("/home");
     } catch (err) {
       setError(err instanceof Error ? err.message : "Invalid email or password");
     } finally {
