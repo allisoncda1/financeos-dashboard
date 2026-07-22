@@ -1,97 +1,122 @@
-> **DRAFT — NOT YET APPROVED.** This document requires review and approval by Allison Fabbri before becoming effective. Effective date: [PENDING APPROVAL]
+> **DRAFT — REVIEWED FOR ACCURACY, PENDING FORMAL APPROVAL.** Effective date: [PENDING APPROVAL]
 
-# Data Retention and Deletion Policy
+# FinanceOS Data Retention and Deletion Policy
 
-**Version:** 0.1-draft  
-**Owner:** Allison Fabbri (allison@cardealer.ai)  
-**Last Updated:** 2026-07-21  
-**Review Frequency:** Annually  
+**Version:** 0.9-review<br>
+**Owner:** Allison Fabbri, Controller & FinanceOS Project Lead (allison@cardealer.ai)<br>
+**Last Updated:** 2026-07-22<br>
+**Review Frequency:** At least annually and whenever legal requirements or data practices materially change
 
 ---
 
 ## 1. Purpose
 
-This policy defines how long FinanceOS retains data, when and how it is deleted, and what exceptions apply.
+This policy establishes defined retention periods, deletion procedures, responsibilities, and exceptions for information processed by FinanceOS, a private internal platform for CarDealer.ai and its affiliated companies. FinanceOS has no external client accounts or public user access. Its objectives are to preserve records needed for group-company accounting and audit while removing sensitive information when there is no longer a legitimate need to retain it.
 
-## 2. Data Inventory
+## 2. Systems and Data Categories
 
-The following tables and data categories are stored in Neon PostgreSQL:
-
-| Table / Data Type | Description | Database Role |
+| Data Category | Primary Location | Examples |
 |---|---|---|
-| `invoices` | QBO invoice records per entity | Core DB (write), Ops DB (read) |
-| `bills` | QBO vendor bill records per entity | Core DB (write), Ops DB (read) |
-| `transactions` | Transaction-level financial data | Core DB (write), Ops DB (read) |
-| `qbo_raw` | Raw QBO API response snapshots | Core DB (write) |
-| `entity_snapshots` | Point-in-time financial summaries | Core DB (write) |
-| `sync_runs` | Pipeline sync run audit records | Core DB (write) |
-| Application user accounts | User credentials and role assignments | Ops DB |
-| Session data | Active session tokens | Ops DB |
+| Core accounting records | FinanceOS Core PostgreSQL | invoices, bills, payments, credits, accounts, transactions |
+| Source and derived financial records | FinanceOS Core PostgreSQL | authorized source payloads, financial periods, entity snapshots, cash-flow statements |
+| Pipeline and validation records | FinanceOS Core PostgreSQL | sync runs, validation results, reconciliation evidence |
+| Application security records | FinanceOS operational PostgreSQL | sessions, MFA enrollment metadata, encrypted TOTP secrets, consent and deletion requests |
+| Reporting operations | FinanceOS operational PostgreSQL / approved object storage | report drafts, history, approval metadata, generated artifacts |
+| Source control and automation | GitHub | application code and CI logs; no intentional production secrets or financial datasets |
 
-## 3. Retention Periods
+## 3. Approved Retention Schedule
 
-| Data Category | Retention Period | Basis |
-|---|---|---|
-| Financial records (invoices, bills, transactions, entity_snapshots) | **7 years** from transaction date | IRS record-keeping requirements for business financial records |
-| Raw QBO API data (`qbo_raw`) | **7 years** | Retained to support audit of imported records |
-| Pipeline sync run logs (`sync_runs`) | **2 years** | Operational audit trail |
-| Application user accounts | Duration of active use + **1 year** after deactivation | Audit trail requirement |
-| Session data | **8 hours** (auto-expired by session store) | Session timeout policy |
+| Category | Standard Period | Rationale / Trigger |
+|---|---:|---|
+| Core accounting books and supporting transaction records | 7 years after the relevant fiscal year closes | Conservative internal accounting and audit period; extend or shorten only after entity-specific legal/tax review |
+| Property, fixed-asset, basis, and depreciation records | Life of the asset plus the applicable limitation period | Needed to establish basis and disposition calculations |
+| Employment-tax records, when stored | At least 4 years after the tax becomes due or is paid, whichever is later | IRS employment-tax recordkeeping guidance; longer where another rule applies |
+| Raw source payloads used as accounting evidence | Up to 7 years, with annual necessity review | Supports reproducibility and audit; remove earlier when no longer needed and no hold applies |
+| Pipeline, validation, and reconciliation logs | 2 years | Operational and security audit trail |
+| Security and administrative audit events | 2 years | Incident investigation and access review |
+| User account and role record | Active use plus 1 year | Access and approval audit trail |
+| Encrypted MFA secret | Active enrollment only | Delete promptly when MFA is reset or the account is deactivated |
+| Active session | 8 hours maximum under normal configuration | Automatic session expiration; invalidate immediately on logout, reset, or deactivation where supported |
+| Consent and policy-acceptance records | 7 years after consent withdrawal or relationship end | Evidence of authorization and policy version |
+| Generated reports and report approvals | 7 years when part of the accounting record; otherwise 2 years | Accounting evidence versus operational working files |
+| Plaid access token | Active connection only | Revoke and delete promptly when the connection is removed or authorization is withdrawn |
+| Plaid-derived business bank transactions | Same period as the corresponding accounting record | Limited to managed group-company accounts; subject to legal hold and entity-specific accounting requirements |
 
-## 4. Deletion Process
+The IRS does not prescribe one universal period for every business record. The default seven-year FinanceOS period is a conservative business policy. The owner must obtain entity-specific legal or tax advice where a different rule may apply.
 
-### 4.1 Current State — Manual Deletion
+## 4. Data Minimization and Annual Review
 
-Automated data deletion jobs are **not yet implemented**. Deletion is currently a manual process performed by the operator (Allison Fabbri) via direct database access.
+At least annually, the owner reviews stored categories to confirm that:
 
-Steps for manual deletion:
-1. Identify records beyond retention period using a date-range query.
-2. Confirm no legal hold applies (see Section 6).
-3. Execute `DELETE` query via Neon console using the `postgres` role.
-4. Record the deletion in the security register (date, table, scope of deletion, performed by).
+1. the information remains necessary for an identified purpose;
+2. access remains limited to authorized users;
+3. records past their retention period are eligible for deletion; and
+4. no legal hold, open audit, dispute, or contractual requirement prevents deletion.
 
-> **Planned:** An automated retention/deletion job is on the FinanceOS roadmap. This section will be updated when automated deletion is implemented.
+FinanceOS must not retain Plaid credentials, bank data, or personal information merely because storage is available.
 
-### 4.2 Session Data
+## 5. Deletion Requests
 
-Session data expires automatically after 8 hours via the session store TTL. No manual intervention is required under normal circumstances.
+Requests may be submitted to **allison@cardealer.ai**. The owner must:
 
-### 4.3 Application User Account Deletion
+1. record the request and date received;
+2. verify the requester's identity and authority;
+3. identify the relevant systems and records;
+4. determine whether a legal, tax, accounting, contractual, or security obligation requires retention;
+5. delete, anonymize, restrict, or retain the records as appropriate; and
+6. record the outcome without reproducing the deleted sensitive information.
 
-When a user account is deactivated:
-1. Disable or delete the account in the FinanceOS application.
-2. Invalidate all active sessions for that user.
-3. Retain the account record for 1 year for audit purposes, then delete.
+Requests should be completed without undue delay, with an internal target of 30 days unless verification, legal hold, technical complexity, or applicable law requires additional time.
 
-## 5. Plaid Access Token Revocation (Planned)
+## 6. Current Enforcement Procedure
 
-**Plaid integration is not yet live.** When implemented, the following process will apply:
+Automated retention jobs and the in-application deletion workflow are not yet complete. Until they are implemented and verified, this policy is enforced through a controlled manual procedure:
 
-When a bank account connection is removed by the operator:
-1. Call the Plaid `/item/remove` endpoint to invalidate the access token at Plaid.
-2. Delete the encrypted access token from the Neon database immediately.
-3. Delete associated bank transaction data per the retention schedule, unless subject to legal hold.
-4. Record the revocation event in the audit log.
+1. an authorized operator prepares a narrowly scoped record-selection query;
+2. the affected record count and retention basis are reviewed;
+3. the operator confirms that no legal hold applies;
+4. deletion or anonymization is performed using MFA-protected administrative access and least-privilege credentials;
+5. related sessions, tokens, cached artifacts, and object-storage files are removed where applicable;
+6. the result is verified; and
+7. a deletion event is recorded in the security evidence register.
 
-This section will be updated with implementation details when Plaid is integrated.
+Manual deletion must not be performed from application read-only credentials or by editing source data in the user interface. Database backups and provider snapshots expire according to provider configuration and are not restored solely to recover deliberately deleted records unless legally required.
 
-## 6. Legal Hold
+## 7. Account Deactivation and MFA Reset
 
-Records subject to a legal hold must not be deleted, regardless of their scheduled retention period. A legal hold is triggered by:
-- Litigation or reasonably anticipated litigation
-- Regulatory investigation
-- Formal legal request
+When an internal user is deactivated:
 
-Legal hold records must be documented (record type, scope, date hold applied, authority). Holds are released by the operator upon written confirmation that the legal matter is resolved.
+1. disable authentication and authorization;
+2. invalidate active sessions;
+3. delete the encrypted MFA secret and unused recovery credentials;
+4. retain only the minimum account and approval metadata required for the one-year audit period; and
+5. delete the remaining account record after that period unless a hold applies.
 
-## 7. Audit Records Retention
+## 8. Plaid Connection Removal
 
-Records documenting deletion events (what was deleted, when, by whom) are themselves retained for **7 years** as part of the operational audit trail.
+Plaid is not yet active in production and will be used only by authorized internal representatives for managed group-company bank accounts. Before production launch, FinanceOS must implement and test a process that:
 
-## 8. Exceptions
+1. calls Plaid's item-removal mechanism to revoke the connection;
+2. deletes the encrypted access token from FinanceOS;
+3. prevents further synchronization;
+4. handles derived bank transactions according to the accounting-record schedule and any valid deletion request; and
+5. records a non-sensitive revocation event.
 
-Any exception to this policy requires written approval from Allison Fabbri and must specify the reason for exception, the data scope, and the alternative disposition.
+The Plaid questionnaire must not claim that this automated process is operational until the production implementation has been verified.
+
+## 9. Legal Hold
+
+Deletion is suspended for records reasonably related to litigation, an audit, a regulatory investigation, a preservation request, or another documented legal obligation. The hold record must identify its scope, authority, start date, and release approval without unnecessarily copying the protected data.
+
+## 10. Exceptions and Evidence
+
+Exceptions require written approval from the policy owner and must state the data scope, reason, duration, and compensating control. Evidence of deletion and approved exceptions is retained for seven years, without storing plaintext credentials, tokens, or the deleted content itself.
+
+## 11. Approval
+
+**Approver:** Allison Fabbri<br>
+**Approval date:** [PENDING APPROVAL]
 
 ---
 
-*Document version: 0.1-draft. Approved version number to be assigned upon approval.*
+*This policy is a documented operational control, not legal advice. Applicable requirements must be confirmed for each FinanceOS entity and jurisdiction.*

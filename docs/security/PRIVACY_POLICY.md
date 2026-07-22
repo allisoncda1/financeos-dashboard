@@ -1,115 +1,127 @@
-> **DRAFT — NOT YET APPROVED.** This document requires review and approval by Allison Fabbri before becoming effective. Effective date: [PENDING APPROVAL]
+> **DRAFT — REVIEWED FOR ACCURACY, PENDING FORMAL APPROVAL AND PUBLICATION.** Effective date: [PENDING APPROVAL]
 
-# Privacy Policy
+# FinanceOS Privacy Policy
 
-**Version:** 0.1-draft  
-**Owner:** Allison Fabbri (allison@cardealer.ai)  
-**Last Updated:** 2026-07-21  
-**Review Frequency:** Annually or upon material change to data practices  
+**Version:** 0.9-review<br>
+**Owner and privacy contact:** Allison Fabbri, Controller & FinanceOS Project Lead (allison@cardealer.ai)<br>
+**Last Updated:** 2026-07-22<br>
+**Review Frequency:** At least annually and whenever FinanceOS materially changes its data practices
 
 ---
 
-## 1. Purpose
+## 1. Scope and Purpose
 
-This document describes what data FinanceOS collects, why it collects it, how it is stored and protected, and how it may be deleted. FinanceOS is an internal financial dashboard used exclusively by its operator — it is not a consumer-facing product.
+FinanceOS is a private, internal financial operations and reporting platform used only by authorized personnel working for CarDealer.ai and its affiliated companies: T3 Marketing, CarDealer.ai, TopMrktr, and Smile More. It is not sold or offered to external clients, does not provide external customer accounts, and is not available to the general public.
 
-## 2. Who This Policy Applies To
+This policy explains what information FinanceOS processes, why it is processed, where it is stored, how it is protected, and how requests concerning that information are handled.
 
-This policy applies to the single operator (Allison Fabbri) and any future internal users of FinanceOS. FinanceOS does not serve or collect data from the general public.
+## 2. Information FinanceOS Processes
 
-## 3. Data Collected
+### 2.1 Business Financial and Accounting Information
 
-### 3.1 Financial Data (via QuickBooks Online)
+FinanceOS imports and derives business records from QuickBooks Online, including:
 
-FinanceOS imports financial records from QuickBooks Online for the following entities:
-- T3 Marketing
-- CarDealer.ai
-- TopMrktr
-- Smile More
+- chart of accounts and general-ledger information;
+- invoices, bills, payments, credits, customers, and vendors;
+- accounts-receivable and accounts-payable information;
+- balance-sheet, profit-and-loss, and cash-flow information; and
+- reporting, validation, reconciliation, and historical snapshots.
 
-Data imported includes:
-- Invoices, estimates, and payments
-- Bills and vendor transactions
-- Accounts receivable and accounts payable aging data
-- Balance sheet snapshots
-- Cash flow records
-- Sales by customer and product summaries
+These records may include personal information when a customer, vendor, employee, or business contact is identifiable. FinanceOS treats that information as protected data even when it appears in a business record.
 
-This data is **business financial records** — it is not consumer personally identifiable information (PII) in the typical sense, though it may include business contact names and company names as part of invoice/billing records.
+### 2.2 Authorized User and Security Information
 
-### 3.2 Application User Data
+FinanceOS processes the minimum information needed to authenticate and authorize approved employees or contractors acting on behalf of the group, including:
 
-FinanceOS stores application user accounts for authenticated access. User records include:
-- Username / email address
-- Bcrypt-hashed password (plaintext password is never stored)
-- Role assignment
-- Session data (stored in the Neon Ops database)
+- name, business email address, and assigned role;
+- password hashes where password authentication is used;
+- encrypted multi-factor-authentication enrollment data and recovery-code hashes;
+- session identifiers and expiration data; and
+- security, consent, and audit events.
 
-**Current state:** Only one user account exists (Allison Fabbri, admin).
+Plaintext passwords, authenticator secrets, and recovery codes are not intentionally stored in application logs or source control.
 
-### 3.3 Audit and Sync Logs
+### 2.3 Operational and Audit Information
 
-FinanceOS stores pipeline sync run records (`sync_runs` table) including timestamps, entity identifiers, and sync status. These are operational records, not personal data.
+FinanceOS records synchronization runs, validation outcomes, report history, access events, and error information needed to operate, secure, and audit the platform.
 
-## 4. Purpose of Data Collection
+### 2.4 Planned Plaid Information
 
-All data collected by FinanceOS is used exclusively for:
-- Internal financial reporting across the four managed entities
-- Accounts receivable and accounts payable monitoring and reconciliation
-- Cash flow analysis
-- Operational audit trail of data sync runs
+Plaid is not yet active in production. When enabled, Plaid Link will be presented only to an authorized internal representative connecting a business bank account belonging to one of the managed group companies. FinanceOS will not offer Plaid connectivity to external customers or invite individuals to connect personal accounts. It will collect only the business bank-account and transaction information necessary for approved accounting, reconciliation, and reporting purposes. The production integration must not store Plaid credentials in source code or browser storage.
 
-FinanceOS does **not** sell, rent, share, or disclose data to any third party for commercial purposes.
+## 3. Purposes of Processing
 
-## 5. Data Storage
+FinanceOS processes information only for legitimate internal business purposes, including:
 
-Financial and operational data is stored in **Neon PostgreSQL** (cloud-hosted, encrypted at rest). Access is controlled by role-based database credentials (see `docs/security/ACCESS_CONTROL_POLICY.md`).
+- accounting, reconciliation, and financial reporting;
+- cash, receivables, payables, and transaction monitoring;
+- validation, audit trails, and issue investigation;
+- user authentication, authorization, and platform security; and
+- legal, tax, regulatory, and contractual recordkeeping.
 
-Data at rest is encrypted by the Neon platform. Data in transit is protected by TLS.
+FinanceOS does not sell personal information or use financial information for advertising.
 
-## 6. Third-Party Data Processors
+## 4. Data Sources and Consent
 
-FinanceOS relies on the following third-party platforms that may process or store data:
+Information is obtained from authorized group-company systems and authorized internal users. QuickBooks Online access uses OAuth authorization. Before any Plaid connection is created, the authorized company representative must receive a clear disclosure, confirm authority to connect the applicable business account, and provide affirmative consent through the FinanceOS/Plaid Link flow. FinanceOS records the applicable policy version and consent event.
 
-| Vendor | Role | Data Processed |
-|---|---|---|
-| Neon | Database hosting | All FinanceOS stored data |
-| Replit | Application hosting | Application traffic, logs |
-| Google Cloud Platform | Secret management, OIDC | QBO tokens (Secret Manager) |
-| Intuit / QuickBooks Online | Source of financial data | Financial records (API source) |
-| Anthropic AI API | AI-assisted features (if used) | Query context provided by operator |
-| GitHub | Source control, CI/CD | Source code, workflow logs |
+## 5. Storage, Security, and Access
 
-Each vendor is evaluated per `docs/security/THIRD_PARTY_AND_VENDOR_SECURITY_POLICY.md`.
+Financial data is stored in the FinanceOS Core PostgreSQL database. Application security, session, consent, and other Dashboard-owned operational records are stored in the FinanceOS operational PostgreSQL database.
 
-## 7. Future Plaid Integration — Placeholder
+Controls include:
 
-FinanceOS plans to add a **Plaid** integration to connect bank accounts and import bank transaction data. **This integration is not yet live.**
+- TLS for data in transit;
+- provider-managed encryption at rest;
+- role-based access controls and least-privilege access;
+- multi-factor authentication for FinanceOS and critical administrative platforms;
+- encrypted storage for application-managed TOTP secrets; and
+- restricted secrets management outside source control.
 
-When the Plaid integration is implemented, this policy will be updated to disclose:
-- What bank connection data is collected via Plaid Link
-- How Plaid access tokens are stored and encrypted
-- User consent flows for bank account connections
-- Plaid access token revocation process
+Access is limited to authorized personnel with a business need.
 
-Until Plaid is integrated, no bank account connection data is collected or stored.
+## 6. Service Providers
 
-## 8. Data Retention
+FinanceOS uses service providers to operate the platform. Depending on the feature, they may include:
 
-See `docs/security/DATA_RETENTION_AND_DELETION_POLICY.md` for retention periods and deletion procedures.
+| Provider | Purpose |
+|---|---|
+| Neon | PostgreSQL database hosting |
+| Replit | Development and application hosting |
+| Google | Business identity, OAuth, and approved integrations |
+| Intuit / QuickBooks Online | Accounting system and source records |
+| GitHub | Source control, change review, and automation |
+| Anthropic | AI-assisted features when explicitly used |
+| Plaid | Planned bank connectivity; not yet active in production |
 
-## 9. Data Deletion
+FinanceOS shares only the information reasonably necessary for the relevant service and configuration. GitHub is not intended to receive production financial records or secrets.
 
-To request deletion of any data stored in FinanceOS:
+## 7. Data Retention
 
-**Contact:** Allison Fabbri — allison@cardealer.ai
+Information is retained only while needed for an approved business, legal, security, or audit purpose. Specific periods and deletion procedures are defined in the FinanceOS Data Retention and Deletion Policy. Retention periods vary by record type; seven years is a conservative internal period for core accounting books and supporting records, not a universal legal rule for every category.
 
-Deletion requests for business financial records may be subject to legal hold requirements (IRS 7-year record retention for financial records). Operational records (session data, sync logs) may be deleted sooner.
+## 8. Access, Correction, and Deletion Requests
+
+Authorized users or affected individuals may request access, correction, restriction, or deletion by contacting:
+
+**Allison Fabbri — allison@cardealer.ai**
+
+FinanceOS verifies the requester and evaluates each request against applicable accounting, tax, contractual, security, and legal-hold requirements. If deletion cannot be completed, the requester will be informed of the applicable reason when appropriate.
+
+## 9. Security Incidents
+
+Suspected unauthorized access, disclosure, alteration, or loss of FinanceOS information must be reported immediately to the security contact above and handled under the FinanceOS Incident Response Plan.
 
 ## 10. Policy Changes
 
-Material changes to this privacy policy will be documented in the policy version history and communicated to any active users.
+Material changes are versioned, reviewed, approved, and communicated to authorized internal users. Plaid will not be enabled in production until this policy is approved, published at a public URL for transparency and Plaid diligence, linked from the application, and updated to reflect the implemented Plaid data flow. Publishing the policy does not make FinanceOS publicly accessible.
+
+## 11. Approval
+
+**Approver:** Allison Fabbri<br>
+**Approval date:** [PENDING APPROVAL]<br>
+**Public URL:** [PENDING PUBLICATION]
 
 ---
 
-*Document version: 0.1-draft. Approved version number to be assigned upon approval.*
+*This document describes current controls and clearly identifies planned controls. It is not legal advice; retention and privacy requirements must be confirmed for each applicable entity and jurisdiction.*
