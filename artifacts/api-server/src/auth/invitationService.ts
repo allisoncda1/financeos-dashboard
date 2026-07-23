@@ -41,12 +41,28 @@ export function hashToken(rawToken: string): string {
 }
 
 // ---------------------------------------------------------------------------
+// Name helpers
+// ---------------------------------------------------------------------------
+
+/** Normalize a name component: trim surrounding whitespace. */
+function normalizeName(value: string): string {
+  return value.trim();
+}
+
+/** Derive display_name from first and last name components. */
+export function deriveDisplayName(firstName: string, lastName: string): string {
+  return `${normalizeName(firstName)} ${normalizeName(lastName)}`.trim();
+}
+
+// ---------------------------------------------------------------------------
 // Types
 // ---------------------------------------------------------------------------
 
 export type InvitationRow = {
   id: string;
   email: string;
+  first_name: string;
+  last_name: string;
   display_name: string;
   role: Role;
   invited_by: string;
@@ -59,6 +75,8 @@ export type InvitationRow = {
 export type AppUserRow = {
   id: string;
   email: string;
+  first_name: string | null;
+  last_name: string | null;
   display_name: string;
   role: Role;
   password_hash: string;
@@ -77,19 +95,25 @@ export type AppUserRow = {
 
 export async function createInvitation(params: {
   email: string;
-  displayName: string;
+  firstName: string;
+  lastName: string;
   role: Role;
   invitedBy: string;
 }): Promise<{ invitation: InvitationRow; rawToken: string }> {
   const rawToken = generateInviteToken();
   const tokenHash = hashToken(rawToken);
   const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
+  const firstName = normalizeName(params.firstName);
+  const lastName = normalizeName(params.lastName);
+  const displayName = deriveDisplayName(firstName, lastName);
 
   const { rows } = await query<InvitationRow>(
-    `INSERT INTO user_invitations (email, display_name, role, token_hash, invited_by, expires_at)
-     VALUES ($1, $2, $3, $4, $5, $6)
-     RETURNING id, email, display_name, role, invited_by, expires_at, accepted_at, revoked_at, created_at`,
-    [params.email, params.displayName, params.role, tokenHash, params.invitedBy, expiresAt],
+    `INSERT INTO user_invitations
+       (email, first_name, last_name, display_name, role, token_hash, invited_by, expires_at)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+     RETURNING id, email, first_name, last_name, display_name, role,
+               invited_by, expires_at, accepted_at, revoked_at, created_at`,
+    [params.email, firstName, lastName, displayName, params.role, tokenHash, params.invitedBy, expiresAt],
   );
 
   const invitation = rows[0];
@@ -109,7 +133,8 @@ export async function createInvitation(params: {
 export async function lookupInvitationByToken(rawToken: string): Promise<InvitationRow | null> {
   const tokenHash = hashToken(rawToken);
   const { rows } = await query<InvitationRow>(
-    `SELECT id, email, display_name, role, invited_by, expires_at, accepted_at, revoked_at, created_at
+    `SELECT id, email, first_name, last_name, display_name, role,
+            invited_by, expires_at, accepted_at, revoked_at, created_at
      FROM user_invitations WHERE token_hash = $1`,
     [tokenHash],
   );
@@ -124,7 +149,8 @@ export async function acceptInvitation(params: {
 
   // Load and validate the invitation
   const { rows: invRows } = await query<InvitationRow>(
-    `SELECT id, email, display_name, role, invited_by, expires_at, accepted_at, revoked_at, created_at
+    `SELECT id, email, first_name, last_name, display_name, role,
+            invited_by, expires_at, accepted_at, revoked_at, created_at
      FROM user_invitations WHERE token_hash = $1`,
     [tokenHash],
   );
@@ -150,11 +176,12 @@ export async function acceptInvitation(params: {
     );
 
     const { rows: userRows } = await dbClient.query<AppUserRow>(
-      `INSERT INTO app_users (email, display_name, role, password_hash, invited_by)
-       VALUES ($1, $2, $3, $4, $5)
-       RETURNING id, email, display_name, role, password_hash, status, mfa_required, mfa_complete,
-                 invited_by, created_at, updated_at, last_login_at`,
-      [inv.email, inv.display_name, inv.role, passwordHash, inv.invited_by],
+      `INSERT INTO app_users
+         (email, first_name, last_name, display_name, role, password_hash, invited_by)
+       VALUES ($1, $2, $3, $4, $5, $6, $7)
+       RETURNING id, email, first_name, last_name, display_name, role, password_hash,
+                 status, mfa_required, mfa_complete, invited_by, created_at, updated_at, last_login_at`,
+      [inv.email, inv.first_name, inv.last_name, inv.display_name, inv.role, passwordHash, inv.invited_by],
     );
 
     await dbClient.query("COMMIT");
@@ -202,7 +229,8 @@ export async function revokeInvitation(params: {
 
 export async function listInvitations(): Promise<InvitationRow[]> {
   const { rows } = await query<InvitationRow>(
-    `SELECT id, email, display_name, role, invited_by, expires_at, accepted_at, revoked_at, created_at
+    `SELECT id, email, first_name, last_name, display_name, role,
+            invited_by, expires_at, accepted_at, revoked_at, created_at
      FROM user_invitations
      ORDER BY created_at DESC`,
     [],
@@ -216,8 +244,8 @@ export async function listInvitations(): Promise<InvitationRow[]> {
 
 export async function listAppUsers(): Promise<Omit<AppUserRow, "password_hash">[]> {
   const { rows } = await query<Omit<AppUserRow, "password_hash">>(
-    `SELECT id, email, display_name, role, status, mfa_required, mfa_complete,
-            invited_by, created_at, updated_at, last_login_at
+    `SELECT id, email, first_name, last_name, display_name, role, status,
+            mfa_required, mfa_complete, invited_by, created_at, updated_at, last_login_at
      FROM app_users
      ORDER BY created_at ASC`,
     [],
@@ -227,8 +255,8 @@ export async function listAppUsers(): Promise<Omit<AppUserRow, "password_hash">[
 
 export async function findAppUserByEmail(email: string): Promise<AppUserRow | null> {
   const { rows } = await query<AppUserRow>(
-    `SELECT id, email, display_name, role, password_hash, status, mfa_required, mfa_complete,
-            invited_by, created_at, updated_at, last_login_at
+    `SELECT id, email, first_name, last_name, display_name, role, password_hash, status,
+            mfa_required, mfa_complete, invited_by, created_at, updated_at, last_login_at
      FROM app_users WHERE email = $1`,
     [email.trim().toLowerCase()],
   );

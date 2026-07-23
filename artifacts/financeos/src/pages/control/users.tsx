@@ -10,6 +10,8 @@ type Role = "admin" | "cfo" | "controller" | "bookkeeper" | "investor" | "readon
 type AppUser = {
   id: string;
   email: string;
+  first_name: string | null;
+  last_name: string | null;
   display_name: string;
   role: Role;
   status: string;
@@ -21,6 +23,8 @@ type AppUser = {
 type Invitation = {
   id: string;
   email: string;
+  first_name: string;
+  last_name: string;
   display_name: string;
   role: Role;
   invited_by: string;
@@ -57,7 +61,8 @@ async function fetchInvitations(): Promise<Invitation[]> {
 
 async function postInvitation(payload: {
   email: string;
-  display_name: string;
+  first_name: string;
+  last_name: string;
   role: Role;
 }): Promise<InviteResult> {
   const res = await fetch("/api/invitations", {
@@ -155,7 +160,8 @@ type InviteFormProps = {
 
 function InviteForm({ onSuccess, onClose }: InviteFormProps) {
   const [email, setEmail] = useState("");
-  const [displayName, setDisplayName] = useState("");
+  const [firstName, setFirstName] = useState("");
+  const [lastName, setLastName] = useState("");
   const [role, setRole] = useState<Role>("readonly");
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -165,7 +171,7 @@ function InviteForm({ onSuccess, onClose }: InviteFormProps) {
     setError(null);
     setSubmitting(true);
     try {
-      const result = await postInvitation({ email, display_name: displayName, role });
+      const result = await postInvitation({ email, first_name: firstName, last_name: lastName, role });
       onSuccess(result);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Unknown error");
@@ -195,16 +201,29 @@ function InviteForm({ onSuccess, onClose }: InviteFormProps) {
               placeholder="name@company.com"
             />
           </div>
-          <div>
-            <label className="block text-[11px] font-medium text-gray-600 mb-1">Display name</label>
-            <input
-              type="text"
-              required
-              value={displayName}
-              onChange={(e) => setDisplayName(e.target.value)}
-              className="w-full px-3 py-2 text-[12px] border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-              placeholder="First Last"
-            />
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="block text-[11px] font-medium text-gray-600 mb-1">First name</label>
+              <input
+                type="text"
+                required
+                value={firstName}
+                onChange={(e) => setFirstName(e.target.value)}
+                className="w-full px-3 py-2 text-[12px] border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                placeholder="Jane"
+              />
+            </div>
+            <div>
+              <label className="block text-[11px] font-medium text-gray-600 mb-1">Last name</label>
+              <input
+                type="text"
+                required
+                value={lastName}
+                onChange={(e) => setLastName(e.target.value)}
+                className="w-full px-3 py-2 text-[12px] border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                placeholder="Smith"
+              />
+            </div>
           </div>
           <div>
             <label className="block text-[11px] font-medium text-gray-600 mb-1">Role</label>

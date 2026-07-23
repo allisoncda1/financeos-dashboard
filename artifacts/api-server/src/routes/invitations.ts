@@ -8,6 +8,8 @@
  *   - POST /api/invitations/:id/revoke requires user-management permission.
  *   - Raw tokens are never logged. token_hash is never sent to the frontend.
  *   - After accept, the user must complete MFA enrollment before full access.
+ *   - display_name is derived server-side from first_name + last_name; client-provided
+ *     display_name is never accepted or trusted.
  */
 
 import { Router, type IRouter } from "express";
@@ -49,14 +51,26 @@ router.get("/invitations", requirePermission("user-management"), async (_req, re
 router.post("/invitations", requirePermission("user-management"), async (req, res) => {
   const body = req.body as Record<string, unknown> | undefined;
   const email = typeof body?.["email"] === "string" ? body["email"].trim().toLowerCase() : "";
-  const displayName = typeof body?.["display_name"] === "string" ? body["display_name"].trim() : "";
+  const firstName = typeof body?.["first_name"] === "string" ? body["first_name"].trim() : "";
+  const lastName = typeof body?.["last_name"] === "string" ? body["last_name"].trim() : "";
   const role = typeof body?.["role"] === "string" ? body["role"] : "";
 
-  if (!email || !displayName || !role) {
-    res.status(400).json({ ok: false, error: "email, display_name, and role are required", ts: new Date().toISOString() });
+  if (!email) {
+    res.status(400).json({ ok: false, error: "email is required", ts: new Date().toISOString() });
     return;
   }
-
+  if (!firstName) {
+    res.status(400).json({ ok: false, error: "first_name is required and must not be empty", ts: new Date().toISOString() });
+    return;
+  }
+  if (!lastName) {
+    res.status(400).json({ ok: false, error: "last_name is required and must not be empty", ts: new Date().toISOString() });
+    return;
+  }
+  if (!role) {
+    res.status(400).json({ ok: false, error: "role is required", ts: new Date().toISOString() });
+    return;
+  }
   if (!VALID_ROLES.includes(role as Role)) {
     res.status(400).json({ ok: false, error: `role must be one of: ${VALID_ROLES.join(", ")}`, ts: new Date().toISOString() });
     return;
@@ -67,7 +81,8 @@ router.post("/invitations", requirePermission("user-management"), async (req, re
   try {
     const { invitation, rawToken } = await createInvitation({
       email,
-      displayName,
+      firstName,
+      lastName,
       role: role as Role,
       invitedBy: actorEmail,
     });
@@ -82,6 +97,8 @@ router.post("/invitations", requirePermission("user-management"), async (req, re
       data: {
         id: invitation.id,
         email: invitation.email,
+        first_name: invitation.first_name,
+        last_name: invitation.last_name,
         display_name: invitation.display_name,
         role: invitation.role,
         invited_by: invitation.invited_by,
@@ -127,7 +144,9 @@ publicRouter.get("/invitations/:token", async (req, res) => {
       return;
     }
 
-    // Return minimal info needed to pre-fill the accept form
+    // Return only the minimum fields needed to pre-fill the accept form.
+    // first_name and last_name are not returned — the accept page has no need
+    // for structured names and this limits public data exposure.
     res.json({
       ok: true,
       data: {
