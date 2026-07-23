@@ -1,5 +1,6 @@
 import { Settings, User, Shield, Sliders, Database, Lock, Cpu, Users } from "lucide-react";
 import { useAiStatus } from "@/hooks/useApi";
+import { useAuth } from "@/lib/auth";
 import { useLocation } from "wouter";
 
 const USER_PROFILE = {
@@ -100,6 +101,7 @@ function AiPlatformSection() {
 }
 
 export default function SettingsPage() {
+  const { user } = useAuth();
   return (
     <div className="h-full flex flex-col overflow-hidden bg-[#F4F5F7]">
       {/* Header */}
@@ -138,8 +140,8 @@ export default function SettingsPage() {
             <SettingRow label="Member since"  value={USER_PROFILE.since} />
           </SectionCard>
 
-          {/* Users & Access */}
-          <UsersAccessCard />
+          {/* Users & Access — admin only */}
+          {user?.role === "admin" && <UsersAccessCard />}
 
           {/* System Preferences */}
           <SectionCard title="System Preferences" icon={Sliders} iconColor="#3B82F6">
