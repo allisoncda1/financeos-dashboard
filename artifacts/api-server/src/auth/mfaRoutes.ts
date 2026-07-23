@@ -416,7 +416,11 @@ router.post("/challenge", challengeLimiter, async (req, res) => {
       return;
     }
 
-    // MFA passed — regenerate session to prevent fixation after full auth.
+    // MFA passed — mark complete in DB (best-effort, covers accounts that skipped enrollment).
+    const { markUserMfaComplete } = await import("./invitationService.js").catch(() => ({ markUserMfaComplete: null }));
+    if (markUserMfaComplete) await markUserMfaComplete(pendingUser.email).catch(() => undefined);
+
+    // Regenerate session to prevent fixation after full auth.
     const promotedUser = pendingUser;
     await new Promise<void>((resolve, reject) => {
       req.session.regenerate((err) => (err ? reject(err) : resolve()));
