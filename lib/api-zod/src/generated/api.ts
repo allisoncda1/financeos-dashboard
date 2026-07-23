@@ -1031,10 +1031,12 @@ export const ListAppUsersResponse = zod.object({
   "email": zod.string().email(),
   "display_name": zod.string(),
   "role": zod.enum(['admin', 'cfo', 'controller', 'bookkeeper', 'investor', 'readonly']),
-  "is_disabled": zod.boolean(),
+  "status": zod.enum(['active', 'disabled']).describe('Account status — \"active\" or \"disabled\"'),
   "mfa_required": zod.boolean(),
   "mfa_complete": zod.boolean(),
+  "invited_by": zod.string().email().describe('Email of the user who created this invitation'),
   "created_at": zod.coerce.date(),
+  "updated_at": zod.coerce.date(),
   "last_login_at": zod.coerce.date().nullish()
 }).describe('A DB-resident app user created via invitation. Never includes\npassword_hash or token_hash — those fields are never surfaced in any API response.\n'))
 }))

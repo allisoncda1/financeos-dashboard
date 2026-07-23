@@ -243,6 +243,17 @@ export const AppUserRole = {
 } as const;
 
 /**
+ * Account status — "active" or "disabled"
+ */
+export type AppUserStatus = typeof AppUserStatus[keyof typeof AppUserStatus];
+
+
+export const AppUserStatus = {
+  active: 'active',
+  disabled: 'disabled',
+} as const;
+
+/**
  * A DB-resident app user created via invitation. Never includes
  * password_hash or token_hash — those fields are never surfaced in any API response.
  */
@@ -251,10 +262,14 @@ export interface AppUser {
   email: string;
   display_name: string;
   role: AppUserRole;
-  is_disabled: boolean;
+  /** Account status — "active" or "disabled" */
+  status: AppUserStatus;
   mfa_required: boolean;
   mfa_complete: boolean;
+  /** Email of the user who created this invitation */
+  invited_by: string;
   created_at: string;
+  updated_at: string;
   last_login_at?: string | null;
 }
 
