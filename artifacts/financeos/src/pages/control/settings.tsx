@@ -1,5 +1,6 @@
-import { Settings, User, Shield, Sliders, Database, Lock, Cpu } from "lucide-react";
+import { Settings, User, Shield, Sliders, Database, Lock, Cpu, Users } from "lucide-react";
 import { useAiStatus } from "@/hooks/useApi";
+import { useNavigate } from "react-router-dom";
 
 const USER_PROFILE = {
   name:  "Allison Fabbri",
@@ -39,6 +40,24 @@ function SettingRow({ label, value, badge }: {
         )}
       </div>
     </div>
+  );
+}
+
+function UsersAccessCard() {
+  const navigate = useNavigate();
+  return (
+    <SectionCard title="Users & Access" icon={Users} iconColor="#6366F1">
+      <p className="text-[12px] text-gray-500 leading-relaxed">
+        Manage who can access FinanceOS. Invite team members, assign roles, and review pending invitations.
+      </p>
+      <button
+        onClick={() => navigate("/control/users")}
+        className="mt-1 w-full flex items-center justify-center gap-2 px-3 py-2 rounded-lg bg-indigo-50 hover:bg-indigo-100 border border-indigo-200 text-indigo-700 text-[12px] font-semibold transition-colors"
+      >
+        <Users className="w-3.5 h-3.5" />
+        Manage users &amp; invitations
+      </button>
+    </SectionCard>
   );
 }
 
@@ -118,6 +137,9 @@ export default function SettingsPage() {
             <SettingRow label="Role"          value={USER_PROFILE.role} />
             <SettingRow label="Member since"  value={USER_PROFILE.since} />
           </SectionCard>
+
+          {/* Users & Access */}
+          <UsersAccessCard />
 
           {/* System Preferences */}
           <SectionCard title="System Preferences" icon={Sliders} iconColor="#3B82F6">
