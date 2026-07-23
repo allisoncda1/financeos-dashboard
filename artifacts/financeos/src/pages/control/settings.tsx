@@ -1,6 +1,6 @@
 import { Settings, User, Shield, Sliders, Database, Lock, Cpu, Users } from "lucide-react";
 import { useAiStatus } from "@/hooks/useApi";
-import { useNavigate } from "react-router-dom";
+import { useLocation } from "wouter";
 
 const USER_PROFILE = {
   name:  "Allison Fabbri",
@@ -44,7 +44,7 @@ function SettingRow({ label, value, badge }: {
 }
 
 function UsersAccessCard() {
-  const navigate = useNavigate();
+  const [, navigate] = useLocation();
   return (
     <SectionCard title="Users & Access" icon={Users} iconColor="#6366F1">
       <p className="text-[12px] text-gray-500 leading-relaxed">
