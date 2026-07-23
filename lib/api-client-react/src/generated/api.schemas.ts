@@ -260,6 +260,11 @@ export const AppUserStatus = {
 export interface AppUser {
   id: string;
   email: string;
+  /** Given name, backfilled from display_name for pre-migration rows */
+  first_name?: string | null;
+  /** Family name, backfilled from display_name for pre-migration rows */
+  last_name?: string | null;
+  /** Derived from first_name + " " + last_name; included for backward compatibility */
   display_name: string;
   role: AppUserRole;
   /** Account status — "active" or "disabled" */
@@ -292,6 +297,11 @@ export const InvitationRecordRole = {
 export interface InvitationRecord {
   id: string;
   email: string;
+  /** Given name provided by the admin at invitation time */
+  first_name: string;
+  /** Family name provided by the admin at invitation time */
+  last_name: string;
+  /** Derived from first_name + " " + last_name */
   display_name: string;
   role: InvitationRecordRole;
   invited_by: string;
@@ -319,8 +329,16 @@ export const CreateInvitationRequestRole = {
 export interface CreateInvitationRequest {
   /** Email address of the person being invited */
   email: string;
-  /** Full name shown in the UI */
-  display_name: string;
+  /**
+     * Invitee's given name — trimmed server-side; must be non-empty after trim
+     * @minLength 1
+     */
+  first_name: string;
+  /**
+     * Invitee's family name — trimmed server-side; must be non-empty after trim
+     * @minLength 1
+     */
+  last_name: string;
   /** Role assigned to the new user on account creation */
   role: CreateInvitationRequestRole;
 }
@@ -345,6 +363,11 @@ export const CreateInvitationResponseRole = {
 export interface CreateInvitationResponse {
   id: string;
   email: string;
+  /** Given name as normalized and stored */
+  first_name: string;
+  /** Family name as normalized and stored */
+  last_name: string;
+  /** Derived from first_name + " " + last_name */
   display_name: string;
   role: CreateInvitationResponseRole;
   invited_by: string;

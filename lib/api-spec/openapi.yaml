@@ -351,8 +351,17 @@ components:
         email:
           type: string
           format: email
+        first_name:
+          type: string
+          nullable: true
+          description: Given name, backfilled from display_name for pre-migration rows
+        last_name:
+          type: string
+          nullable: true
+          description: Family name, backfilled from display_name for pre-migration rows
         display_name:
           type: string
+          description: Derived from first_name + " " + last_name; included for backward compatibility
         role:
           type: string
           enum: [admin, cfo, controller, bookkeeper, investor, readonly]
@@ -392,8 +401,15 @@ components:
         email:
           type: string
           format: email
+        first_name:
+          type: string
+          description: Given name provided by the admin at invitation time
+        last_name:
+          type: string
+          description: Family name provided by the admin at invitation time
         display_name:
           type: string
+          description: Derived from first_name + " " + last_name
         role:
           type: string
           enum: [admin, cfo, controller, bookkeeper, investor, readonly]
@@ -414,7 +430,7 @@ components:
         created_at:
           type: string
           format: date-time
-      required: [id, email, display_name, role, invited_by, expires_at, created_at]
+      required: [id, email, first_name, last_name, display_name, role, invited_by, expires_at, created_at]
 
     CreateInvitationRequest:
       type: object
@@ -423,14 +439,19 @@ components:
           type: string
           format: email
           description: Email address of the person being invited
-        display_name:
+        first_name:
           type: string
-          description: Full name shown in the UI
+          minLength: 1
+          description: Invitee's given name — trimmed server-side; must be non-empty after trim
+        last_name:
+          type: string
+          minLength: 1
+          description: Invitee's family name — trimmed server-side; must be non-empty after trim
         role:
           type: string
           enum: [admin, cfo, controller, bookkeeper, investor, readonly]
           description: Role assigned to the new user on account creation
-      required: [email, display_name, role]
+      required: [email, first_name, last_name, role]
 
     CreateInvitationResponse:
       type: object
@@ -445,8 +466,15 @@ components:
         email:
           type: string
           format: email
+        first_name:
+          type: string
+          description: Given name as normalized and stored
+        last_name:
+          type: string
+          description: Family name as normalized and stored
         display_name:
           type: string
+          description: Derived from first_name + " " + last_name
         role:
           type: string
           enum: [admin, cfo, controller, bookkeeper, investor, readonly]
@@ -466,7 +494,7 @@ components:
             One-time invite link containing the raw token. Valid for 7 days.
             Send this to the invitee out-of-band (email, Slack, etc.).
             The raw token is never stored server-side — only its SHA-256 digest is.
-      required: [id, email, display_name, role, invited_by, expires_at, created_at, invite_url]
+      required: [id, email, first_name, last_name, display_name, role, invited_by, expires_at, created_at, invite_url]
 
     InvitationLookupResponse:
       type: object

@@ -1029,7 +1029,9 @@ export const ListAppUsersResponse = zod.object({
   "data": zod.array(zod.object({
   "id": zod.string().uuid(),
   "email": zod.string().email(),
-  "display_name": zod.string(),
+  "first_name": zod.string().nullish().describe('Given name, backfilled from display_name for pre-migration rows'),
+  "last_name": zod.string().nullish().describe('Family name, backfilled from display_name for pre-migration rows'),
+  "display_name": zod.string().describe('Derived from first_name + \" \" + last_name; included for backward compatibility'),
   "role": zod.enum(['admin', 'cfo', 'controller', 'bookkeeper', 'investor', 'readonly']),
   "status": zod.enum(['active', 'disabled']).describe('Account status — \"active\" or \"disabled\"'),
   "mfa_required": zod.boolean(),
@@ -1057,7 +1059,9 @@ export const ListInvitationsResponse = zod.object({
   "data": zod.array(zod.object({
   "id": zod.string().uuid(),
   "email": zod.string().email(),
-  "display_name": zod.string(),
+  "first_name": zod.string().describe('Given name provided by the admin at invitation time'),
+  "last_name": zod.string().describe('Family name provided by the admin at invitation time'),
+  "display_name": zod.string().describe('Derived from first_name + \" \" + last_name'),
   "role": zod.enum(['admin', 'cfo', 'controller', 'bookkeeper', 'investor', 'readonly']),
   "invited_by": zod.string().email(),
   "expires_at": zod.coerce.date(),
@@ -1075,9 +1079,14 @@ export const ListInvitationsResponse = zod.object({
  * Requires `user-management` permission.
  * @summary Create a new user invitation
  */
+
+
+
+
 export const CreateInvitationBody = zod.object({
   "email": zod.string().email().describe('Email address of the person being invited'),
-  "display_name": zod.string().describe('Full name shown in the UI'),
+  "first_name": zod.string().min(1).describe('Invitee\'s given name — trimmed server-side; must be non-empty after trim'),
+  "last_name": zod.string().min(1).describe('Invitee\'s family name — trimmed server-side; must be non-empty after trim'),
   "role": zod.enum(['admin', 'cfo', 'controller', 'bookkeeper', 'investor', 'readonly']).describe('Role assigned to the new user on account creation')
 })
 
@@ -1090,7 +1099,9 @@ export const CreateInvitationResponse = zod.object({
   "data": zod.object({
   "id": zod.string().uuid(),
   "email": zod.string().email(),
-  "display_name": zod.string(),
+  "first_name": zod.string().describe('Given name as normalized and stored'),
+  "last_name": zod.string().describe('Family name as normalized and stored'),
+  "display_name": zod.string().describe('Derived from first_name + \" \" + last_name'),
   "role": zod.enum(['admin', 'cfo', 'controller', 'bookkeeper', 'investor', 'readonly']),
   "invited_by": zod.string().email(),
   "expires_at": zod.coerce.date(),
