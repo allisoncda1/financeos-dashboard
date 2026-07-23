@@ -17,6 +17,7 @@ const ALL_PERMISSIONS: Permission[] = [
   "settings",
   "pipeline_refresh",
   "validation",
+  "user-management",
 ];
 
 export const ROLE_PERMISSIONS: Record<Role, Permission[]> = {
@@ -42,6 +43,7 @@ export const ROLE_PERMISSIONS: Record<Role, Permission[]> = {
     "reports",
     "validation",
     "control",
+    "user-management",
   ],
   bookkeeper: ["entity_pages", "customers", "vendors", "operations"],
   investor: ["dashboard", "reports", "exports"],
