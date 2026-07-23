@@ -230,6 +230,188 @@ export interface DraftGenerateRequest {
   format: DraftGenerateRequestFormat;
 }
 
+export type AppUserRole = typeof AppUserRole[keyof typeof AppUserRole];
+
+
+export const AppUserRole = {
+  admin: 'admin',
+  cfo: 'cfo',
+  controller: 'controller',
+  bookkeeper: 'bookkeeper',
+  investor: 'investor',
+  readonly: 'readonly',
+} as const;
+
+/**
+ * Account status — "active" or "disabled"
+ */
+export type AppUserStatus = typeof AppUserStatus[keyof typeof AppUserStatus];
+
+
+export const AppUserStatus = {
+  active: 'active',
+  disabled: 'disabled',
+} as const;
+
+/**
+ * A DB-resident app user created via invitation. Never includes
+ * password_hash or token_hash — those fields are never surfaced in any API response.
+ */
+export interface AppUser {
+  id: string;
+  email: string;
+  display_name: string;
+  role: AppUserRole;
+  /** Account status — "active" or "disabled" */
+  status: AppUserStatus;
+  mfa_required: boolean;
+  mfa_complete: boolean;
+  /** Email of the user who created this invitation */
+  invited_by: string;
+  created_at: string;
+  updated_at: string;
+  last_login_at?: string | null;
+}
+
+export type InvitationRecordRole = typeof InvitationRecordRole[keyof typeof InvitationRecordRole];
+
+
+export const InvitationRecordRole = {
+  admin: 'admin',
+  cfo: 'cfo',
+  controller: 'controller',
+  bookkeeper: 'bookkeeper',
+  investor: 'investor',
+  readonly: 'readonly',
+} as const;
+
+/**
+ * A pending or consumed invitation record. token_hash is never included —
+ * only the opaque invite_url (raw token embedded) is returned at creation time.
+ */
+export interface InvitationRecord {
+  id: string;
+  email: string;
+  display_name: string;
+  role: InvitationRecordRole;
+  invited_by: string;
+  expires_at: string;
+  accepted_at?: string | null;
+  revoked_at?: string | null;
+  created_at: string;
+}
+
+/**
+ * Role assigned to the new user on account creation
+ */
+export type CreateInvitationRequestRole = typeof CreateInvitationRequestRole[keyof typeof CreateInvitationRequestRole];
+
+
+export const CreateInvitationRequestRole = {
+  admin: 'admin',
+  cfo: 'cfo',
+  controller: 'controller',
+  bookkeeper: 'bookkeeper',
+  investor: 'investor',
+  readonly: 'readonly',
+} as const;
+
+export interface CreateInvitationRequest {
+  /** Email address of the person being invited */
+  email: string;
+  /** Full name shown in the UI */
+  display_name: string;
+  /** Role assigned to the new user on account creation */
+  role: CreateInvitationRequestRole;
+}
+
+export type CreateInvitationResponseRole = typeof CreateInvitationResponseRole[keyof typeof CreateInvitationResponseRole];
+
+
+export const CreateInvitationResponseRole = {
+  admin: 'admin',
+  cfo: 'cfo',
+  controller: 'controller',
+  bookkeeper: 'bookkeeper',
+  investor: 'investor',
+  readonly: 'readonly',
+} as const;
+
+/**
+ * Returned once on successful invitation creation. invite_url contains the raw
+ * token embedded in the accept link. This is the only time the raw token is
+ * available — it is never stored or logged. token_hash is never returned.
+ */
+export interface CreateInvitationResponse {
+  id: string;
+  email: string;
+  display_name: string;
+  role: CreateInvitationResponseRole;
+  invited_by: string;
+  expires_at: string;
+  created_at: string;
+  /**
+     * One-time invite link containing the raw token. Valid for 7 days.
+     * Send this to the invitee out-of-band (email, Slack, etc.).
+     * The raw token is never stored server-side — only its SHA-256 digest is.
+     */
+  invite_url: string;
+}
+
+export type InvitationLookupResponseRole = typeof InvitationLookupResponseRole[keyof typeof InvitationLookupResponseRole];
+
+
+export const InvitationLookupResponseRole = {
+  admin: 'admin',
+  cfo: 'cfo',
+  controller: 'controller',
+  bookkeeper: 'bookkeeper',
+  investor: 'investor',
+  readonly: 'readonly',
+} as const;
+
+/**
+ * Minimal invitation data returned when the accept page validates a token.
+ * Never includes token_hash or the raw token.
+ */
+export interface InvitationLookupResponse {
+  email: string;
+  display_name: string;
+  role: InvitationLookupResponseRole;
+  expires_at: string;
+}
+
+export interface AcceptInvitationRequest {
+  /**
+     * Password for the new account — minimum 12 characters, stored as bcrypt hash (cost 12)
+     * @minLength 12
+     */
+  password: string;
+}
+
+export type AcceptInvitationResponseRole = typeof AcceptInvitationResponseRole[keyof typeof AcceptInvitationResponseRole];
+
+
+export const AcceptInvitationResponseRole = {
+  admin: 'admin',
+  cfo: 'cfo',
+  controller: 'controller',
+  bookkeeper: 'bookkeeper',
+  investor: 'investor',
+  readonly: 'readonly',
+} as const;
+
+/**
+ * Returned after account creation. The user is NOT logged in — they must log in and complete MFA enrollment.
+ */
+export interface AcceptInvitationResponse {
+  email: string;
+  display_name: string;
+  role: AcceptInvitationResponseRole;
+  mfa_required: boolean;
+  mfa_complete: boolean;
+}
+
 export type AiAnalyzeRequestEntitiesItem = typeof AiAnalyzeRequestEntitiesItem[keyof typeof AiAnalyzeRequestEntitiesItem];
 
 
@@ -422,5 +604,25 @@ export type ReorderCommentaryBody = {
 
 export type ToggleCommentaryBody = {
   included: boolean;
+};
+
+export type ListAppUsers200 = ApiEnvelope & {
+  data?: AppUser[];
+};
+
+export type ListInvitations200 = ApiEnvelope & {
+  data?: InvitationRecord[];
+};
+
+export type CreateInvitation201 = ApiEnvelope & {
+  data?: CreateInvitationResponse;
+};
+
+export type LookupInvitation200 = ApiEnvelope & {
+  data?: InvitationLookupResponse;
+};
+
+export type AcceptInvitation201 = ApiEnvelope & {
+  data?: AcceptInvitationResponse;
 };
 

@@ -20,6 +20,8 @@ import type {
 } from '@tanstack/react-query';
 
 import type {
+  AcceptInvitation201,
+  AcceptInvitationRequest,
   AiAnalyzeRequest,
   AiQuestionRequest,
   AiReportSummaryRequest,
@@ -27,6 +29,8 @@ import type {
   BudgetAnnualInput,
   BudgetPeriodInput,
   CreateDraftBody,
+  CreateInvitation201,
+  CreateInvitationRequest,
   DraftGenerateRequest,
   ErrorResponse,
   ForbiddenResponse,
@@ -38,9 +42,12 @@ import type {
   GetModelCashflowParams,
   GetModelHistoryParams,
   HealthStatus,
+  ListAppUsers200,
   ListDraftsParams,
+  ListInvitations200,
   ListReportHistoryParams,
   LoginRequest,
+  LookupInvitation200,
   NotFoundResponse,
   ReorderCommentaryBody,
   ReportGenerateRequest,
@@ -4660,5 +4667,471 @@ export const useApproveCommentary = <TError = ErrorType<UnauthorizedResponse | E
         TContext
       > => {
       return useMutation(getApproveCommentaryMutationOptions(options));
+    }
+
+export const getListAppUsersUrl = () => {
+
+
+
+
+  return `/api/users`
+}
+
+/**
+ * Returns all users created via invitation (DB-resident). Env-var accounts
+ * (FINANCEOS_ADMIN_EMAIL, FINANCEOS_USERS) are not included.
+ * Requires `user-management` permission (admin and controller roles).
+ * password_hash is never returned.
+ * @summary List all DB-resident app users
+ */
+export const listAppUsers = async ( options?: RequestInit): Promise<ListAppUsers200> => {
+
+  return customFetch<ListAppUsers200>(getListAppUsersUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getListAppUsersQueryKey = () => {
+    return [
+    `/api/users`
+    ] as const;
+    }
+
+
+export const getListAppUsersQueryOptions = <TData = Awaited<ReturnType<typeof listAppUsers>>, TError = ErrorType<UnauthorizedResponse | ForbiddenResponse | ErrorResponse>>( options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listAppUsers>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getListAppUsersQueryKey();
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof listAppUsers>>> = ({ signal }) => listAppUsers({ signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof listAppUsers>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type ListAppUsersQueryResult = NonNullable<Awaited<ReturnType<typeof listAppUsers>>>
+export type ListAppUsersQueryError = ErrorType<UnauthorizedResponse | ForbiddenResponse | ErrorResponse>
+
+
+/**
+ * @summary List all DB-resident app users
+ */
+
+export function useListAppUsers<TData = Awaited<ReturnType<typeof listAppUsers>>, TError = ErrorType<UnauthorizedResponse | ForbiddenResponse | ErrorResponse>>(
+  options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listAppUsers>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getListAppUsersQueryOptions(options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getListInvitationsUrl = () => {
+
+
+
+
+  return `/api/invitations`
+}
+
+/**
+ * Returns all invitation records (pending, accepted, and revoked).
+ * Requires `user-management` permission.
+ * token_hash is never returned in any record.
+ * @summary List all invitations
+ */
+export const listInvitations = async ( options?: RequestInit): Promise<ListInvitations200> => {
+
+  return customFetch<ListInvitations200>(getListInvitationsUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getListInvitationsQueryKey = () => {
+    return [
+    `/api/invitations`
+    ] as const;
+    }
+
+
+export const getListInvitationsQueryOptions = <TData = Awaited<ReturnType<typeof listInvitations>>, TError = ErrorType<UnauthorizedResponse | ForbiddenResponse | ErrorResponse>>( options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listInvitations>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getListInvitationsQueryKey();
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof listInvitations>>> = ({ signal }) => listInvitations({ signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof listInvitations>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type ListInvitationsQueryResult = NonNullable<Awaited<ReturnType<typeof listInvitations>>>
+export type ListInvitationsQueryError = ErrorType<UnauthorizedResponse | ForbiddenResponse | ErrorResponse>
+
+
+/**
+ * @summary List all invitations
+ */
+
+export function useListInvitations<TData = Awaited<ReturnType<typeof listInvitations>>, TError = ErrorType<UnauthorizedResponse | ForbiddenResponse | ErrorResponse>>(
+  options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listInvitations>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getListInvitationsQueryOptions(options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getCreateInvitationUrl = () => {
+
+
+
+
+  return `/api/invitations`
+}
+
+/**
+ * Generates a cryptographically random 64-char hex invite token (from
+ * crypto.randomBytes(32)). Only the SHA-256 digest is stored — the raw token
+ * is returned once in `invite_url` and never persisted or logged.
+ * Requires `user-management` permission.
+ * @summary Create a new user invitation
+ */
+export const createInvitation = async (createInvitationRequest: CreateInvitationRequest, options?: RequestInit): Promise<CreateInvitation201> => {
+
+  return customFetch<CreateInvitation201>(getCreateInvitationUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(createInvitationRequest)
+  }
+);}
+
+
+
+
+export const getCreateInvitationMutationOptions = <TError = ErrorType<ErrorResponse | UnauthorizedResponse | ForbiddenResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createInvitation>>, TError,{data: BodyType<CreateInvitationRequest>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof createInvitation>>, TError,{data: BodyType<CreateInvitationRequest>}, TContext> => {
+
+const mutationKey = ['createInvitation'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof createInvitation>>, {data: BodyType<CreateInvitationRequest>}> = (props) => {
+          const {data} = props ?? {};
+
+          return  createInvitation(data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type CreateInvitationMutationResult = NonNullable<Awaited<ReturnType<typeof createInvitation>>>
+    export type CreateInvitationMutationBody = BodyType<CreateInvitationRequest>
+    export type CreateInvitationMutationError = ErrorType<ErrorResponse | UnauthorizedResponse | ForbiddenResponse>
+
+    /**
+ * @summary Create a new user invitation
+ */
+export const useCreateInvitation = <TError = ErrorType<ErrorResponse | UnauthorizedResponse | ForbiddenResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createInvitation>>, TError,{data: BodyType<CreateInvitationRequest>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof createInvitation>>,
+        TError,
+        {data: BodyType<CreateInvitationRequest>},
+        TContext
+      > => {
+      return useMutation(getCreateInvitationMutationOptions(options));
+    }
+
+export const getLookupInvitationUrl = (token: string,) => {
+
+
+
+
+  return `/api/invitations/${token}`
+}
+
+/**
+ * Public endpoint — no session required. Called by the accept-invite page
+ * on mount to pre-fill the form and confirm the token is still valid.
+ * Returns minimal data only (email, display_name, role, expires_at).
+ * token_hash is never returned.
+ * @summary Validate an invite token and return invitation metadata
+ */
+export const lookupInvitation = async (token: string, options?: RequestInit): Promise<LookupInvitation200> => {
+
+  return customFetch<LookupInvitation200>(getLookupInvitationUrl(token),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getLookupInvitationQueryKey = (token: string,) => {
+    return [
+    `/api/invitations/${token}`
+    ] as const;
+    }
+
+
+export const getLookupInvitationQueryOptions = <TData = Awaited<ReturnType<typeof lookupInvitation>>, TError = ErrorType<ErrorResponse>>(token: string, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof lookupInvitation>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getLookupInvitationQueryKey(token);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof lookupInvitation>>> = ({ signal }) => lookupInvitation(token, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, enabled: token !== null && token !== undefined, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof lookupInvitation>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type LookupInvitationQueryResult = NonNullable<Awaited<ReturnType<typeof lookupInvitation>>>
+export type LookupInvitationQueryError = ErrorType<ErrorResponse>
+
+
+/**
+ * @summary Validate an invite token and return invitation metadata
+ */
+
+export function useLookupInvitation<TData = Awaited<ReturnType<typeof lookupInvitation>>, TError = ErrorType<ErrorResponse>>(
+ token: string, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof lookupInvitation>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getLookupInvitationQueryOptions(token,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getAcceptInvitationUrl = (token: string,) => {
+
+
+
+
+  return `/api/invitations/${token}/accept`
+}
+
+/**
+ * Public endpoint — no session required. Consumes the invite token
+ * (single-use), hashes the password with bcrypt (cost 12), creates
+ * the `app_users` row, and marks the invitation accepted.
+ * The new user is NOT automatically logged in — they must visit /login
+ * and complete TOTP MFA enrollment before gaining full access.
+ * token_hash is never returned.
+ * @summary Accept an invitation and create a user account
+ */
+export const acceptInvitation = async (token: string,
+    acceptInvitationRequest: AcceptInvitationRequest, options?: RequestInit): Promise<AcceptInvitation201> => {
+
+  return customFetch<AcceptInvitation201>(getAcceptInvitationUrl(token),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(acceptInvitationRequest)
+  }
+);}
+
+
+
+
+export const getAcceptInvitationMutationOptions = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof acceptInvitation>>, TError,{token: string;data: BodyType<AcceptInvitationRequest>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof acceptInvitation>>, TError,{token: string;data: BodyType<AcceptInvitationRequest>}, TContext> => {
+
+const mutationKey = ['acceptInvitation'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof acceptInvitation>>, {token: string;data: BodyType<AcceptInvitationRequest>}> = (props) => {
+          const {token,data} = props ?? {};
+
+          return  acceptInvitation(token,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type AcceptInvitationMutationResult = NonNullable<Awaited<ReturnType<typeof acceptInvitation>>>
+    export type AcceptInvitationMutationBody = BodyType<AcceptInvitationRequest>
+    export type AcceptInvitationMutationError = ErrorType<ErrorResponse>
+
+    /**
+ * @summary Accept an invitation and create a user account
+ */
+export const useAcceptInvitation = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof acceptInvitation>>, TError,{token: string;data: BodyType<AcceptInvitationRequest>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof acceptInvitation>>,
+        TError,
+        {token: string;data: BodyType<AcceptInvitationRequest>},
+        TContext
+      > => {
+      return useMutation(getAcceptInvitationMutationOptions(options));
+    }
+
+export const getRevokeInvitationUrl = (id: string,) => {
+
+
+
+
+  return `/api/invitations/${id}/revoke`
+}
+
+/**
+ * Marks the invitation as revoked so the token can no longer be accepted.
+ * Requires `user-management` permission. Only pending (not yet accepted
+ * or already revoked) invitations can be revoked.
+ * @summary Revoke a pending invitation
+ */
+export const revokeInvitation = async (id: string, options?: RequestInit): Promise<SimpleOkResponse> => {
+
+  return customFetch<SimpleOkResponse>(getRevokeInvitationUrl(id),
+  {
+    ...options,
+    method: 'POST'
+
+
+  }
+);}
+
+
+
+
+export const getRevokeInvitationMutationOptions = <TError = ErrorType<UnauthorizedResponse | ForbiddenResponse | ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof revokeInvitation>>, TError,{id: string}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof revokeInvitation>>, TError,{id: string}, TContext> => {
+
+const mutationKey = ['revokeInvitation'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof revokeInvitation>>, {id: string}> = (props) => {
+          const {id} = props ?? {};
+
+          return  revokeInvitation(id,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type RevokeInvitationMutationResult = NonNullable<Awaited<ReturnType<typeof revokeInvitation>>>
+
+    export type RevokeInvitationMutationError = ErrorType<UnauthorizedResponse | ForbiddenResponse | ErrorResponse>
+
+    /**
+ * @summary Revoke a pending invitation
+ */
+export const useRevokeInvitation = <TError = ErrorType<UnauthorizedResponse | ForbiddenResponse | ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof revokeInvitation>>, TError,{id: string}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof revokeInvitation>>,
+        TError,
+        {id: string},
+        TContext
+      > => {
+      return useMutation(getRevokeInvitationMutationOptions(options));
     }
 

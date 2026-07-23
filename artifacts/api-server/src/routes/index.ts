@@ -14,6 +14,8 @@ import pipelineRouter from "./pipeline";
 import budgetRouter from "./budget";
 import accountingRouter from "./accounting";
 import plaidRouter from "./plaid";
+import usersRouter from "./users";
+import invitationsRouter, { invitationsPublicRouter } from "./invitations";
 import mfaRouter from "../auth/mfaRoutes";
 import { requireAuth } from "../auth/middleware";
 
@@ -30,6 +32,9 @@ router.use("/auth/mfa", mfaRouter);
 // dashboard users — it must stay outside the blanket requireAuth gate below.
 router.use("/pipeline", pipelineRouter);
 
+// Invite accept endpoints are public (called before the user has a session).
+router.use(invitationsPublicRouter);
+
 // Everything below requires an authenticated session.
 router.use(requireAuth);
 
@@ -45,5 +50,7 @@ router.use("/ai", aiRouter);
 router.use(budgetRouter);
 router.use(accountingRouter);
 router.use("/plaid", plaidRouter);
+router.use(usersRouter);
+router.use(invitationsRouter);
 
 export default router;

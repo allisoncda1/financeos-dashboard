@@ -267,6 +267,10 @@ router.post("/enroll/totp/verify", requireMfaEnrollment, async (req, res) => {
 
     await logMfaEvent(user.email, "enrolled", req.ip, req.headers["user-agent"]);
 
+    // Mark mfa_complete for DB-resident invited users (best-effort; env-var users skip silently).
+    const { markUserMfaComplete } = await import("./invitationService.js").catch(() => ({ markUserMfaComplete: null }));
+    if (markUserMfaComplete) await markUserMfaComplete(user.email).catch(() => undefined);
+
     // Enrollment is now complete. Regenerate again at the authentication-state
     // boundary, then promote the same user into a fully authenticated session.
     const promotedUser = user;

@@ -21,7 +21,8 @@ export type Permission =
   | "control"
   | "settings"
   | "pipeline_refresh"
-  | "validation";
+  | "validation"
+  | "user-management";
 
 export type AuthUser = {
   id: string;
@@ -30,6 +31,8 @@ export type AuthUser = {
   name: string;
   mfaEnabled?: boolean;
   mfaPending?: boolean;
+  /** Set for DB-resident invited users only; indicates whether MFA enrollment is already done. */
+  _mfaComplete?: boolean;
 };
 
 declare module "express-session" {

@@ -124,21 +124,61 @@ function delay(ms: number): Promise<void> {
 }
 
 export async function validateCredentials(email: string, password: string): Promise<AuthUser | null> {
-  const configured = findConfiguredUser(email);
+  const normalized = email.trim().toLowerCase();
 
-  if (!configured) {
+  // 1. Check env-var configured users first (admin + FINANCEOS_USERS).
+  const configured = findConfiguredUser(normalized);
+  if (configured) {
+    const matches = await passwordMatches(password, configured.password);
+    if (!matches) {
+      await delay(200);
+      return null;
+    }
+    return createSessionUser(configured.email, configured.role, configured.name);
+  }
+
+  // 2. Fall through to DB-resident invited users.
+  // Imported lazily to avoid circular deps and keep startup DB-pool-free when unused.
+  // If the operational DB is unreachable, treat as user-not-found so env-var admin
+  // access is never blocked by ops-DB connectivity issues.
+  type InvitationMod = typeof import("./invitationService.js");
+  let invMod: InvitationMod;
+  try {
+    invMod = await import("./invitationService.js");
+  } catch {
     await delay(200);
     return null;
   }
 
-  const matches = await passwordMatches(password, configured.password);
+  let dbUser: Awaited<ReturnType<InvitationMod["findAppUserByEmail"]>>;
+  try {
+    dbUser = await invMod.findAppUserByEmail(normalized);
+  } catch {
+    await delay(200);
+    return null;
+  }
 
+  if (!dbUser) {
+    await delay(200);
+    return null;
+  }
+
+  if (dbUser.status === "disabled") {
+    await delay(200);
+    return null;
+  }
+
+  const matches = await passwordMatches(password, dbUser.password_hash);
   if (!matches) {
     await delay(200);
     return null;
   }
 
-  return createSessionUser(configured.email, configured.role, configured.name);
+  await invMod.updateUserLastLogin(normalized).catch(() => undefined);
+
+  const sessionUser = createSessionUser(dbUser.email, dbUser.role, dbUser.display_name);
+  sessionUser._mfaComplete = dbUser.mfa_complete;
+  return sessionUser;
 }
 
 export function createSessionUser(email: string, role: Role, name: string): AuthUser {

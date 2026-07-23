@@ -24,6 +24,8 @@ import HistoryPage from "@/pages/analyze/history";
 import PerformancePage from "@/pages/analyze/performance";
 import IntegrityPage from "@/pages/control/integrity";
 import SettingsPage from "@/pages/control/settings";
+import UsersAccessPage from "@/pages/control/users";
+import InviteAcceptPage from "@/pages/invite-accept";
 import ValidationPage from "@/pages/control/validation";
 import OperationsPage from "@/pages/operations";
 import ReportsPage from "@/pages/reports";
@@ -107,6 +109,7 @@ function AppRoutes() {
       <Route path="/analyze/performance" component={PerformancePage} />
       <Route path="/control/integrity" component={IntegrityPage} />
       <Route path="/control/settings" component={SettingsPage} />
+      <Route path="/control/users" component={UsersAccessPage} />
       <Route path="/control/validation" component={ValidationPage} />
       <Route path="/operations" component={OperationsPage} />
       <Route path="/reports" component={ReportsPage} />
@@ -279,6 +282,7 @@ function Router() {
       <Route path="/mfa/setup" component={MfaSetupPage} />
       <Route path="/mfa/challenge" component={MfaChallengePage} />
       <Route path="/privacy" component={PrivacyPage} />
+      <Route path="/invite/accept" component={InviteAcceptPage} />
       <Route path="/home">
         <ProtectedRoute>
           <HomePage />

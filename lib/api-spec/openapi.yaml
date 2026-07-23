@@ -34,6 +34,10 @@ tags:
     description: AI Platform — briefing, analysis, Q&A
   - name: budget
     description: Budget targets and budget-vs-actual
+  - name: users
+    description: User management — DB-resident app users (requires user-management permission)
+  - name: invitations
+    description: Invite-only user onboarding — create, validate, and accept invitations
 
 # ─── Reusable components ─────────────────────────────────────────────────────
 
@@ -333,6 +337,183 @@ components:
           enum: [json, pdf, html]
           description: Output format. Excel is not supported for draft-generated reports (narrative context is not available to the Excel renderer).
       required: [format]
+
+    # User management
+    AppUser:
+      type: object
+      description: |
+        A DB-resident app user created via invitation. Never includes
+        password_hash or token_hash — those fields are never surfaced in any API response.
+      properties:
+        id:
+          type: string
+          format: uuid
+        email:
+          type: string
+          format: email
+        display_name:
+          type: string
+        role:
+          type: string
+          enum: [admin, cfo, controller, bookkeeper, investor, readonly]
+        status:
+          type: string
+          enum: [active, disabled]
+          description: Account status — "active" or "disabled"
+        mfa_required:
+          type: boolean
+        mfa_complete:
+          type: boolean
+        invited_by:
+          type: string
+          format: email
+          description: Email of the user who created this invitation
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+        last_login_at:
+          type: string
+          format: date-time
+          nullable: true
+      required: [id, email, display_name, role, status, mfa_required, mfa_complete, invited_by, created_at, updated_at]
+
+    InvitationRecord:
+      type: object
+      description: |
+        A pending or consumed invitation record. token_hash is never included —
+        only the opaque invite_url (raw token embedded) is returned at creation time.
+      properties:
+        id:
+          type: string
+          format: uuid
+        email:
+          type: string
+          format: email
+        display_name:
+          type: string
+        role:
+          type: string
+          enum: [admin, cfo, controller, bookkeeper, investor, readonly]
+        invited_by:
+          type: string
+          format: email
+        expires_at:
+          type: string
+          format: date-time
+        accepted_at:
+          type: string
+          format: date-time
+          nullable: true
+        revoked_at:
+          type: string
+          format: date-time
+          nullable: true
+        created_at:
+          type: string
+          format: date-time
+      required: [id, email, display_name, role, invited_by, expires_at, created_at]
+
+    CreateInvitationRequest:
+      type: object
+      properties:
+        email:
+          type: string
+          format: email
+          description: Email address of the person being invited
+        display_name:
+          type: string
+          description: Full name shown in the UI
+        role:
+          type: string
+          enum: [admin, cfo, controller, bookkeeper, investor, readonly]
+          description: Role assigned to the new user on account creation
+      required: [email, display_name, role]
+
+    CreateInvitationResponse:
+      type: object
+      description: |
+        Returned once on successful invitation creation. invite_url contains the raw
+        token embedded in the accept link. This is the only time the raw token is
+        available — it is never stored or logged. token_hash is never returned.
+      properties:
+        id:
+          type: string
+          format: uuid
+        email:
+          type: string
+          format: email
+        display_name:
+          type: string
+        role:
+          type: string
+          enum: [admin, cfo, controller, bookkeeper, investor, readonly]
+        invited_by:
+          type: string
+          format: email
+        expires_at:
+          type: string
+          format: date-time
+        created_at:
+          type: string
+          format: date-time
+        invite_url:
+          type: string
+          format: uri
+          description: |
+            One-time invite link containing the raw token. Valid for 7 days.
+            Send this to the invitee out-of-band (email, Slack, etc.).
+            The raw token is never stored server-side — only its SHA-256 digest is.
+      required: [id, email, display_name, role, invited_by, expires_at, created_at, invite_url]
+
+    InvitationLookupResponse:
+      type: object
+      description: |
+        Minimal invitation data returned when the accept page validates a token.
+        Never includes token_hash or the raw token.
+      properties:
+        email:
+          type: string
+          format: email
+        display_name:
+          type: string
+        role:
+          type: string
+          enum: [admin, cfo, controller, bookkeeper, investor, readonly]
+        expires_at:
+          type: string
+          format: date-time
+      required: [email, display_name, role, expires_at]
+
+    AcceptInvitationRequest:
+      type: object
+      properties:
+        password:
+          type: string
+          format: password
+          minLength: 12
+          description: Password for the new account — minimum 12 characters, stored as bcrypt hash (cost 12)
+      required: [password]
+
+    AcceptInvitationResponse:
+      type: object
+      description: Returned after account creation. The user is NOT logged in — they must log in and complete MFA enrollment.
+      properties:
+        email:
+          type: string
+          format: email
+        display_name:
+          type: string
+        role:
+          type: string
+          enum: [admin, cfo, controller, bookkeeper, investor, readonly]
+        mfa_required:
+          type: boolean
+        mfa_complete:
+          type: boolean
+      required: [email, display_name, role, mfa_required, mfa_complete]
 
     # AI
     AiAnalyzeRequest:
@@ -2121,3 +2302,295 @@ paths:
                 $ref: "#/components/schemas/ErrorResponse"
         "404":
           $ref: "#/components/responses/NotFound"
+
+  # ── Users ─────────────────────────────────────────────────────────────────────
+
+  /users:
+    get:
+      operationId: listAppUsers
+      tags: [users]
+      summary: List all DB-resident app users
+      description: |
+        Returns all users created via invitation (DB-resident). Env-var accounts
+        (FINANCEOS_ADMIN_EMAIL, FINANCEOS_USERS) are not included.
+        Requires `user-management` permission (admin and controller roles).
+        password_hash is never returned.
+      security:
+        - sessionCookie: []
+      responses:
+        "200":
+          description: List of app users
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/ApiEnvelope"
+                  - type: object
+                    properties:
+                      data:
+                        type: array
+                        items:
+                          $ref: "#/components/schemas/AppUser"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "503":
+          description: Operational database unavailable
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  # ── Invitations ───────────────────────────────────────────────────────────────
+
+  /invitations:
+    get:
+      operationId: listInvitations
+      tags: [invitations]
+      summary: List all invitations
+      description: |
+        Returns all invitation records (pending, accepted, and revoked).
+        Requires `user-management` permission.
+        token_hash is never returned in any record.
+      security:
+        - sessionCookie: []
+      responses:
+        "200":
+          description: List of invitations
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/ApiEnvelope"
+                  - type: object
+                    properties:
+                      data:
+                        type: array
+                        items:
+                          $ref: "#/components/schemas/InvitationRecord"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "503":
+          description: Operational database unavailable
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+    post:
+      operationId: createInvitation
+      tags: [invitations]
+      summary: Create a new user invitation
+      description: |
+        Generates a cryptographically random 64-char hex invite token (from
+        crypto.randomBytes(32)). Only the SHA-256 digest is stored — the raw token
+        is returned once in `invite_url` and never persisted or logged.
+        Requires `user-management` permission.
+      security:
+        - sessionCookie: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateInvitationRequest"
+      responses:
+        "201":
+          description: Invitation created — invite_url contains the one-time raw token
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/ApiEnvelope"
+                  - type: object
+                    properties:
+                      data:
+                        $ref: "#/components/schemas/CreateInvitationResponse"
+        "400":
+          description: Missing or invalid fields
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "409":
+          description: An active invitation or account already exists for this email
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "503":
+          description: Operational database unavailable
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /invitations/{token}:
+    get:
+      operationId: lookupInvitation
+      tags: [invitations]
+      summary: Validate an invite token and return invitation metadata
+      description: |
+        Public endpoint — no session required. Called by the accept-invite page
+        on mount to pre-fill the form and confirm the token is still valid.
+        Returns minimal data only (email, display_name, role, expires_at).
+        token_hash is never returned.
+      parameters:
+        - name: token
+          in: path
+          required: true
+          schema:
+            type: string
+            minLength: 64
+            maxLength: 64
+          description: Raw 64-char hex invite token from the invite_url
+      responses:
+        "200":
+          description: Invitation is valid
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/ApiEnvelope"
+                  - type: object
+                    properties:
+                      data:
+                        $ref: "#/components/schemas/InvitationLookupResponse"
+        "404":
+          description: Token not found or invalid (generic — does not distinguish bad token from expired)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "410":
+          description: Invitation already accepted, revoked, or expired
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "503":
+          description: Operational database unavailable
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /invitations/{token}/accept:
+    post:
+      operationId: acceptInvitation
+      tags: [invitations]
+      summary: Accept an invitation and create a user account
+      description: |
+        Public endpoint — no session required. Consumes the invite token
+        (single-use), hashes the password with bcrypt (cost 12), creates
+        the `app_users` row, and marks the invitation accepted.
+        The new user is NOT automatically logged in — they must visit /login
+        and complete TOTP MFA enrollment before gaining full access.
+        token_hash is never returned.
+      parameters:
+        - name: token
+          in: path
+          required: true
+          schema:
+            type: string
+            minLength: 64
+            maxLength: 64
+          description: Raw 64-char hex invite token from the invite_url
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AcceptInvitationRequest"
+      responses:
+        "201":
+          description: Account created — user must log in and complete MFA enrollment
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/ApiEnvelope"
+                  - type: object
+                    properties:
+                      data:
+                        $ref: "#/components/schemas/AcceptInvitationResponse"
+        "400":
+          description: Missing fields or password shorter than 12 characters
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Token not found or invalid
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "409":
+          description: Invitation already accepted
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "410":
+          description: Invitation revoked or expired
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "503":
+          description: Operational database unavailable
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /invitations/{id}/revoke:
+    post:
+      operationId: revokeInvitation
+      tags: [invitations]
+      summary: Revoke a pending invitation
+      description: |
+        Marks the invitation as revoked so the token can no longer be accepted.
+        Requires `user-management` permission. Only pending (not yet accepted
+        or already revoked) invitations can be revoked.
+      security:
+        - sessionCookie: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+          description: Invitation ID (UUID)
+      responses:
+        "200":
+          description: Invitation revoked
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SimpleOkResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          description: Invitation not found or already consumed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "503":
+          description: Operational database unavailable
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
