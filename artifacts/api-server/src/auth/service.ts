@@ -138,9 +138,25 @@ export async function validateCredentials(email: string, password: string): Prom
   }
 
   // 2. Fall through to DB-resident invited users.
-  // Import lazily to avoid circular deps and keep startup DB-pool-free when unused.
-  const { findAppUserByEmail, updateUserLastLogin } = await import("./invitationService.js");
-  const dbUser = await findAppUserByEmail(normalized);
+  // Imported lazily to avoid circular deps and keep startup DB-pool-free when unused.
+  // If the operational DB is unreachable, treat as user-not-found so env-var admin
+  // access is never blocked by ops-DB connectivity issues.
+  type InvitationMod = typeof import("./invitationService.js");
+  let invMod: InvitationMod;
+  try {
+    invMod = await import("./invitationService.js");
+  } catch {
+    await delay(200);
+    return null;
+  }
+
+  let dbUser: Awaited<ReturnType<InvitationMod["findAppUserByEmail"]>>;
+  try {
+    dbUser = await invMod.findAppUserByEmail(normalized);
+  } catch {
+    await delay(200);
+    return null;
+  }
 
   if (!dbUser) {
     await delay(200);
@@ -158,7 +174,7 @@ export async function validateCredentials(email: string, password: string): Prom
     return null;
   }
 
-  await updateUserLastLogin(normalized).catch(() => undefined);
+  await invMod.updateUserLastLogin(normalized).catch(() => undefined);
 
   const sessionUser = createSessionUser(dbUser.email, dbUser.role, dbUser.display_name);
   sessionUser._mfaComplete = dbUser.mfa_complete;
