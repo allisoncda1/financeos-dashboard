@@ -3,14 +3,6 @@ import { useAiStatus } from "@/hooks/useApi";
 import { useAuth } from "@/lib/auth";
 import { useLocation } from "wouter";
 
-const USER_PROFILE = {
-  name:  "Allison Fabbri",
-  email: "allison@cardealer.ai",
-  role:  "Portfolio Controller",
-  org:   "CarDealer.ai / FinanceOS",
-  since: "2026-01-01",
-  mfa:   true,
-};
 
 function SectionCard({ title, icon: Icon, iconColor, children }: {
   title: string; icon: React.ComponentType<{ className?: string }>; iconColor: string; children: React.ReactNode;
@@ -102,6 +94,9 @@ function AiPlatformSection() {
 
 export default function SettingsPage() {
   const { user } = useAuth();
+  const initials = user?.name
+    ? user.name.split(" ").map((n) => n[0]).join("").toUpperCase()
+    : "?";
   return (
     <div className="h-full flex flex-col overflow-hidden bg-[#F4F5F7]">
       {/* Header */}
@@ -125,19 +120,16 @@ export default function SettingsPage() {
             {/* Avatar */}
             <div className="flex items-center gap-4 pb-3 border-b border-gray-100">
               <div className="w-14 h-14 rounded-2xl bg-emerald-100 flex items-center justify-center flex-shrink-0">
-                <span className="text-[20px] font-black text-emerald-600">
-                  {USER_PROFILE.name.split(" ").map((n) => n[0]).join("")}
-                </span>
+                <span className="text-[20px] font-black text-emerald-600">{initials}</span>
               </div>
               <div>
-                <p className="text-[15px] font-bold text-gray-900">{USER_PROFILE.name}</p>
-                <p className="text-[12px] text-gray-500">{USER_PROFILE.email}</p>
-                <p className="text-[11px] text-emerald-600 font-semibold mt-0.5">{USER_PROFILE.role}</p>
+                <p className="text-[15px] font-bold text-gray-900">{user?.name ?? "—"}</p>
+                <p className="text-[12px] text-gray-500">{user?.email ?? "—"}</p>
+                <p className="text-[11px] text-emerald-600 font-semibold mt-0.5">{user?.role ?? "—"}</p>
               </div>
             </div>
-            <SettingRow label="Organization"  value={USER_PROFILE.org}  />
-            <SettingRow label="Role"          value={USER_PROFILE.role} />
-            <SettingRow label="Member since"  value={USER_PROFILE.since} />
+            <SettingRow label="Organization" value="CarDealer.ai / FinanceOS" />
+            <SettingRow label="Role"         value={user?.role ?? "—"} />
           </SectionCard>
 
           {/* Users & Access — admin only */}
@@ -186,7 +178,7 @@ export default function SettingsPage() {
                 <p className="text-[11px] text-gray-400">React · Vite · Tailwind v4</p>
               </div>
               <div className="text-right">
-                <p className="text-[10px] text-gray-300">{USER_PROFILE.email}</p>
+                <p className="text-[10px] text-gray-300">{user?.email ?? ""}</p>
               </div>
             </div>
           </div>
