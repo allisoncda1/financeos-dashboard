@@ -93,6 +93,8 @@ Additional advisories appear in the full `pnpm audit` (without `--prod`), affect
 | 2026-07-22 | TOTP MFA (application) | Allison Fabbri | Code review + merge | mfaRoutes.ts, mfaCrypto.ts merged in 4289ebf |
 | 2026-07-22 | Dependabot active on main | Allison Fabbri | GitHub merge | `.github/dependabot.yml` merged to main in 4289ebf |
 | 2026-07-22 | Privacy policy public route | Allison Fabbri | Code review | `/privacy` route confirmed public (no ProtectedRoute) in App.tsx |
+| 2026-07-22 | Privacy page content | Security Engineering | Browser verification | Dev URL `*.replit.dev/privacy` returns "Run this app" — workspace stopped. Policy content verified via code review: all required sections present, Allison Fabbri / allison@cardealer.ai as contact, internal-only scope statement, Plaid planned-use disclosure. Stable URL pending Replit Autoscale deployment (operator action required — do not deploy without Allison approval). |
+| 2026-07-22 | pnpm audit --prod | Security Engineering | `pnpm audit --prod` | 3 findings: 2 high brace-expansion (GHSA-3jxr-9vmj-r5cp, via exceljs/archiver), 1 moderate uuid (GHSA-w5hq-g745-h8pq, via @google-cloud/storage). All transitive. Compensating control: internal-only. High SLA: remediate by 2026-08-21. |
 
 ---
 
