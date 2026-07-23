@@ -244,10 +244,13 @@ export async function listInvitations(): Promise<InvitationRow[]> {
 
 export async function listAppUsers(): Promise<Omit<AppUserRow, "password_hash">[]> {
   const { rows } = await query<Omit<AppUserRow, "password_hash">>(
-    `SELECT id, email, first_name, last_name, display_name, role, status,
-            mfa_required, mfa_complete, invited_by, created_at, updated_at, last_login_at
-     FROM app_users
-     ORDER BY created_at ASC`,
+    `SELECT u.id, u.email, u.first_name, u.last_name, u.display_name, u.role, u.status,
+            u.mfa_required,
+            COALESCE(m.totp_enabled, u.mfa_complete) AS mfa_complete,
+            u.invited_by, u.created_at, u.updated_at, u.last_login_at
+     FROM app_users u
+     LEFT JOIN user_mfa m ON m.user_email = u.email
+     ORDER BY u.created_at ASC`,
     [],
   );
   return rows;
