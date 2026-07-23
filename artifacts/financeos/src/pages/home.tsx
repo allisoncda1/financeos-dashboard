@@ -1,5 +1,6 @@
 import { useAuth } from "@/lib/auth";
 import { useRouter } from "@/lib/next-compat";
+import { useRef, useEffect, useState } from "react";
 import {
   BarChart3,
   Wallet,
@@ -102,25 +103,23 @@ const MODULES: ModuleCard[] = [
     buttonClasses:
       "bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700",
   },
-  {
-    title: "Settings",
-    description: "Manage your profile, access, and app preferences.",
-    icon: Settings,
-    iconBg: "bg-gray-50",
-    iconColor: "text-gray-500",
-    titleColor: "text-gray-700",
-    active: true,
-    href: "/control/settings",
-    cta: "Open Settings",
-    buttonClasses: "bg-gray-600 hover:bg-gray-700",
-  },
 ];
 
 export default function HomePage() {
   const { user, logout } = useAuth();
   const router = useRouter();
+  const [menuOpen, setMenuOpen] = useState(false);
+  const menuRef = useRef<HTMLDivElement>(null);
 
   const firstName = user?.name?.split(" ")[0] ?? "there";
+
+  useEffect(() => {
+    const handler = (e: MouseEvent) => {
+      if (menuRef.current && !menuRef.current.contains(e.target as Node)) setMenuOpen(false);
+    };
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, []);
 
   const handleSignOut = async () => {
     await logout();
@@ -137,15 +136,39 @@ export default function HomePage() {
         <FinanceOSLogo variant="full" className="h-11 w-auto" />
         <div className="flex items-center gap-3">
           <AIAssistant />
-          <button
-            type="button"
-            onClick={handleSignOut}
-            className="flex items-center gap-2 rounded-lg border border-gray-200 bg-white px-4 py-2 text-[13px] font-medium text-gray-700 shadow-sm transition-colors hover:bg-gray-50"
-            data-testid="button-sign-out"
-          >
-            <LogOut className="h-4 w-4" />
-            Sign out
-          </button>
+          {/* Settings gear + sign out dropdown */}
+          <div className="relative" ref={menuRef}>
+            <button
+              type="button"
+              onClick={() => setMenuOpen(v => !v)}
+              className="flex items-center justify-center w-9 h-9 rounded-lg border border-gray-200 bg-white shadow-sm transition-colors hover:bg-gray-50"
+              aria-label="Settings"
+            >
+              <Settings className="h-4 w-4 text-gray-600" />
+            </button>
+            {menuOpen && (
+              <div className="absolute right-0 mt-1.5 w-44 rounded-xl border border-gray-200 bg-white shadow-lg overflow-hidden z-50">
+                <button
+                  type="button"
+                  onClick={() => { setMenuOpen(false); router.push("/control/settings"); }}
+                  className="w-full flex items-center gap-2.5 px-4 py-2.5 text-[13px] text-gray-700 hover:bg-gray-50 transition-colors"
+                >
+                  <Settings className="h-3.5 w-3.5 text-gray-500" />
+                  Settings
+                </button>
+                <div className="border-t border-gray-100" />
+                <button
+                  type="button"
+                  onClick={handleSignOut}
+                  className="w-full flex items-center gap-2.5 px-4 py-2.5 text-[13px] text-gray-700 hover:bg-gray-50 transition-colors"
+                  data-testid="button-sign-out"
+                >
+                  <LogOut className="h-3.5 w-3.5 text-gray-500" />
+                  Sign out
+                </button>
+              </div>
+            )}
+          </div>
         </div>
       </header>
 

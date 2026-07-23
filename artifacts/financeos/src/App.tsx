@@ -288,6 +288,16 @@ function Router() {
           <HomePage />
         </ProtectedRoute>
       </Route>
+      <Route path="/control/settings">
+        <ProtectedRoute>
+          <SettingsPage />
+        </ProtectedRoute>
+      </Route>
+      <Route path="/control/users">
+        <ProtectedRoute>
+          <UsersAccessPage />
+        </ProtectedRoute>
+      </Route>
       <Route path="/budget/*?">
         <ProtectedRoute>
           <BudgetRoutes />
