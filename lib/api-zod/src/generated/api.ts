@@ -1013,3 +1013,177 @@ export const ApproveCommentaryResponse = zod.object({
 }).describe('Standard JSON envelope returned by all successful responses')
 
 
+/**
+ * Returns all users created via invitation (DB-resident). Env-var accounts
+ * (FINANCEOS_ADMIN_EMAIL, FINANCEOS_USERS) are not included.
+ * Requires `user-management` permission (admin and controller roles).
+ * password_hash is never returned.
+ * @summary List all DB-resident app users
+ */
+export const ListAppUsersResponse = zod.object({
+  "ok": zod.literal(true),
+  "data": zod.unknown().describe('Response payload (shape varies by endpoint)'),
+  "source": zod.enum(['live', 'mock', 'cache', 'db']).optional().describe('Where the data was sourced from'),
+  "ts": zod.coerce.date().describe('Server timestamp (ISO 8601)')
+}).describe('Standard JSON envelope returned by all successful responses').and(zod.object({
+  "data": zod.array(zod.object({
+  "id": zod.string().uuid(),
+  "email": zod.string().email(),
+  "display_name": zod.string(),
+  "role": zod.enum(['admin', 'cfo', 'controller', 'bookkeeper', 'investor', 'readonly']),
+  "is_disabled": zod.boolean(),
+  "mfa_required": zod.boolean(),
+  "mfa_complete": zod.boolean(),
+  "created_at": zod.coerce.date(),
+  "last_login_at": zod.coerce.date().nullish()
+}).describe('A DB-resident app user created via invitation. Never includes\npassword_hash or token_hash — those fields are never surfaced in any API response.\n'))
+}))
+
+
+/**
+ * Returns all invitation records (pending, accepted, and revoked).
+ * Requires `user-management` permission.
+ * token_hash is never returned in any record.
+ * @summary List all invitations
+ */
+export const ListInvitationsResponse = zod.object({
+  "ok": zod.literal(true),
+  "data": zod.unknown().describe('Response payload (shape varies by endpoint)'),
+  "source": zod.enum(['live', 'mock', 'cache', 'db']).optional().describe('Where the data was sourced from'),
+  "ts": zod.coerce.date().describe('Server timestamp (ISO 8601)')
+}).describe('Standard JSON envelope returned by all successful responses').and(zod.object({
+  "data": zod.array(zod.object({
+  "id": zod.string().uuid(),
+  "email": zod.string().email(),
+  "display_name": zod.string(),
+  "role": zod.enum(['admin', 'cfo', 'controller', 'bookkeeper', 'investor', 'readonly']),
+  "invited_by": zod.string().email(),
+  "expires_at": zod.coerce.date(),
+  "accepted_at": zod.coerce.date().nullish(),
+  "revoked_at": zod.coerce.date().nullish(),
+  "created_at": zod.coerce.date()
+}).describe('A pending or consumed invitation record. token_hash is never included —\nonly the opaque invite_url (raw token embedded) is returned at creation time.\n'))
+}))
+
+
+/**
+ * Generates a cryptographically random 64-char hex invite token (from
+ * crypto.randomBytes(32)). Only the SHA-256 digest is stored — the raw token
+ * is returned once in `invite_url` and never persisted or logged.
+ * Requires `user-management` permission.
+ * @summary Create a new user invitation
+ */
+export const CreateInvitationBody = zod.object({
+  "email": zod.string().email().describe('Email address of the person being invited'),
+  "display_name": zod.string().describe('Full name shown in the UI'),
+  "role": zod.enum(['admin', 'cfo', 'controller', 'bookkeeper', 'investor', 'readonly']).describe('Role assigned to the new user on account creation')
+})
+
+export const CreateInvitationResponse = zod.object({
+  "ok": zod.literal(true),
+  "data": zod.unknown().describe('Response payload (shape varies by endpoint)'),
+  "source": zod.enum(['live', 'mock', 'cache', 'db']).optional().describe('Where the data was sourced from'),
+  "ts": zod.coerce.date().describe('Server timestamp (ISO 8601)')
+}).describe('Standard JSON envelope returned by all successful responses').and(zod.object({
+  "data": zod.object({
+  "id": zod.string().uuid(),
+  "email": zod.string().email(),
+  "display_name": zod.string(),
+  "role": zod.enum(['admin', 'cfo', 'controller', 'bookkeeper', 'investor', 'readonly']),
+  "invited_by": zod.string().email(),
+  "expires_at": zod.coerce.date(),
+  "created_at": zod.coerce.date(),
+  "invite_url": zod.string().url().describe('One-time invite link containing the raw token. Valid for 7 days.\nSend this to the invitee out-of-band (email, Slack, etc.).\nThe raw token is never stored server-side — only its SHA-256 digest is.\n')
+}).describe('Returned once on successful invitation creation. invite_url contains the raw\ntoken embedded in the accept link. This is the only time the raw token is\navailable — it is never stored or logged. token_hash is never returned.\n')
+}))
+
+
+/**
+ * Public endpoint — no session required. Called by the accept-invite page
+ * on mount to pre-fill the form and confirm the token is still valid.
+ * Returns minimal data only (email, display_name, role, expires_at).
+ * token_hash is never returned.
+ * @summary Validate an invite token and return invitation metadata
+ */
+export const lookupInvitationPathTokenMin = 64;
+export const lookupInvitationPathTokenMax = 64;
+
+
+
+export const LookupInvitationParams = zod.object({
+  "token": zod.coerce.string().min(lookupInvitationPathTokenMin).max(lookupInvitationPathTokenMax).describe('Raw 64-char hex invite token from the invite_url')
+})
+
+export const LookupInvitationResponse = zod.object({
+  "ok": zod.literal(true),
+  "data": zod.unknown().describe('Response payload (shape varies by endpoint)'),
+  "source": zod.enum(['live', 'mock', 'cache', 'db']).optional().describe('Where the data was sourced from'),
+  "ts": zod.coerce.date().describe('Server timestamp (ISO 8601)')
+}).describe('Standard JSON envelope returned by all successful responses').and(zod.object({
+  "data": zod.object({
+  "email": zod.string().email(),
+  "display_name": zod.string(),
+  "role": zod.enum(['admin', 'cfo', 'controller', 'bookkeeper', 'investor', 'readonly']),
+  "expires_at": zod.coerce.date()
+}).describe('Minimal invitation data returned when the accept page validates a token.\nNever includes token_hash or the raw token.\n')
+}))
+
+
+/**
+ * Public endpoint — no session required. Consumes the invite token
+ * (single-use), hashes the password with bcrypt (cost 12), creates
+ * the `app_users` row, and marks the invitation accepted.
+ * The new user is NOT automatically logged in — they must visit /login
+ * and complete TOTP MFA enrollment before gaining full access.
+ * token_hash is never returned.
+ * @summary Accept an invitation and create a user account
+ */
+export const acceptInvitationPathTokenMin = 64;
+export const acceptInvitationPathTokenMax = 64;
+
+
+
+export const AcceptInvitationParams = zod.object({
+  "token": zod.coerce.string().min(acceptInvitationPathTokenMin).max(acceptInvitationPathTokenMax).describe('Raw 64-char hex invite token from the invite_url')
+})
+
+export const acceptInvitationBodyPasswordMin = 12;
+
+
+
+export const AcceptInvitationBody = zod.object({
+  "password": zod.string().min(acceptInvitationBodyPasswordMin).describe('Password for the new account — minimum 12 characters, stored as bcrypt hash (cost 12)')
+})
+
+export const AcceptInvitationResponse = zod.object({
+  "ok": zod.literal(true),
+  "data": zod.unknown().describe('Response payload (shape varies by endpoint)'),
+  "source": zod.enum(['live', 'mock', 'cache', 'db']).optional().describe('Where the data was sourced from'),
+  "ts": zod.coerce.date().describe('Server timestamp (ISO 8601)')
+}).describe('Standard JSON envelope returned by all successful responses').and(zod.object({
+  "data": zod.object({
+  "email": zod.string().email(),
+  "display_name": zod.string(),
+  "role": zod.enum(['admin', 'cfo', 'controller', 'bookkeeper', 'investor', 'readonly']),
+  "mfa_required": zod.boolean(),
+  "mfa_complete": zod.boolean()
+}).describe('Returned after account creation. The user is NOT logged in — they must log in and complete MFA enrollment.')
+}))
+
+
+/**
+ * Marks the invitation as revoked so the token can no longer be accepted.
+ * Requires `user-management` permission. Only pending (not yet accepted
+ * or already revoked) invitations can be revoked.
+ * @summary Revoke a pending invitation
+ */
+export const RevokeInvitationParams = zod.object({
+  "id": zod.coerce.string().uuid().describe('Invitation ID (UUID)')
+})
+
+export const RevokeInvitationResponse = zod.object({
+  "ok": zod.literal(true),
+  "ts": zod.coerce.date().describe('Server timestamp (ISO 8601)')
+}).describe('Minimal success envelope for endpoints that return no payload (e.g. logout)')
+
+
