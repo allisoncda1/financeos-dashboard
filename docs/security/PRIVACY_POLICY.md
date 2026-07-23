@@ -1,4 +1,4 @@
-> **APPROVED FOR INTERNAL USE.** Effective date: 2026-07-22. Public publication remains pending.
+> **APPROVED.** Effective date: 2026-07-22. The `/privacy` route is implemented and publicly accessible at the Replit deployment URL. A stable production URL is required before final Plaid questionnaire submission.
 
 # FinanceOS Privacy Policy
 
@@ -120,7 +120,8 @@ Material changes are versioned, reviewed, approved, and communicated to authoriz
 
 **Approver:** Allison Fabbri<br>
 **Approval date:** 2026-07-22<br>
-**Public URL:** [PENDING PUBLICATION]
+**Public URL (dev/current):** `https://f2131a9f-1943-4611-9f2c-efe4f28a76cb-00-2l4nfeksnyk44.kirk.replit.dev/privacy`<br>
+**Stable public URL:** Pending Replit deployment — will be `https://<stable-deployment-url>/privacy`. Required before final Plaid submission.
 
 ---
 
