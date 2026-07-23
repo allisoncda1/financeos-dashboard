@@ -7,6 +7,7 @@ import {
   Banknote,
   BookOpen,
   LineChart,
+  Settings,
   LogOut,
   ArrowRight,
 } from "lucide-react";
@@ -100,6 +101,18 @@ const MODULES: ModuleCard[] = [
     cta: "Open Analytics",
     buttonClasses:
       "bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700",
+  },
+  {
+    title: "Settings",
+    description: "Manage your profile, access, and app preferences.",
+    icon: Settings,
+    iconBg: "bg-gray-50",
+    iconColor: "text-gray-500",
+    titleColor: "text-gray-700",
+    active: true,
+    href: "/control/settings",
+    cta: "Open Settings",
+    buttonClasses: "bg-gray-600 hover:bg-gray-700",
   },
 ];
 

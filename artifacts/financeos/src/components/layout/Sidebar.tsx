@@ -7,7 +7,7 @@ import type { ComponentType } from "react";
 import { FinanceOSLogo } from "@/components/ui/FinanceOSLogo";
 import {
   LayoutDashboard, Inbox, TrendingUp, FileText,
-  ShieldCheck, CheckCircle2, Clock, Settings, ChevronDown,
+  ShieldCheck, CheckCircle2, Clock, ChevronDown,
   Layers, Droplets, X, Check, LogOut,
 } from "lucide-react";
 import { useEntitySelection } from "@/lib/entity-context";
@@ -236,7 +236,6 @@ export function Sidebar({ onClose }: { onClose?: () => void }) {
         <Section label="Control">
           <NavItem icon={ShieldCheck}    label="Integrity"     href="/control/integrity"       active={pathname.startsWith("/control/integrity")} />
           <NavItem icon={CheckCircle2}   label="Validation"    href="/control/validation"      active={pathname.startsWith("/control/validation")} />
-          <NavItem icon={Settings}       label="Settings"      href="/control/settings"        active={pathname.startsWith("/control/settings")} />
         </Section>
       </nav>
 
