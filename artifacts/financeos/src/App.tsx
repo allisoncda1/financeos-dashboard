@@ -73,6 +73,7 @@ import AccountingJournalEntriesPage from "@/pages/accounting/journal-entries";
 import AccountingFixedAssetsPage from "@/pages/accounting/fixed-assets";
 import AccountingMonthEndClosePage from "@/pages/accounting/month-end-close";
 import AccountingSettingsPage from "@/pages/accounting/settings";
+import AccountingBankingPage from "@/pages/accounting/banking";
 import CommissionOverviewPage from "@/pages/commissions/overview";
 import CommissionInvoicesPage from "@/pages/commissions/invoices";
 import CommissionSalesRepsPage from "@/pages/commissions/sales-reps";
@@ -236,6 +237,7 @@ function AccountingRoutes() {
       <Route path="/accounting/fixed-assets" component={AccountingFixedAssetsPage} />
       <Route path="/accounting/month-end-close" component={AccountingMonthEndClosePage} />
       <Route path="/accounting/settings" component={AccountingSettingsPage} />
+      <Route path="/accounting/banking" component={AccountingBankingPage} />
       <Route component={NotFound} />
     </Switch>
   );

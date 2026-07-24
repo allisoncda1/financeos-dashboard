@@ -13,7 +13,7 @@ import aiRouter from "./ai";
 import pipelineRouter from "./pipeline";
 import budgetRouter from "./budget";
 import accountingRouter from "./accounting";
-import plaidRouter from "./plaid";
+import plaidRouter, { plaidWebhookRouter } from "./plaid";
 import usersRouter from "./users";
 import invitationsRouter, { invitationsPublicRouter } from "./invitations";
 import mfaRouter from "../auth/mfaRoutes";
@@ -35,6 +35,10 @@ router.use("/pipeline", pipelineRouter);
 // Invite accept endpoints are public (called before the user has a session).
 router.use(invitationsPublicRouter);
 
+// Plaid webhook is public — Plaid calls it without a session.
+// Must be registered before the blanket requireAuth gate.
+router.use(plaidWebhookRouter);
+
 // Everything below requires an authenticated session.
 router.use(requireAuth);
 
@@ -49,7 +53,7 @@ router.use(draftsRouter);
 router.use("/ai", aiRouter);
 router.use(budgetRouter);
 router.use(accountingRouter);
-router.use("/plaid", plaidRouter);
+router.use(plaidRouter);
 router.use(usersRouter);
 router.use(invitationsRouter);
 

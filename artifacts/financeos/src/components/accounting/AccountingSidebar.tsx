@@ -17,6 +17,7 @@ import {
   Archive,
   CalendarCheck,
   Settings,
+  Landmark,
   X,
   ChevronDown,
   LogOut,
@@ -151,6 +152,7 @@ export function AccountingSidebar({ onClose }: { onClose?: () => void }) {
           <NavItem icon={BookOpen} label="Journal Entries" href="/accounting/journal-entries" active={pathname === "/accounting/journal-entries"} testId="nav-accounting-journal-entries" />
           <NavItem icon={Archive} label="Fixed Assets" href="/accounting/fixed-assets" active={pathname === "/accounting/fixed-assets"} testId="nav-accounting-fixed-assets" />
           <NavItem icon={CalendarCheck} label="Month-End Close" href="/accounting/month-end-close" active={pathname === "/accounting/month-end-close"} testId="nav-accounting-month-end-close" />
+          <NavItem icon={Landmark} label="Bank Accounts" href="/accounting/banking" active={pathname === "/accounting/banking"} testId="nav-accounting-banking" />
           <NavItem icon={Settings} label="Settings" href="/accounting/settings" active={pathname === "/accounting/settings"} testId="nav-accounting-settings" />
 
         </Section>
