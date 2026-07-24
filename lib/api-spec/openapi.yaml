@@ -578,6 +578,133 @@ components:
           additionalProperties: true
           description: Report section data to summarize
 
+  # ── Plaid / Banking schemas ──────────────────────────────────────────────────
+    PlaidLinkTokenResponse:
+      type: object
+      description: Link token returned by POST /api/plaid/link-token. Never includes credentials.
+      properties:
+        linkToken:
+          type: string
+          description: Opaque Plaid Link token passed to PlaidLink component. Short-lived (~30 min).
+      required: [linkToken]
+
+    PlaidAccount:
+      type: object
+      description: Safe account data — never includes access_token, iv, or tag.
+      properties:
+        plaidAccountId:
+          type: string
+        plaidItemId:
+          type: string
+        name:
+          type: string
+          nullable: true
+        officialName:
+          type: string
+          nullable: true
+        type:
+          type: string
+          nullable: true
+          description: "depository | credit | loan | investment | other"
+        subtype:
+          type: string
+          nullable: true
+        mask:
+          type: string
+          nullable: true
+          description: Last 4 digits for display only
+        currentBalance:
+          type: number
+          nullable: true
+        availableBalance:
+          type: number
+          nullable: true
+        isoCurrencyCode:
+          type: string
+          default: USD
+        status:
+          type: string
+          enum: [active, closed, error]
+        institutionName:
+          type: string
+          nullable: true
+        lastSyncAt:
+          type: string
+          format: date-time
+          nullable: true
+      required: [plaidAccountId, isoCurrencyCode, status]
+
+    PlaidExchangeResponse:
+      type: object
+      description: Result of POST /api/plaid/exchange-token. Never includes access_token.
+      properties:
+        itemId:
+          type: string
+          description: Plaid item_id (not access_token)
+        institutionName:
+          type: string
+        accounts:
+          type: array
+          items:
+            $ref: "#/components/schemas/PlaidAccount"
+      required: [itemId, accounts]
+
+    BankTransaction:
+      type: object
+      properties:
+        id:
+          type: string
+          description: Plaid transaction_id
+        accountId:
+          type: string
+          description: plaid_account_id
+        name:
+          type: string
+          nullable: true
+        merchantName:
+          type: string
+          nullable: true
+        amount:
+          type: number
+          nullable: true
+          description: Positive = debit from account perspective
+        isoCurrencyCode:
+          type: string
+        date:
+          type: string
+          format: date
+        authorizedDate:
+          type: string
+          format: date
+          nullable: true
+        pending:
+          type: boolean
+        personalFinanceCategory:
+          type: object
+          nullable: true
+          properties:
+            primary:
+              type: string
+            detailed:
+              type: string
+        paymentChannel:
+          type: string
+          nullable: true
+      required: [id, accountId, amount, date, pending]
+
+    PlaidSyncSummary:
+      type: object
+      properties:
+        plaidItemId:
+          type: string
+        added:
+          type: integer
+        modified:
+          type: integer
+        removed:
+          type: integer
+      required: [plaidItemId, added, modified, removed]
+
   # ── Common responses ─────────────────────────────────────────────────────────
   responses:
     Unauthorized:
@@ -2622,3 +2749,278 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
+
+  # ── Plaid / Banking endpoints ─────────────────────────────────────────────────
+
+  /api/plaid/link-token:
+    post:
+      summary: Create a Plaid Link token
+      description: |
+        Creates a short-lived Plaid Link token to initialize the Plaid Link flow.
+        Requires banking permission. Never exposes client_id or secret.
+      tags: [Banking]
+      security:
+        - sessionCookie: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                entitySlug:
+                  type: string
+                  description: Entity slug to associate the connection with
+              required: [entitySlug]
+      responses:
+        "200":
+          description: Link token created
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/ApiEnvelope"
+                  - type: object
+                    properties:
+                      data:
+                        $ref: "#/components/schemas/PlaidLinkTokenResponse"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "502":
+          description: Plaid API error
+
+  /api/plaid/exchange-token:
+    post:
+      summary: Exchange public_token for access_token and store encrypted
+      description: |
+        Exchanges the Plaid Link public_token for an access_token.
+        The access_token is encrypted with AES-256-GCM immediately and never
+        returned in the response. Triggers an initial transaction sync.
+      tags: [Banking]
+      security:
+        - sessionCookie: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                entitySlug:
+                  type: string
+                publicToken:
+                  type: string
+                  description: public_token from Plaid Link onSuccess callback
+                metadata:
+                  type: object
+                  description: Plaid Link metadata object (institution info)
+              required: [entitySlug, publicToken]
+      responses:
+        "200":
+          description: Token exchanged, accounts stored. access_token never returned.
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/ApiEnvelope"
+                  - type: object
+                    properties:
+                      data:
+                        $ref: "#/components/schemas/PlaidExchangeResponse"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "502":
+          description: Plaid API error
+
+  /api/plaid/items/{id}/sync:
+    post:
+      summary: Trigger a manual transaction sync for a Plaid item
+      description: |
+        Fetches new/modified/removed transactions from Plaid using
+        /transactions/sync, upserts them, and updates the cursor.
+        Requires control permission.
+      tags: [Banking]
+      security:
+        - sessionCookie: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Plaid item_id (not the internal UUID)
+      responses:
+        "200":
+          description: Sync completed
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/ApiEnvelope"
+                  - type: object
+                    properties:
+                      data:
+                        $ref: "#/components/schemas/PlaidSyncSummary"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "502":
+          description: Plaid API or decryption error
+
+  /api/plaid/accounts:
+    get:
+      summary: List connected bank accounts for an entity
+      description: Returns safe account data. Never includes access_token.
+      tags: [Banking]
+      security:
+        - sessionCookie: []
+      parameters:
+        - name: entitySlug
+          in: query
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: List of connected accounts
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/ApiEnvelope"
+                  - type: object
+                    properties:
+                      data:
+                        type: array
+                        items:
+                          $ref: "#/components/schemas/PlaidAccount"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+
+  /api/plaid/transactions:
+    get:
+      summary: List synced bank transactions for an entity
+      description: Paginated transaction list filtered by entity, account, and date range.
+      tags: [Banking]
+      security:
+        - sessionCookie: []
+      parameters:
+        - name: entitySlug
+          in: query
+          required: true
+          schema:
+            type: string
+        - name: accountId
+          in: query
+          required: false
+          schema:
+            type: string
+        - name: from
+          in: query
+          required: false
+          schema:
+            type: string
+            format: date
+        - name: to
+          in: query
+          required: false
+          schema:
+            type: string
+            format: date
+        - name: page
+          in: query
+          required: false
+          schema:
+            type: integer
+            default: 1
+        - name: limit
+          in: query
+          required: false
+          schema:
+            type: integer
+            default: 100
+            maximum: 500
+      responses:
+        "200":
+          description: Paginated transaction list
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/ApiEnvelope"
+                  - type: object
+                    properties:
+                      data:
+                        type: object
+                        properties:
+                          transactions:
+                            type: array
+                            items:
+                              $ref: "#/components/schemas/BankTransaction"
+                          pagination:
+                            type: object
+                            properties:
+                              page:
+                                type: integer
+                              limit:
+                                type: integer
+                              total:
+                                type: integer
+                              pages:
+                                type: integer
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
+  /api/plaid/webhook:
+    post:
+      summary: Plaid webhook receiver (public — no session required)
+      description: |
+        Receives Plaid webhook events. Stores every event to plaid_webhook_events
+        for audit trail. Triggers async transaction sync for SYNC_UPDATES_AVAILABLE.
+        Returns 200 immediately — Plaid requires a fast response.
+        plaid_verification_present records whether the Plaid-Verification JWT header was present.
+      tags: [Banking]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                webhook_type:
+                  type: string
+                webhook_code:
+                  type: string
+                item_id:
+                  type: string
+              additionalProperties: true
+      responses:
+        "200":
+          description: Event received (always 200 — Plaid must not retry)
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+                  stored:
+                    type: boolean
+                  ts:
+                    type: string
+                    format: date-time
