@@ -231,6 +231,115 @@ export const api = {
     post<CommentaryEntry>(`/drafts/commentary/${id}/approve`, {}),
   reorderCommentary: (ids: string[]) =>
     post<void>("/drafts/commentary/reorder", { ids }),
+
+  // ── Accounting module ─────────────────────────────────────────────────────
+  accountingCustomers:    (slug: string) => getSourced<AccountingCustomer[]>(`/accounting/${slug}/customers`),
+  accountingVendors:      (slug: string) => getSourced<AccountingVendor[]>(`/accounting/${slug}/vendors`),
+  accountingInvoices:     (slug: string) => getSourced<AccountingInvoice[]>(`/accounting/${slug}/invoices`),
+  accountingAccounts:     (slug: string) => getSourced<AccountingAccount[]>(`/accounting/${slug}/accounts`),
+  accountingTransactions: (slug: string) => getSourced<AccountingTransaction[]>(`/accounting/${slug}/transactions`),
+  accountingBills:        (slug: string) => getSourced<AccountingBill[]>(`/accounting/${slug}/bills`),
+};
+
+// ── Accounting module types ────────────────────────────────────────────────
+// These mirror the JSON shapes returned by /api/accounting/:slug/* endpoints.
+
+export type AccountingCustomer = {
+  id: string;
+  qboId: string;
+  displayName: string;
+  email: string | null;
+  phone: string | null;
+  balance: number;
+  currency: string;
+  isActive: boolean;
+  syncedAt: string | null;
+};
+
+export type AccountingVendor = {
+  id: string;
+  qboId: string;
+  displayName: string;
+  email: string | null;
+  balance: number;
+  currency: string;
+  isActive: boolean;
+  syncedAt: string | null;
+};
+
+export type AccountingInvoice = {
+  id: string;
+  qboId: string;
+  customerName: string | null;
+  invoiceDate: string | null;
+  dueDate: string | null;
+  amount: number;
+  balance: number;
+  status: string | null;
+  daysOverdue: number | null;
+  currency: string;
+  memo: string | null;
+  syncedAt: string | null;
+};
+
+export type AccountingAccount = {
+  id: string;
+  qboId: string;
+  name: string;
+  fullyQualifiedName: string | null;
+  accountType: string;
+  accountSubtype: string | null;
+  classification: string | null;
+  currentBalance: number;
+  currency: string;
+  isActive: boolean;
+  isSubAccount: boolean;
+  parentQboId: string | null;
+  syncedAt: string | null;
+};
+
+export type AccountingTransaction = {
+  id: string;
+  qboId: string | null;
+  accountId: string | null;
+  transactionDate: string | null;
+  transactionType: string | null;
+  memo: string | null;
+  amount: number | null;
+  currency: string;
+  category: string | null;
+  isReconciled: boolean;
+  syncedAt: string | null;
+};
+
+export type AccountingBill = {
+  id: string;
+  qboId: string;
+  vendorName: string | null;
+  billDate: string | null;
+  dueDate: string | null;
+  amount: number;
+  balance: number;
+  status: string | null;
+  daysOverdue: number | null;
+  currency: string;
+  memo: string | null;
+  syncedAt: string | null;
+};
+
+/** AR/AP reconciliation metadata returned alongside invoices and bills endpoints. */
+export type ArApReconciliation = {
+  officialTotal: number | null;
+  normalizedGrossTotal: number | null;
+  unappliedCredits: number | null;
+  normalizedNetTotal: number | null;
+  signedDifference: number | null;
+  absoluteDifference: number | null;
+  reconciliationStatus: string | null;
+  officialSource: string;
+  officialAsOf: string | null;
+  normalizedAsOf: string | null;
+  explanation: string | null;
 };
 
 // ── Frontend-side draft types ───────────────────────────────────────────────
