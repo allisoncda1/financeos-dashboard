@@ -1,28 +1,52 @@
 /**
- * Plaid routes — Phase 1: Link, exchange, sync, accounts, transactions, webhook.
+ * Plaid routes — Production hardening (Phase 2).
  *
- * DATABASE_URL (heliumdb) ONLY — never CORE_DATABASE_URL.
+ * DATABASE_URL (heliumdb) ONLY — never the core analytics database.
  * PLAID_TOKEN_ENCRYPTION_KEY encrypts access_tokens at rest (AES-256-GCM).
  *
  * SECURITY INVARIANTS:
  *  - access_token is encrypted immediately after exchange; plaintext is never logged or returned.
  *  - No response schema ever includes access_token, iv, tag, or encryption key.
- *  - Webhook route is public (Plaid calls it without a session); all other routes require auth.
- *  - Webhook verification is best-effort; unverified events are stored with
- *    plaid_verification_present=false rather than rejected (avoids missed syncs).
+ *  - Webhook route uses express.raw() — raw body required for JOSE ES256 signature verification.
+ *  - Webhook verification is mandatory in production: unverified requests return 401.
+ *  - POST /plaid/link-token requires existing, non-withdrawn consent record.
+ *  - POST /plaid/consent persists to plaid_consent_records; duplicates are deduplicated.
+ *  - canManageBanking (admin | cfo) gates link-token, exchange-token, sync, disconnect.
+ *  - canViewBanking (banking permission) gates accounts, transactions, connections, consent-info.
  *
  * Two routers are exported:
  *  - default export `plaidRouter`        — authenticated routes, mount after requireAuth
  *  - named export  `plaidWebhookRouter`  — public route, mount before requireAuth
  */
 
-import { Router, json } from "express";
+import { Router } from "express";
 import { Pool } from "pg";
 import { CountryCode, Products } from "plaid";
-import { plaidClient } from "../lib/plaidClient";
-import { encryptAccessToken, decryptAccessToken } from "../lib/plaidEncryption";
-import { requireAuth } from "../auth/middleware";
-import { requirePermission } from "../auth/permissions";
+import crypto from "crypto";
+import { importJWK, jwtVerify, decodeProtectedHeader } from "jose";
+import { plaidClient } from "../lib/plaidClient.js";
+import { encryptAccessToken, decryptAccessToken } from "../lib/plaidEncryption.js";
+import { validateEntitySlug } from "../lib/plaidEntityValidation.js";
+import { requireAuth } from "../auth/middleware.js";
+import { requirePermission, hasPermission } from "../auth/permissions.js";
+import type { AuthUser } from "../auth/types.js";
+import {
+  PLAID_CONSENT_TEXT,
+  CURRENT_PRIVACY_POLICY_VERSION,
+  consentTextHash,
+  buildConsentRecord,
+} from "../services/consentService.js";
+
+// ─── Permission helpers ───────────────────────────────────────────────────────
+
+function canViewBanking(user: AuthUser): boolean {
+  return hasPermission(user, "banking");
+}
+
+function canManageBanking(user: AuthUser): boolean {
+  // admin and cfo can manage (connect, sync, disconnect)
+  return user.role === "admin" || user.role === "cfo";
+}
 
 // ─── DB pool (DATABASE_URL / heliumdb only) ──────────────────────────────────
 
@@ -59,33 +83,26 @@ interface SafeAccount {
 
 function rowToSafeAccount(row: Record<string, unknown>): SafeAccount {
   return {
-    plaidAccountId:  String(row["plaid_account_id"] ?? ""),
-    name:            row["name"] != null ? String(row["name"]) : null,
-    officialName:    row["official_name"] != null ? String(row["official_name"]) : null,
-    type:            row["type"] != null ? String(row["type"]) : null,
-    subtype:         row["subtype"] != null ? String(row["subtype"]) : null,
-    mask:            row["mask"] != null ? String(row["mask"]) : null,
-    currentBalance:  row["current_balance"] != null ? Number(row["current_balance"]) : null,
-    availableBalance:row["available_balance"] != null ? Number(row["available_balance"]) : null,
-    isoCurrencyCode: String(row["iso_currency_code"] ?? "USD"),
-    status:          String(row["status"] ?? "active"),
+    plaidAccountId:   String(row["plaid_account_id"] ?? ""),
+    name:             row["name"] != null ? String(row["name"]) : null,
+    officialName:     row["official_name"] != null ? String(row["official_name"]) : null,
+    type:             row["type"] != null ? String(row["type"]) : null,
+    subtype:          row["subtype"] != null ? String(row["subtype"]) : null,
+    mask:             row["mask"] != null ? String(row["mask"]) : null,
+    currentBalance:   row["current_balance"] != null ? Number(row["current_balance"]) : null,
+    availableBalance: row["available_balance"] != null ? Number(row["available_balance"]) : null,
+    isoCurrencyCode:  String(row["iso_currency_code"] ?? "USD"),
+    status:           String(row["status"] ?? "active"),
   };
 }
 
 // ─── Internal sync function ───────────────────────────────────────────────────
 
-/**
- * syncTransactionsForItem — fetches all new/modified/removed transactions
- * from Plaid using the /transactions/sync endpoint and upserts them to DB.
- * Stores the updated cursor back to plaid_items.
- * Returns counts for summary reporting.
- */
 async function syncTransactionsForItem(plaidItemId: string): Promise<{
   added: number;
   modified: number;
   removed: number;
 }> {
-  // Fetch item + encrypted token
   const itemRes = await query<Record<string, unknown>>(
     `SELECT plaid_item_id, access_token_encrypted, access_token_iv, access_token_tag,
             transactions_cursor, entity_slug
@@ -120,7 +137,6 @@ async function syncTransactionsForItem(plaidItemId: string): Promise<{
 
     const { added, modified, removed, next_cursor, has_more } = syncRes.data;
 
-    // Upsert added transactions
     for (const txn of added) {
       await query(
         `INSERT INTO bank_transactions (
@@ -159,7 +175,6 @@ async function syncTransactionsForItem(plaidItemId: string): Promise<{
       addedCount++;
     }
 
-    // Upsert modified transactions
     for (const txn of modified) {
       await query(
         `INSERT INTO bank_transactions (
@@ -198,7 +213,6 @@ async function syncTransactionsForItem(plaidItemId: string): Promise<{
       modifiedCount++;
     }
 
-    // Mark removed transactions as non-pending (soft-delete per Plaid guidance)
     for (const rem of removed) {
       await query(
         `UPDATE bank_transactions SET pending = FALSE, updated_at = NOW()
@@ -212,7 +226,6 @@ async function syncTransactionsForItem(plaidItemId: string): Promise<{
     hasMore = has_more;
   }
 
-  // Update cursor and last sync timestamp
   await query(
     `UPDATE plaid_items
      SET transactions_cursor = $1, last_successful_sync_at = NOW(), updated_at = NOW()
@@ -223,58 +236,150 @@ async function syncTransactionsForItem(plaidItemId: string): Promise<{
   return { added: addedCount, modified: modifiedCount, removed: removedCount };
 }
 
+// ─── Webhook JOSE verification ────────────────────────────────────────────────
+
+// JWK cache: kid → { key, cachedAt }
+const jwkCache = new Map<string, { key: CryptoKey; cachedAt: number }>();
+const JWK_TTL_MS = 5 * 60 * 1000; // 5 minutes
+
+async function getVerificationKey(kid: string): Promise<CryptoKey> {
+  const cached = jwkCache.get(kid);
+  if (cached && Date.now() - cached.cachedAt < JWK_TTL_MS) return cached.key;
+
+  const response = await plaidClient.webhookVerificationKeyGet({ key_id: kid });
+  const jwk = response.data.key;
+  const key = await importJWK(jwk as Parameters<typeof importJWK>[0], "ES256");
+  jwkCache.set(kid, { key: key as CryptoKey, cachedAt: Date.now() });
+  return key as CryptoKey;
+}
+
+async function verifyPlaidWebhook(req: import("express").Request): Promise<Record<string, unknown>> {
+  const rawBody = req.body as unknown;
+  if (!Buffer.isBuffer(rawBody)) {
+    throw Object.assign(new Error("Raw body not available — express.raw() required"), { status: 500 });
+  }
+
+  const token = req.headers["plaid-verification"];
+  if (!token || typeof token !== "string") {
+    throw Object.assign(new Error("Missing Plaid-Verification header"), { status: 400 });
+  }
+
+  const header = decodeProtectedHeader(token);
+  if (header.alg !== "ES256") {
+    throw Object.assign(new Error("Invalid algorithm — expected ES256"), { status: 401 });
+  }
+  if (!header.kid) {
+    throw Object.assign(new Error("Missing kid in JWT header"), { status: 401 });
+  }
+
+  const key = await getVerificationKey(header.kid);
+
+  const { payload } = await jwtVerify(token, key, { algorithms: ["ES256"] });
+
+  // Check iat — max 5 minutes old
+  const iat = payload.iat;
+  if (!iat || Date.now() / 1000 - iat > 300) {
+    throw Object.assign(new Error("Webhook JWT is stale"), { status: 401 });
+  }
+
+  // Verify body hash
+  const expectedHash = payload["request_body_sha256"] as string | undefined;
+  if (!expectedHash) {
+    throw Object.assign(new Error("Missing request_body_sha256 in JWT"), { status: 401 });
+  }
+  const actualHash = crypto.createHash("sha256").update(rawBody).digest("hex");
+  const expectedBuf = Buffer.from(expectedHash, "hex");
+  const actualBuf = Buffer.from(actualHash, "hex");
+  if (
+    expectedBuf.length !== actualBuf.length ||
+    !crypto.timingSafeEqual(expectedBuf, actualBuf)
+  ) {
+    throw Object.assign(new Error("Body hash mismatch"), { status: 401 });
+  }
+
+  return JSON.parse(rawBody.toString("utf8")) as Record<string, unknown>;
+}
+
+function computeEventFingerprint(
+  rawBody: Buffer,
+  webhookType: string,
+  webhookCode: string,
+  plaidItemId: string | null,
+): string {
+  return crypto
+    .createHash("sha256")
+    .update(rawBody)
+    .update(webhookType)
+    .update(webhookCode)
+    .update(plaidItemId ?? "")
+    .digest("hex");
+}
+
 // ═══════════════════════════════════════════════════════════════════════════
-// PUBLIC WEBHOOK ROUTER — mount BEFORE requireAuth in index.ts
+// PUBLIC WEBHOOK ROUTER — mounted with express.raw() in index.ts BEFORE requireAuth
 // ═══════════════════════════════════════════════════════════════════════════
 
 export const plaidWebhookRouter = Router();
 
-// Raw body middleware scoped to this route only (needed for Plaid JWT verification)
 plaidWebhookRouter.post(
   "/api/plaid/webhook",
-  json({ type: "*/*" }),
   async (req, res) => {
-    const webhookType: string = String(req.body?.webhook_type ?? "UNKNOWN");
-    const webhookCode: string = String(req.body?.webhook_code ?? "UNKNOWN");
-    const plaidItemId: string | null = req.body?.item_id ?? null;
-
-    // Best-effort JWT verification using Plaid's JWK endpoint.
-    // We store the result but do NOT reject unverified events —
-    // sandbox webhooks may lack a signed JWT.
-    let verificationPresent = false;
-    const jwtHeader = req.headers["plaid-verification"];
-
-    if (jwtHeader && typeof jwtHeader === "string") {
-      try {
-        // Fetch the verification key and verify the JWT
-        // Plaid uses ES256 — the JWT library would verify signature here.
-        // For now we confirm the header exists; full JOSE verification
-        // requires the 'jose' package (Phase 2 hardening).
-        verificationPresent = true;
-      } catch {
-        verificationPresent = false;
-      }
+    // Verify JOSE ES256 signature — fail closed
+    let parsedBody: Record<string, unknown>;
+    try {
+      parsedBody = await verifyPlaidWebhook(req);
+    } catch (verifyErr) {
+      const status = (verifyErr as { status?: number }).status ?? 401;
+      const message = verifyErr instanceof Error ? verifyErr.message : "Webhook verification failed";
+      // 400 for missing header, 401 for bad signature/stale/hash mismatch
+      res.status(status).json({ ok: false, error: message, ts: ts() });
+      return;
     }
 
-    // Store every webhook before processing — ensures audit trail even on failures
+    const webhookType: string = String(parsedBody["webhook_type"] ?? "UNKNOWN");
+    const webhookCode: string = String(parsedBody["webhook_code"] ?? "UNKNOWN");
+    const plaidItemId: string | null = (parsedBody["item_id"] as string | undefined) ?? null;
+
+    // Compute deterministic fingerprint for idempotency
+    const rawBody = req.body as Buffer;
+    const fingerprint = computeEventFingerprint(rawBody, webhookType, webhookCode, plaidItemId);
+
+    // Check for duplicate fingerprint
+    let existingRes: { rows: { id: string }[] };
+    try {
+      existingRes = await query<{ id: string }>(
+        `SELECT id FROM plaid_webhook_events WHERE event_fingerprint = $1 LIMIT 1`,
+        [fingerprint],
+      );
+    } catch {
+      existingRes = { rows: [] };
+    }
+
+    if (existingRes.rows.length > 0) {
+      // Already processed — idempotent 200
+      res.status(200).json({ ok: true, stored: false, duplicate: true, ts: ts() });
+      return;
+    }
+
+    // Store every verified webhook before processing — ensures audit trail
     let eventId: string | null = null;
     try {
       const insertRes = await query<{ id: string }>(
         `INSERT INTO plaid_webhook_events
-           (webhook_type, webhook_code, plaid_item_id, payload, plaid_verification_present, status)
-         VALUES ($1, $2, $3, $4, $5, 'received')
+           (webhook_type, webhook_code, plaid_item_id, payload,
+            plaid_verification_present, status, event_fingerprint)
+         VALUES ($1, $2, $3, $4, TRUE, 'received', $5)
          RETURNING id`,
         [
           webhookType,
           webhookCode,
           plaidItemId,
-          JSON.stringify(req.body ?? {}),
-          verificationPresent,
+          JSON.stringify(parsedBody),
+          fingerprint,
         ],
       );
       eventId = insertRes.rows[0]?.id ?? null;
     } catch (dbErr) {
-      // Log failure but still return 200 to Plaid to avoid retry storms
       req.log?.error?.({ err: dbErr }, "[plaid-webhook] Failed to store webhook event");
       res.status(200).json({ ok: true, stored: false, ts: ts() });
       return;
@@ -282,7 +387,6 @@ plaidWebhookRouter.post(
 
     // Trigger async sync for TRANSACTIONS/SYNC_UPDATES_AVAILABLE
     if (webhookType === "TRANSACTIONS" && webhookCode === "SYNC_UPDATES_AVAILABLE" && plaidItemId) {
-      // Fire-and-forget — respond 200 immediately, sync runs in background
       setImmediate(async () => {
         try {
           await syncTransactionsForItem(plaidItemId);
@@ -299,7 +403,6 @@ plaidWebhookRouter.post(
         }
       });
     } else {
-      // Non-sync webhooks: mark as processed immediately (no action needed in Phase 1)
       setImmediate(async () => {
         await query(
           `UPDATE plaid_webhook_events SET status = 'processed', processed_at = NOW() WHERE id = $1`,
@@ -318,25 +421,175 @@ plaidWebhookRouter.post(
 
 const router = Router();
 
+// ─── GET /api/plaid/consent-info ─────────────────────────────────────────────
+
+router.get(
+  "/plaid/consent-info",
+  requireAuth,
+  (req, res) => {
+    if (!canViewBanking(req.session.user!)) {
+      res.status(403).json({ ok: false, error: "Insufficient permissions", ts: ts() });
+      return;
+    }
+    res.json({
+      ok: true,
+      data: {
+        policyVersion: CURRENT_PRIVACY_POLICY_VERSION,
+        consentText: PLAID_CONSENT_TEXT,
+        consentTextHash: consentTextHash(),
+      },
+      ts: ts(),
+    });
+  },
+);
+
+// ─── POST /api/plaid/consent ──────────────────────────────────────────────────
+
+router.post(
+  "/plaid/consent",
+  requireAuth,
+  requirePermission("banking"),
+  async (req, res) => {
+    const user = req.session.user!;
+    const body = req.body as Record<string, unknown>;
+
+    // Validate entitySlug server-side
+    let entitySlug: string;
+    try {
+      entitySlug = validateEntitySlug(body["entitySlug"] ?? body["entityId"]);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : "Invalid entitySlug";
+      res.status(400).json({ ok: false, error: msg, ts: ts() });
+      return;
+    }
+
+    // Check for existing active (non-withdrawn) consent for same user+entity+version
+    try {
+      const existingRes = await query<{ id: string }>(
+        `SELECT id FROM plaid_consent_records
+         WHERE user_email = $1 AND entity_id = $2 AND policy_version = $3
+           AND (withdrawn_at IS NULL)
+         LIMIT 1`,
+        [user.email, entitySlug, CURRENT_PRIVACY_POLICY_VERSION],
+      );
+
+      if (existingRes.rows.length > 0) {
+        res.json({
+          ok: true,
+          data: {
+            consentId: existingRes.rows[0]!.id,
+            policyVersion: CURRENT_PRIVACY_POLICY_VERSION,
+            existing: true,
+          },
+          ts: ts(),
+        });
+        return;
+      }
+    } catch (err) {
+      req.log.error({ err }, "[plaid] consent duplicate check failed");
+      res.status(500).json({ ok: false, error: "Failed to check existing consent", ts: ts() });
+      return;
+    }
+
+    // Build and insert consent record
+    const record = buildConsentRecord({
+      userEmail: user.email,
+      entityId: entitySlug,
+      ipAddress: req.ip ?? undefined,
+      userAgent: req.headers["user-agent"] ?? undefined,
+    });
+
+    try {
+      const insertRes = await query<{ id: string }>(
+        `INSERT INTO plaid_consent_records
+           (user_email, entity_id, policy_version, consent_text_hash,
+            scope_requested, plaid_products, ip_address, user_agent)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+         RETURNING id`,
+        [
+          record.user_email,
+          record.entity_id,
+          record.policy_version,
+          record.consent_text_hash,
+          JSON.stringify(record.scope_requested),
+          JSON.stringify(record.plaid_products),
+          record.ip_address,
+          record.user_agent,
+        ],
+      );
+
+      const consentId = insertRes.rows[0]!.id;
+      res.json({
+        ok: true,
+        data: { consentId, policyVersion: CURRENT_PRIVACY_POLICY_VERSION },
+        ts: ts(),
+      });
+    } catch (err) {
+      req.log.error({ err }, "[plaid] consent insert failed");
+      res.status(500).json({ ok: false, error: "Failed to record consent", ts: ts() });
+    }
+  },
+);
+
 // ─── POST /api/plaid/link-token ───────────────────────────────────────────────
 
 router.post(
   "/plaid/link-token",
   requireAuth,
-  requirePermission("banking"),
   async (req, res) => {
-    const body = req.body as Record<string, unknown>;
-    const entitySlug = body["entitySlug"];
+    const user = req.session.user!;
 
-    if (!entitySlug || typeof entitySlug !== "string") {
-      res.status(400).json({ ok: false, error: "entitySlug required", ts: ts() });
+    // Management permission required to create link tokens
+    if (!canManageBanking(user)) {
+      res.status(403).json({
+        ok: false,
+        error: "Only admin or CFO can connect bank accounts",
+        ts: ts(),
+      });
+      return;
+    }
+
+    const body = req.body as Record<string, unknown>;
+
+    // Validate entitySlug server-side
+    let entitySlug: string;
+    try {
+      entitySlug = validateEntitySlug(body["entitySlug"]);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : "Invalid entitySlug";
+      res.status(400).json({ ok: false, error: msg, ts: ts() });
+      return;
+    }
+
+    // Require existing, non-withdrawn consent record before issuing link token
+    try {
+      const consentRes = await query<{ id: string }>(
+        `SELECT id FROM plaid_consent_records
+         WHERE user_email = $1 AND entity_id = $2 AND policy_version = $3
+           AND (withdrawn_at IS NULL)
+         LIMIT 1`,
+        [user.email, entitySlug, CURRENT_PRIVACY_POLICY_VERSION],
+      );
+
+      if (consentRes.rows.length === 0) {
+        res.status(403).json({
+          ok: false,
+          error: "Consent required before connecting a bank account. Please accept the data sharing agreement.",
+          code: "CONSENT_REQUIRED",
+          ts: ts(),
+        });
+        return;
+      }
+    } catch (err) {
+      req.log.error({ err }, "[plaid] consent check failed");
+      res.status(500).json({ ok: false, error: "Failed to verify consent", ts: ts() });
       return;
     }
 
     try {
       const webhookUrl = process.env["PLAID_WEBHOOK_URL"] ?? "";
       const linkRes = await plaidClient.linkTokenCreate({
-        user: { client_user_id: req.session.user!.id },
+        user: { client_user_id: user.id },
         client_name: "FinanceOS",
         products: [Products.Transactions],
         country_codes: [CountryCode.Us],
@@ -345,7 +598,6 @@ router.post(
         transactions: { days_requested: 730 },
       });
 
-      // Return only link_token — never expose client_id, secret, or request_id
       res.json({
         ok: true,
         data: { linkToken: linkRes.data.link_token },
@@ -363,35 +615,41 @@ router.post(
 router.post(
   "/plaid/exchange-token",
   requireAuth,
-  requirePermission("banking"),
   async (req, res) => {
-    const body = req.body as Record<string, unknown>;
-    const entitySlug = body["entitySlug"];
-    const publicToken = body["publicToken"];
-    const metadata = body["metadata"] as Record<string, unknown> | undefined;
-
-    if (!entitySlug || typeof entitySlug !== "string") {
-      res.status(400).json({ ok: false, error: "entitySlug required", ts: ts() });
+    const user = req.session.user!;
+    if (!canManageBanking(user)) {
+      res.status(403).json({ ok: false, error: "Only admin or CFO can connect bank accounts", ts: ts() });
       return;
     }
+
+    const body = req.body as Record<string, unknown>;
+    const publicToken = body["publicToken"];
+
+    let entitySlug: string;
+    try {
+      entitySlug = validateEntitySlug(body["entitySlug"]);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : "Invalid entitySlug";
+      res.status(400).json({ ok: false, error: msg, ts: ts() });
+      return;
+    }
+
     if (!publicToken || typeof publicToken !== "string") {
       res.status(400).json({ ok: false, error: "publicToken required", ts: ts() });
       return;
     }
 
     try {
-      // Exchange public token for access token
       const exchangeRes = await plaidClient.itemPublicTokenExchange({ public_token: publicToken });
       const { access_token, item_id } = exchangeRes.data;
 
       // Encrypt immediately — plaintext access_token is never stored or returned
       const { encrypted, iv, tag } = encryptAccessToken(access_token);
 
-      const institution = metadata?.["institution"] as Record<string, unknown> | undefined;
+      const institution = (body["metadata"] as Record<string, unknown> | undefined)?.["institution"] as Record<string, unknown> | undefined;
       const institutionId: string = String(institution?.["institution_id"] ?? "");
       const institutionName: string = String(institution?.["name"] ?? "");
 
-      // Store plaid_item
       await query(
         `INSERT INTO plaid_items
            (entity_slug, plaid_item_id, institution_id, institution_name,
@@ -405,15 +663,12 @@ router.post(
            access_token_tag = EXCLUDED.access_token_tag,
            status = 'active',
            updated_at = NOW()`,
-        [entitySlug, item_id, institutionId, institutionName, encrypted, iv, tag,
-         req.session.user!.email],
+        [entitySlug, item_id, institutionId, institutionName, encrypted, iv, tag, user.email],
       );
 
-      // Fetch accounts from Plaid
       const accountsRes = await plaidClient.accountsGet({ access_token });
       const accounts = accountsRes.data.accounts;
 
-      // Store accounts in DB
       for (const acct of accounts) {
         await query(
           `INSERT INTO plaid_accounts
@@ -428,14 +683,9 @@ router.post(
              status = 'active',
              updated_at = NOW()`,
           [
-            item_id,
-            acct.account_id,
-            entitySlug,
-            acct.name ?? null,
-            acct.official_name ?? null,
-            acct.type ?? null,
-            acct.subtype ?? null,
-            acct.mask ?? null,
+            item_id, acct.account_id, entitySlug,
+            acct.name ?? null, acct.official_name ?? null,
+            acct.type ?? null, acct.subtype ?? null, acct.mask ?? null,
             acct.balances.current != null ? String(acct.balances.current) : null,
             acct.balances.available != null ? String(acct.balances.available) : null,
             acct.balances.iso_currency_code ?? "USD",
@@ -443,14 +693,12 @@ router.post(
         );
       }
 
-      // Trigger initial transaction sync (best-effort, async)
       setImmediate(() => {
         syncTransactionsForItem(item_id).catch((err) => {
           req.log.error({ err, plaidItemId: item_id }, "[plaid] Initial sync failed");
         });
       });
 
-      // Return safe fields only — NEVER return access_token
       res.json({
         ok: true,
         data: {
@@ -482,8 +730,14 @@ router.post(
 router.post(
   "/plaid/items/:id/sync",
   requireAuth,
-  requirePermission("control"),
   async (req, res) => {
+    const user = req.session.user!;
+    // admin and cfo can trigger manual syncs
+    if (!canManageBanking(user)) {
+      res.status(403).json({ ok: false, error: "Insufficient permissions to trigger sync", ts: ts() });
+      return;
+    }
+
     const rawId = req.params["id"];
     const plaidItemId = Array.isArray(rawId) ? rawId[0] : rawId;
     if (!plaidItemId) {
@@ -493,11 +747,7 @@ router.post(
 
     try {
       const summary = await syncTransactionsForItem(plaidItemId);
-      res.json({
-        ok: true,
-        data: { plaidItemId, ...summary },
-        ts: ts(),
-      });
+      res.json({ ok: true, data: { plaidItemId, ...summary }, ts: ts() });
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
       req.log.error({ err, plaidItemId }, "[plaid] manual sync failed");
@@ -511,11 +761,18 @@ router.post(
 router.get(
   "/plaid/accounts",
   requireAuth,
-  requirePermission("banking"),
   async (req, res) => {
-    const entitySlug = req.query["entitySlug"] as string | undefined;
-    if (!entitySlug) {
-      res.status(400).json({ ok: false, error: "entitySlug query param required", ts: ts() });
+    if (!canViewBanking(req.session.user!)) {
+      res.status(403).json({ ok: false, error: "Insufficient permissions", ts: ts() });
+      return;
+    }
+
+    let entitySlug: string;
+    try {
+      entitySlug = validateEntitySlug(req.query["entitySlug"]);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : "Invalid entitySlug";
+      res.status(400).json({ ok: false, error: msg, ts: ts() });
       return;
     }
 
@@ -553,19 +810,26 @@ router.get(
 router.get(
   "/plaid/transactions",
   requireAuth,
-  requirePermission("banking"),
   async (req, res) => {
-    const entitySlug = req.query["entitySlug"] as string | undefined;
-    const accountId  = req.query["accountId"]  as string | undefined;
-    const from       = req.query["from"]        as string | undefined;
-    const to         = req.query["to"]          as string | undefined;
-    const pageStr    = req.query["page"]        as string | undefined;
-    const limitStr   = req.query["limit"]       as string | undefined;
-
-    if (!entitySlug) {
-      res.status(400).json({ ok: false, error: "entitySlug query param required", ts: ts() });
+    if (!canViewBanking(req.session.user!)) {
+      res.status(403).json({ ok: false, error: "Insufficient permissions", ts: ts() });
       return;
     }
+
+    let entitySlug: string;
+    try {
+      entitySlug = validateEntitySlug(req.query["entitySlug"]);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : "Invalid entitySlug";
+      res.status(400).json({ ok: false, error: msg, ts: ts() });
+      return;
+    }
+
+    const accountId = req.query["accountId"] as string | undefined;
+    const from      = req.query["from"]      as string | undefined;
+    const to        = req.query["to"]        as string | undefined;
+    const pageStr   = req.query["page"]      as string | undefined;
+    const limitStr  = req.query["limit"]     as string | undefined;
 
     const page  = Math.max(1, parseInt(pageStr ?? "1", 10) || 1);
     const limit = Math.min(500, Math.max(1, parseInt(limitStr ?? "100", 10) || 100));
@@ -575,18 +839,9 @@ router.get(
     const params: unknown[] = [entitySlug];
     let paramIdx = 2;
 
-    if (accountId) {
-      conditions.push(`bt.plaid_account_id = $${paramIdx++}`);
-      params.push(accountId);
-    }
-    if (from) {
-      conditions.push(`bt.date >= $${paramIdx++}`);
-      params.push(from);
-    }
-    if (to) {
-      conditions.push(`bt.date <= $${paramIdx++}`);
-      params.push(to);
-    }
+    if (accountId) { conditions.push(`bt.plaid_account_id = $${paramIdx++}`); params.push(accountId); }
+    if (from)      { conditions.push(`bt.date >= $${paramIdx++}`);            params.push(from); }
+    if (to)        { conditions.push(`bt.date <= $${paramIdx++}`);            params.push(to); }
 
     const where = conditions.join(" AND ");
 
@@ -636,79 +891,54 @@ router.get(
   },
 );
 
-// ─── Legacy consent/disconnect routes (preserved from stub) ──────────────────
+// ─── POST /api/plaid/disconnect/:connectionId ─────────────────────────────────
 
-import {
-  PLAID_CONSENT_TEXT,
-  CURRENT_PRIVACY_POLICY_VERSION,
-  consentTextHash,
-} from "../services/consentService";
-
-router.get("/plaid/consent-info", requireAuth, (_req, res) => {
-  res.json({
-    ok: true,
-    data: {
-      policyVersion: CURRENT_PRIVACY_POLICY_VERSION,
-      consentText: PLAID_CONSENT_TEXT,
-      consentTextHash: consentTextHash(),
-    },
-    ts: ts(),
-  });
-});
-
-router.post("/plaid/consent", requireAuth, (req, res) => {
-  const body = req.body as Record<string, unknown>;
-  if (!body["entityId"] || typeof body["entityId"] !== "string") {
-    res.status(400).json({ ok: false, error: "entityId required", ts: ts() });
-    return;
-  }
-  res.json({
-    ok: true,
-    data: {
-      message: "Consent recorded.",
-      consentTextHash: consentTextHash(),
-      policyVersion: CURRENT_PRIVACY_POLICY_VERSION,
-    },
-    ts: ts(),
-  });
-});
-
-router.post("/plaid/disconnect/:connectionId", requireAuth, requirePermission("control"), async (req, res) => {
-  const connectionId = req.params["connectionId"];
-  try {
-    // Fetch item to get access_token for revocation
-    const itemRes = await query<Record<string, unknown>>(
-      `SELECT access_token_encrypted, access_token_iv, access_token_tag
-       FROM plaid_items WHERE plaid_item_id = $1`,
-      [connectionId],
-    );
-    if (itemRes.rows.length > 0) {
-      const row = itemRes.rows[0]!;
-      try {
-        const accessToken = decryptAccessToken(
-          String(row["access_token_encrypted"]),
-          String(row["access_token_iv"]),
-          String(row["access_token_tag"]),
-        );
-        await plaidClient.itemRemove({ access_token: accessToken });
-      } catch (revokeErr) {
-        req.log.warn({ err: revokeErr }, "[plaid] Token revocation failed — marking disconnected anyway");
-      }
-      await query(
-        `UPDATE plaid_items SET status = 'disconnected', updated_at = NOW() WHERE plaid_item_id = $1`,
-        [connectionId],
-      );
-      await query(
-        `UPDATE plaid_accounts SET status = 'closed', updated_at = NOW() WHERE plaid_item_id = $1`,
-        [connectionId],
-      );
+router.post(
+  "/plaid/disconnect/:connectionId",
+  requireAuth,
+  async (req, res) => {
+    if (!canManageBanking(req.session.user!)) {
+      res.status(403).json({ ok: false, error: "Only admin or CFO can disconnect accounts", ts: ts() });
+      return;
     }
-    res.json({ ok: true, data: { message: "Disconnected" }, ts: ts() });
-  } catch (err) {
-    req.log.error({ err }, "[plaid] disconnect failed");
-    res.status(500).json({ ok: false, error: "Disconnect failed", ts: ts() });
-  }
-});
+
+    const connectionId = req.params["connectionId"];
+    try {
+      const itemRes = await query<Record<string, unknown>>(
+        `SELECT access_token_encrypted, access_token_iv, access_token_tag
+         FROM plaid_items WHERE plaid_item_id = $1`,
+        [connectionId],
+      );
+      if (itemRes.rows.length > 0) {
+        const row = itemRes.rows[0]!;
+        try {
+          const accessToken = decryptAccessToken(
+            String(row["access_token_encrypted"]),
+            String(row["access_token_iv"]),
+            String(row["access_token_tag"]),
+          );
+          await plaidClient.itemRemove({ access_token: accessToken });
+        } catch (revokeErr) {
+          req.log.warn({ err: revokeErr }, "[plaid] Token revocation failed — marking disconnected anyway");
+        }
+        await query(
+          `UPDATE plaid_items SET status = 'disconnected', updated_at = NOW() WHERE plaid_item_id = $1`,
+          [connectionId],
+        );
+        await query(
+          `UPDATE plaid_accounts SET status = 'closed', updated_at = NOW() WHERE plaid_item_id = $1`,
+          [connectionId],
+        );
+      }
+      res.json({ ok: true, data: { message: "Disconnected" }, ts: ts() });
+    } catch (err) {
+      req.log.error({ err }, "[plaid] disconnect failed");
+      res.status(500).json({ ok: false, error: "Disconnect failed", ts: ts() });
+    }
+  },
+);
+
+// ─── POST /api/plaid/deletion-request ────────────────────────────────────────
 
 router.post("/plaid/deletion-request", requireAuth, (req, res) => {
   const user = req.session.user!;
