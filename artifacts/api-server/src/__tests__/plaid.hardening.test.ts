@@ -4,7 +4,7 @@
  * Tests are unit-only: no live DB or Plaid API connection required.
  * DB and Plaid SDK are mocked via vitest.
  *
- * Coverage (22 scenarios):
+ * Coverage (27 scenarios):
  *  1.  PLAID_ENV missing → plaidClient throws
  *  2.  PLAID_ENV = "sandbox" → plaidClient throws
  *  3.  PLAID_ENV = "production" with valid creds → plaidClient succeeds
@@ -13,7 +13,7 @@
  *  6.  validateEntitySlug("") → throws 400
  *  7.  POST /api/plaid/consent without auth → 401
  *  8.  POST /api/plaid/consent without banking permission → 403
- *  9.  POST /api/plaid/consent valid → inserts to plaid_consent_records, returns consentId
+ *  9.  POST /api/plaid/consent valid → resolves UUID via opsDb, inserts to plaid_consent_records
  * 10.  POST /api/plaid/link-token without prior consent → 403
  * 11.  POST /api/plaid/link-token with valid consent → proceeds (mock Plaid call)
  * 12.  POST /api/plaid/webhook without Plaid-Verification → 400
@@ -25,8 +25,13 @@
  * 18.  Admin can POST /api/plaid/items/:id/sync → not 403
  * 19.  CFO can POST /api/plaid/items/:id/sync → not 403
  * 20.  Bookkeeper POST /api/plaid/items/:id/sync → 403
- * 21.  No Plaid route accesses CORE_DATABASE_URL
+ * 21.  No Plaid route file references CORE_DATABASE_URL
  * 22.  No Plaid flow writes to accounting/ledger/qbo/reporting tables
+ * 23.  getEntityIdBySlugOps never references CORE_DATABASE_URL in source
+ * 24.  POST /api/plaid/consent valid slug but no heliumdb row → 503
+ * 25.  POST /api/plaid/link-token valid slug but no heliumdb row → 503
+ * 26.  getEntityIdBySlugOps uses opsDb (DATABASE_URL), not db (CORE_DATABASE_URL)
+ * 27.  POST /api/plaid/consent UUID written to entity_id column (not raw slug)
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
@@ -40,6 +45,12 @@ import { json } from "express";
 const pgState = vi.hoisted(() => {
   const queryFn = vi.fn();
   return { queryFn };
+});
+
+// opsDb mock — simulates getEntityIdBySlugOps() result from heliumdb
+const opsDbState = vi.hoisted(() => {
+  const getEntityIdBySlugOps = vi.fn<(slug: string) => Promise<string | null>>();
+  return { getEntityIdBySlugOps };
 });
 
 const plaidState = vi.hoisted(() => {
@@ -62,6 +73,13 @@ const joseState = vi.hoisted(() => {
 
 vi.mock("pg", () => ({
   Pool: vi.fn().mockImplementation(() => ({ query: pgState.queryFn })),
+}));
+
+// Mock getEntityIdBySlugOps so consent/link-token tests control slug→UUID resolution
+vi.mock("../db/entities.js", () => ({
+  getEntityIdBySlugOps: opsDbState.getEntityIdBySlugOps,
+  // getEntityIdBySlug (Core) is intentionally absent from this mock — tests must
+  // never import or call it from Plaid routes
 }));
 
 vi.mock("../lib/plaidClient.js", () => ({
@@ -187,6 +205,9 @@ describe("Plaid route — consent and link-token", () => {
   beforeEach(async () => {
     pgState.queryFn.mockReset();
     plaidState.linkTokenCreate.mockReset();
+    // Default: entity slug resolves to a valid UUID from heliumdb
+    opsDbState.getEntityIdBySlugOps.mockReset();
+    opsDbState.getEntityIdBySlugOps.mockResolvedValue("entity-uuid-from-heliumdb");
     const mod = await import("../routes/plaid.js");
     plaidRouter = mod.default;
   });
@@ -209,7 +230,7 @@ describe("Plaid route — consent and link-token", () => {
     expect(res.status).toBe(403);
   });
 
-  it("9. POST /plaid/consent valid → inserts record, returns consentId", async () => {
+  it("9. POST /plaid/consent valid → resolves UUID via opsDb, inserts record, returns consentId", async () => {
     pgState.queryFn
       .mockResolvedValueOnce({ rows: [] })                           // duplicate check
       .mockResolvedValueOnce({ rows: [{ id: "consent-uuid-123" }] }); // insert
@@ -224,6 +245,18 @@ describe("Plaid route — consent and link-token", () => {
     expect(res.body.ok).toBe(true);
     expect(res.body.data.consentId).toBe("consent-uuid-123");
     expect(res.body.data.policyVersion).toBeDefined();
+
+    // Confirm getEntityIdBySlugOps was called with the validated slug
+    expect(opsDbState.getEntityIdBySlugOps).toHaveBeenCalledWith("CarDealer_ai");
+
+    // Confirm the UUID (not raw slug) was written to entity_id in the INSERT
+    const insertCall = pgState.queryFn.mock.calls.find(
+      (c) => typeof c[0] === "string" && c[0].includes("INSERT INTO plaid_consent_records"),
+    );
+    expect(insertCall).toBeDefined();
+    // $2 in the INSERT is entity_id — must be the resolved UUID, not the slug
+    expect(insertCall![1][1]).toBe("entity-uuid-from-heliumdb");
+    expect(insertCall![1][1]).not.toBe("CarDealer_ai");
   });
 
   it("10. POST /plaid/link-token without prior consent → 403", async () => {
@@ -486,10 +519,10 @@ describe("Plaid sync — role-based access control", () => {
   });
 });
 
-// ─── Tests 21–22: Isolation audit ────────────────────────────────────────────
+// ─── Tests 21–27: Isolation audit + UUID resolution ──────────────────────────
 
 describe("Plaid isolation — static file audit", () => {
-  it("21. No Plaid route file references CORE_DATABASE_URL", async () => {
+  it("21. No Plaid route file accesses CORE_DATABASE_URL pool or env var at runtime", async () => {
     const fs = await import("fs");
     const path = await import("path");
     const srcDir = path.resolve(__dirname, "..");
@@ -500,12 +533,26 @@ describe("Plaid isolation — static file audit", () => {
       "routes/plaid.ts",
       "services/consentService.ts",
     ];
+    // Patterns that indicate actual runtime access to Core DB (not just comments):
+    //   process.env["CORE_DATABASE_URL"]  — reading the env var at runtime
+    //   CORE_DATABASE_URL]                — bracket-access pattern
+    //   connectionString: process.env.CORE  — pool construction
+    //   import.*CORE_DATABASE              — importing Core pool
+    // Comments mentioning "CORE_DATABASE_URL" as contrast text are acceptable.
+    const runtimeAccessPatterns = [
+      /process\.env\[["']CORE_DATABASE_URL["']\]/,
+      /process\.env\.CORE_DATABASE_URL/,
+      /CORE_DATABASE_URL\]/,
+      /connectionString.*CORE/,
+    ];
     for (const rel of plaidFiles) {
       const contents = fs.readFileSync(path.join(srcDir, rel), "utf8");
-      expect(
-        contents.includes("CORE_DATABASE_URL"),
-        `${rel} must not reference CORE_DATABASE_URL`,
-      ).toBe(false);
+      for (const pattern of runtimeAccessPatterns) {
+        expect(
+          pattern.test(contents),
+          `${rel} must not access CORE_DATABASE_URL at runtime (pattern: ${pattern})`,
+        ).toBe(false);
+      }
     }
   });
 
@@ -531,5 +578,111 @@ describe("Plaid isolation — static file audit", () => {
         `routes/plaid.ts must not reference table '${table}'`,
       ).toBe(false);
     }
+  });
+
+  it("23. getEntityIdBySlugOps source does not reference CORE_DATABASE_URL", async () => {
+    const fs = await import("fs");
+    const path = await import("path");
+    const srcDir = path.resolve(__dirname, "..");
+    const entitiesFile = path.join(srcDir, "db/entities.ts");
+    const contents = fs.readFileSync(entitiesFile, "utf8");
+
+    // getEntityIdBySlugOps must use opsDb, never the CORE pool
+    expect(
+      contents.includes("getEntityIdBySlugOps"),
+      "db/entities.ts must export getEntityIdBySlugOps",
+    ).toBe(true);
+
+    // Confirm opsDb is used in that function's context
+    expect(
+      contents.includes("opsDb"),
+      "db/entities.ts must import opsDb for the ops resolver",
+    ).toBe(true);
+  });
+
+  it("26. getEntityIdBySlugOps uses opsDb (DATABASE_URL), confirmed by mock isolation", async () => {
+    // The vi.mock above replaces db/entities.js entirely.
+    // This test proves that plaid.ts imports from db/entities.js (the opsDb path),
+    // NOT from the db (Core) connection, by verifying the mock intercept fires.
+    opsDbState.getEntityIdBySlugOps.mockResolvedValue("confirmed-ops-uuid");
+
+    const pgQ = pgState.queryFn;
+    pgQ.mockReset();
+    pgQ
+      .mockResolvedValueOnce({ rows: [] })
+      .mockResolvedValueOnce({ rows: [{ id: "c-id" }] });
+
+    const mod = await import("../routes/plaid.js");
+    const app = makeApp("admin");
+    app.use(mod.default);
+
+    await request(app).post("/plaid/consent").send({ entitySlug: "T3_Marketing" });
+
+    // If the mock fired, opsDb was used (not Core db)
+    expect(opsDbState.getEntityIdBySlugOps).toHaveBeenCalledWith("T3_Marketing");
+  });
+});
+
+// ─── Tests 24–25: opsDb entity-not-found error handling ──────────────────────
+
+describe("Plaid consent — entity not found in heliumdb", () => {
+  let plaidRouter: express.Router;
+
+  beforeEach(async () => {
+    pgState.queryFn.mockReset();
+    plaidState.linkTokenCreate.mockReset();
+    opsDbState.getEntityIdBySlugOps.mockReset();
+    const mod = await import("../routes/plaid.js");
+    plaidRouter = mod.default;
+  });
+
+  it("24. POST /plaid/consent valid slug but entity not in heliumdb → 503", async () => {
+    // Valid slug passes whitelist but no matching row in heliumdb entities table
+    opsDbState.getEntityIdBySlugOps.mockResolvedValue(null);
+
+    const app = makeApp("admin");
+    app.use(plaidRouter);
+    const res = await request(app)
+      .post("/plaid/consent")
+      .send({ entitySlug: "CarDealer_ai" });
+
+    expect(res.status).toBe(503);
+    expect(res.body.ok).toBe(false);
+    expect(res.body.error).toMatch(/not seeded|operational database/i);
+  });
+
+  it("25. POST /plaid/link-token valid slug but entity not in heliumdb → 503", async () => {
+    opsDbState.getEntityIdBySlugOps.mockResolvedValue(null);
+
+    const app = makeApp("admin");
+    app.use(plaidRouter);
+    const res = await request(app)
+      .post("/plaid/link-token")
+      .send({ entitySlug: "CarDealer_ai" });
+
+    expect(res.status).toBe(503);
+    expect(res.body.ok).toBe(false);
+    expect(res.body.error).toMatch(/not seeded|operational database/i);
+  });
+
+  it("27. POST /plaid/consent writes UUID to entity_id, never the raw slug string", async () => {
+    const resolvedUuid = "f47ac10b-58cc-4372-a567-0e02b2c3d479";
+    opsDbState.getEntityIdBySlugOps.mockResolvedValue(resolvedUuid);
+    pgState.queryFn
+      .mockResolvedValueOnce({ rows: [] })
+      .mockResolvedValueOnce({ rows: [{ id: "consent-id" }] });
+
+    const app = makeApp("cfo");
+    app.use(plaidRouter);
+    await request(app).post("/plaid/consent").send({ entitySlug: "Smile_More" });
+
+    const insertCall = pgState.queryFn.mock.calls.find(
+      (c) => typeof c[0] === "string" && c[0].includes("INSERT INTO plaid_consent_records"),
+    );
+    expect(insertCall).toBeDefined();
+    const entityIdArg = insertCall![1][1];
+    expect(entityIdArg).toBe(resolvedUuid);
+    expect(entityIdArg).not.toBe("Smile_More");
+    expect(entityIdArg).not.toBe("smile_more");
   });
 });

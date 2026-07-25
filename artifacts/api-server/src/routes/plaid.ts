@@ -36,6 +36,7 @@ import {
   consentTextHash,
   buildConsentRecord,
 } from "../services/consentService.js";
+import { getEntityIdBySlugOps } from "../db/entities.js";
 
 // ─── Permission helpers ───────────────────────────────────────────────────────
 
@@ -463,6 +464,26 @@ router.post(
       return;
     }
 
+    // Resolve validated slug → UUID using heliumdb (DATABASE_URL only, never CORE_DATABASE_URL)
+    let entityUuid: string;
+    try {
+      const resolved = await getEntityIdBySlugOps(entitySlug);
+      if (!resolved) {
+        req.log.error({ entitySlug }, "[plaid] entity slug valid but not found in heliumdb entities table");
+        res.status(503).json({
+          ok: false,
+          error: `Entity '${entitySlug}' is not seeded in the operational database. Contact an administrator.`,
+          ts: ts(),
+        });
+        return;
+      }
+      entityUuid = resolved;
+    } catch (err) {
+      req.log.error({ err }, "[plaid] entity UUID resolution failed");
+      res.status(503).json({ ok: false, error: "Failed to resolve entity", ts: ts() });
+      return;
+    }
+
     // Check for existing active (non-withdrawn) consent for same user+entity+version
     try {
       const existingRes = await query<{ id: string }>(
@@ -470,7 +491,7 @@ router.post(
          WHERE user_email = $1 AND entity_id = $2 AND policy_version = $3
            AND (withdrawn_at IS NULL)
          LIMIT 1`,
-        [user.email, entitySlug, CURRENT_PRIVACY_POLICY_VERSION],
+        [user.email, entityUuid, CURRENT_PRIVACY_POLICY_VERSION],
       );
 
       if (existingRes.rows.length > 0) {
@@ -491,10 +512,10 @@ router.post(
       return;
     }
 
-    // Build and insert consent record
+    // Build and insert consent record — entity_id is now a real UUID from heliumdb
     const record = buildConsentRecord({
       userEmail: user.email,
-      entityId: entitySlug,
+      entityId: entityUuid,
       ipAddress: req.ip ?? undefined,
       userAgent: req.headers["user-agent"] ?? undefined,
     });
@@ -561,6 +582,26 @@ router.post(
       return;
     }
 
+    // Resolve slug → UUID via heliumdb (DATABASE_URL only, never CORE_DATABASE_URL)
+    let entityUuid: string;
+    try {
+      const resolved = await getEntityIdBySlugOps(entitySlug);
+      if (!resolved) {
+        req.log.error({ entitySlug }, "[plaid] entity slug valid but not found in heliumdb during link-token");
+        res.status(503).json({
+          ok: false,
+          error: `Entity '${entitySlug}' is not seeded in the operational database. Contact an administrator.`,
+          ts: ts(),
+        });
+        return;
+      }
+      entityUuid = resolved;
+    } catch (err) {
+      req.log.error({ err }, "[plaid] entity UUID resolution failed during link-token");
+      res.status(503).json({ ok: false, error: "Failed to resolve entity", ts: ts() });
+      return;
+    }
+
     // Require existing, non-withdrawn consent record before issuing link token
     try {
       const consentRes = await query<{ id: string }>(
@@ -568,7 +609,7 @@ router.post(
          WHERE user_email = $1 AND entity_id = $2 AND policy_version = $3
            AND (withdrawn_at IS NULL)
          LIMIT 1`,
-        [user.email, entitySlug, CURRENT_PRIVACY_POLICY_VERSION],
+        [user.email, entityUuid, CURRENT_PRIVACY_POLICY_VERSION],
       );
 
       if (consentRes.rows.length === 0) {
