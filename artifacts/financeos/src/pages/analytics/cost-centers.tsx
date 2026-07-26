@@ -63,8 +63,10 @@ export default function CostCentersPage() {
       subtitle="Manage cost centers, hierarchy, owners and spend."
       actions={
         <Button
-          className="h-8 bg-indigo-600 hover:bg-indigo-700 text-white gap-1.5 font-medium px-3 text-xs shadow-sm"
+          className="h-8 bg-gray-300 text-gray-500 gap-1.5 font-medium px-3 text-xs cursor-not-allowed"
+          disabled
           data-testid="button-add-cost-center"
+          title="Cost center management is not yet implemented"
         >
           <Plus className="h-3.5 w-3.5" />
           Add Cost Center

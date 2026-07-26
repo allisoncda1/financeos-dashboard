@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Check, Save, AlertTriangle } from "lucide-react";
+import { Save, AlertTriangle } from "lucide-react";
 import { AnalyticsLayout } from "@/components/analytics/AnalyticsLayout";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -43,11 +43,9 @@ function Row({ label, hint, children }: { label: string; hint?: string; children
 
 export default function AnalyticsSettingsPage() {
   const [settings, setSettings] = useState<AnalyticsSettings>({ ...DEFAULT_ANALYTICS_SETTINGS });
-  const [saved, setSaved] = useState(false);
 
   const update = <K extends keyof AnalyticsSettings>(key: K, value: AnalyticsSettings[K]) => {
     setSettings((s) => ({ ...s, [key]: value }));
-    setSaved(false);
   };
 
   return (
@@ -58,15 +56,14 @@ export default function AnalyticsSettingsPage() {
       showBasis={false}
       actions={
         <div className="flex items-center gap-2">
-          {saved && (
-            <span className="text-[11px] font-semibold text-emerald-600 inline-flex items-center gap-1">
-              <Check className="w-3.5 h-3.5" /> Saved
-            </span>
-          )}
+          <span className="text-[11px] text-amber-700 bg-amber-50 border border-amber-100 rounded px-2 py-1" data-testid="analytics-settings-not-persisted">
+            Demo — settings not persisted
+          </span>
           <Button
-            className="h-8 bg-indigo-600 hover:bg-indigo-700 text-white gap-1.5 font-medium px-3 text-xs shadow-sm"
-            onClick={() => setSaved(true)}
+            className="h-8 bg-gray-300 text-gray-500 gap-1.5 font-medium px-3 text-xs cursor-not-allowed"
+            disabled
             data-testid="button-save-settings"
+            title="Analytics settings persistence is not yet implemented"
           >
             <Save className="w-3.5 h-3.5" />
             Save Settings

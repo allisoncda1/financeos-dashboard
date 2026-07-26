@@ -86,7 +86,7 @@ export default function PortfolioPage() {
               <h1 className="text-[20px] font-bold text-gray-900">Portfolio Overview</h1>
               <p className="text-[12px] text-gray-500 mt-0.5 flex items-center gap-1.5">
                 <span>
-                  4 entities · Data as of {lastPipelineRun ?? data.freshness.data_as_of}
+                  {ENTITY_SLUGS.length} entities · Data as of {lastPipelineRun ?? data.freshness.data_as_of}
                 </span>
                 <span
                   className={`inline-block w-1.5 h-1.5 rounded-full ${staleDotClass}`}
