@@ -34,11 +34,10 @@ export default function AccountingSettingsPage() {
         </Card>
 
         <Card title="Accounting Preferences">
-          <Row label="Fiscal year start" value="January" />
-          <Row label="Accounting basis" value="Accrual" />
-          <Row label="Close frequency" value="Monthly" />
-          <Row label="Default AR terms" value="Net 14" />
-          <Row label="Default AP terms" value="Net 30" />
+          <div className="px-5 py-4 text-[12px] text-gray-400 italic" data-testid="accounting-prefs-not-implemented">
+            Accounting preferences (fiscal year, basis, AR/AP terms) are read from QBO and will be
+            surfaced here in a future release. No configuration changes can be made from this view.
+          </div>
         </Card>
 
         <Card title="Bank Connections">
