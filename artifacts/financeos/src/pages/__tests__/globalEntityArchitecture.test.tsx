@@ -181,12 +181,15 @@ describe("AccountingSidebar — SidebarCompanyCard wired to active entity", () =
   });
 
   it("8. SidebarCompanyCard slug updates when active entity changes", async () => {
-    accountingSlug = "T3_Marketing";
     const { AccountingSidebar } = await import("../../components/accounting/AccountingSidebar");
-    render(<AccountingSidebar />);
-    const card = screen.getByTestId("sidebar-company-card");
-    expect(card.dataset.slug).toBe("T3_Marketing");
-    expect(card.dataset.slug).not.toBe("T3_Marketing" === "T3_Marketing" ? "CarDealer_ai" : "T3_Marketing");
+    // Start with CarDealer_ai (set in beforeEach)
+    const { rerender } = render(<AccountingSidebar />);
+    expect(screen.getByTestId("sidebar-company-card").dataset.slug).toBe("CarDealer_ai");
+
+    // Switch entity and re-render
+    accountingSlug = "T3_Marketing";
+    rerender(<AccountingSidebar />);
+    expect(screen.getByTestId("sidebar-company-card").dataset.slug).toBe("T3_Marketing");
   });
 
   it("9. SidebarCompanyCard slug is never the hardcoded default 'T3_Marketing' when a different entity is active", async () => {

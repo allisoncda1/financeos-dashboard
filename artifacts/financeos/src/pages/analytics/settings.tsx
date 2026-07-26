@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Check, Save, AlertTriangle } from "lucide-react";
+import { Save, AlertTriangle } from "lucide-react";
 import { AnalyticsLayout } from "@/components/analytics/AnalyticsLayout";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -43,11 +43,9 @@ function Row({ label, hint, children }: { label: string; hint?: string; children
 
 export default function AnalyticsSettingsPage() {
   const [settings, setSettings] = useState<AnalyticsSettings>({ ...DEFAULT_ANALYTICS_SETTINGS });
-  const [saved, setSaved] = useState(false);
 
   const update = <K extends keyof AnalyticsSettings>(key: K, value: AnalyticsSettings[K]) => {
     setSettings((s) => ({ ...s, [key]: value }));
-    setSaved(false);
   };
 
   return (
