@@ -36,7 +36,7 @@ import {
   consentTextHash,
   buildConsentRecord,
 } from "../services/consentService.js";
-import { getEntityIdBySlugOps } from "../db/entities.js";
+import { getCachedEntityId } from "../services/entityCache.js";
 
 // ─── Permission helpers ───────────────────────────────────────────────────────
 
@@ -464,15 +464,15 @@ router.post(
       return;
     }
 
-    // Resolve validated slug → UUID using heliumdb (DATABASE_URL only, never CORE_DATABASE_URL)
+    // Resolve validated slug → UUID via Core entity cache (read-only Neon, consistent with Accounting/Budget)
     let entityUuid: string;
     try {
-      const resolved = await getEntityIdBySlugOps(entitySlug);
+      const resolved = await getCachedEntityId(entitySlug);
       if (!resolved) {
-        req.log.error({ entitySlug }, "[plaid] entity slug valid but not found in heliumdb entities table");
+        req.log.error({ entitySlug }, "[plaid] entity slug valid but not found in Core entity registry");
         res.status(503).json({
           ok: false,
-          error: `Entity '${entitySlug}' is not seeded in the operational database. Contact an administrator.`,
+          error: `Entity '${entitySlug}' is not found in the entity registry. Contact an administrator.`,
           ts: ts(),
         });
         return;
@@ -582,15 +582,15 @@ router.post(
       return;
     }
 
-    // Resolve slug → UUID via heliumdb (DATABASE_URL only, never CORE_DATABASE_URL)
+    // Resolve slug → UUID via Core entity cache (read-only Neon, consistent with Accounting/Budget)
     let entityUuid: string;
     try {
-      const resolved = await getEntityIdBySlugOps(entitySlug);
+      const resolved = await getCachedEntityId(entitySlug);
       if (!resolved) {
-        req.log.error({ entitySlug }, "[plaid] entity slug valid but not found in heliumdb during link-token");
+        req.log.error({ entitySlug }, "[plaid] entity slug valid but not found in Core entity registry during link-token");
         res.status(503).json({
           ok: false,
-          error: `Entity '${entitySlug}' is not seeded in the operational database. Contact an administrator.`,
+          error: `Entity '${entitySlug}' is not found in the entity registry. Contact an administrator.`,
           ts: ts(),
         });
         return;
