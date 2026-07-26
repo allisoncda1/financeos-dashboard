@@ -1,9 +1,26 @@
+import { AlertCircle } from "lucide-react";
 import { BudgetLayout } from "@/components/budget/BudgetLayout";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
+
+function NotImplementedBanner({ feature }: { feature: string }) {
+  return (
+    <div
+      className="flex items-start gap-3 rounded-lg border border-amber-100 bg-amber-50 px-4 py-3"
+      data-testid={`not-implemented-${feature}`}
+    >
+      <AlertCircle className="w-4 h-4 text-amber-500 shrink-0 mt-0.5" />
+      <p className="text-[12px] text-amber-900">
+        <span className="font-semibold">{feature} configuration is not yet persisted.</span>{" "}
+        This view is a design placeholder. Changes made here are not saved and will reset on reload.
+        This feature is planned for a future release.
+      </p>
+    </div>
+  );
+}
 
 export default function BudgetSettingsPage() {
   return (
@@ -14,6 +31,7 @@ export default function BudgetSettingsPage() {
             <h3 className="text-[13px] font-semibold text-gray-900">General Configuration</h3>
           </div>
           <div className="p-4 space-y-4">
+            <NotImplementedBanner feature="General Configuration" />
             <div className="grid grid-cols-1 sm:grid-cols-3 items-center gap-2 sm:gap-4">
               <Label className="text-[12px] text-gray-700">Fiscal Year Start Month</Label>
               <div className="col-span-1 sm:col-span-2">
@@ -52,6 +70,7 @@ export default function BudgetSettingsPage() {
             <h3 className="text-[13px] font-semibold text-gray-900">Approval Workflow</h3>
           </div>
           <div className="p-4 space-y-4">
+            <NotImplementedBanner feature="Approval Workflow" />
             <div className="flex items-center justify-between">
               <div className="space-y-0.5">
                 <Label className="text-[12px] font-medium text-gray-900">Require multi-level approvals</Label>
@@ -74,7 +93,8 @@ export default function BudgetSettingsPage() {
             <h3 className="text-[13px] font-semibold text-gray-900">Departments</h3>
           </div>
           <div className="p-4">
-            <div className="space-y-2.5" data-testid="list-departments">
+            <NotImplementedBanner feature="Departments" />
+            <div className="space-y-2.5 mt-3 opacity-50 pointer-events-none" data-testid="list-departments">
               {[
                 { name: "Sales & Marketing", owner: "Sarah Jenkins" },
                 { name: "G&A", owner: "Michael Chang" },
@@ -107,6 +127,7 @@ export default function BudgetSettingsPage() {
             </p>
           </div>
           <div className="p-4">
+            <NotImplementedBanner feature="Account Mapping" />
             <div className="space-y-3" data-testid="list-account-mapping">
               {[
                 { account: "4000 · Product Revenue", category: "revenue" },
@@ -166,9 +187,14 @@ export default function BudgetSettingsPage() {
           </div>
         </div>
 
-        <div className="flex justify-end gap-3 pt-2">
-          <Button variant="outline" size="sm" className="h-8 text-xs bg-white text-gray-600" data-testid="button-cancel-settings">Cancel</Button>
-          <Button size="sm" className="h-8 text-xs bg-emerald-600 hover:bg-emerald-700 text-white shadow-sm px-4" data-testid="button-save-settings">Save Configuration</Button>
+        <div className="flex items-center justify-between pt-2">
+          <p className="text-[11px] text-gray-400 italic" data-testid="settings-not-persisted-notice">
+            Settings persistence is not yet implemented — changes will not be saved.
+          </p>
+          <div className="flex gap-3">
+            <Button variant="outline" size="sm" className="h-8 text-xs bg-white text-gray-600" data-testid="button-cancel-settings" disabled>Cancel</Button>
+            <Button size="sm" className="h-8 text-xs bg-gray-300 text-gray-500 shadow-sm px-4 cursor-not-allowed" data-testid="button-save-settings" disabled title="Not yet implemented">Save Configuration</Button>
+          </div>
         </div>
       </div>
     </BudgetLayout>
