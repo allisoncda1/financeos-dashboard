@@ -58,15 +58,14 @@ export default function AnalyticsSettingsPage() {
       showBasis={false}
       actions={
         <div className="flex items-center gap-2">
-          {saved && (
-            <span className="text-[11px] font-semibold text-emerald-600 inline-flex items-center gap-1">
-              <Check className="w-3.5 h-3.5" /> Saved
-            </span>
-          )}
+          <span className="text-[11px] text-amber-700 bg-amber-50 border border-amber-100 rounded px-2 py-1" data-testid="analytics-settings-not-persisted">
+            Demo — settings not persisted
+          </span>
           <Button
-            className="h-8 bg-indigo-600 hover:bg-indigo-700 text-white gap-1.5 font-medium px-3 text-xs shadow-sm"
-            onClick={() => setSaved(true)}
+            className="h-8 bg-gray-300 text-gray-500 gap-1.5 font-medium px-3 text-xs cursor-not-allowed"
+            disabled
             data-testid="button-save-settings"
+            title="Analytics settings persistence is not yet implemented"
           >
             <Save className="w-3.5 h-3.5" />
             Save Settings
