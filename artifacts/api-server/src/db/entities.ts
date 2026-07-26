@@ -8,6 +8,9 @@ export type { EntityRow as Entity } from "@workspace/db";
  * Resolve a slug to its Neon UUID.
  * Returns null when the entity is not seeded — callers must handle this case
  * and fall back rather than propagating a null UUID to other queries.
+ *
+ * Uses CORE_DATABASE_URL (read-only Neon).
+ * For request-path resolution, prefer getCachedEntityId() from entityCache.ts.
  */
 export async function getEntityIdBySlug(slug: string): Promise<string | null> {
   const rows = await db

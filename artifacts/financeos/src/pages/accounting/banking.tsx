@@ -5,7 +5,8 @@
  * view connected accounts and balances, trigger manual syncs,
  * and browse synced transactions.
  *
- * Phase 1: sandbox-only. Production Plaid env requires separate approval.
+ * Consent modal gates Plaid Link — users must accept the data sharing
+ * agreement before a link token is issued.
  */
 
 import { useState, useCallback, useEffect } from "react";
@@ -75,7 +76,100 @@ interface SyncSummary {
   removed: number;
 }
 
-// ─── Plaid Link wrapper ───────────────────────────────────────────────────────
+interface ConsentInfo {
+  policyVersion: string;
+  consentText: string;
+  consentTextHash: string;
+}
+
+// ─── Consent Modal ────────────────────────────────────────────────────────────
+
+function ConsentModal({
+  entitySlug,
+  onConsented,
+  onCancel,
+}: {
+  entitySlug: string;
+  onConsented: () => void;
+  onCancel: () => void;
+}) {
+  const [consentInfo, setConsentInfo] = useState<ConsentInfo | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    apiGet<ConsentInfo>("/plaid/consent-info")
+      .then(setConsentInfo)
+      .catch((err) => setError(err instanceof Error ? err.message : "Failed to load consent"))
+      .finally(() => setLoading(false));
+  }, []);
+
+  const handleAgree = useCallback(async () => {
+    if (!consentInfo) return;
+    setSubmitting(true);
+    setError(null);
+    try {
+      await apiPost("/plaid/consent", { entitySlug });
+      onConsented();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to record consent");
+    } finally {
+      setSubmitting(false);
+    }
+  }, [consentInfo, entitySlug, onConsented]);
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
+      <div className="bg-white rounded-xl shadow-xl max-w-lg w-full p-6 space-y-4">
+        <h2 className="text-lg font-semibold text-gray-900">Bank Account Data Sharing Agreement</h2>
+
+        {loading ? (
+          <div className="text-sm text-gray-400 py-4 text-center">Loading…</div>
+        ) : (
+          <>
+            <div className="text-sm text-gray-700 whitespace-pre-line bg-gray-50 rounded-lg p-4 max-h-64 overflow-y-auto border border-gray-100">
+              {consentInfo?.consentText ?? ""}
+            </div>
+
+            {consentInfo && (
+              <p className="text-xs text-gray-400">
+                Policy version: {consentInfo.policyVersion}
+              </p>
+            )}
+
+            {error && (
+              <div className="text-sm text-red-600 bg-red-50 rounded-lg px-3 py-2 border border-red-200">
+                {error}
+              </div>
+            )}
+
+            <div className="flex gap-3 justify-end pt-2">
+              <button
+                onClick={onCancel}
+                disabled={submitting}
+                className="px-4 py-2 text-sm font-medium text-gray-700 bg-gray-100 rounded-lg
+                           hover:bg-gray-200 disabled:opacity-50 transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={() => void handleAgree()}
+                disabled={submitting || !consentInfo}
+                className="px-4 py-2 text-sm font-medium text-white bg-blue-600 rounded-lg
+                           hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+              >
+                {submitting ? "Recording…" : "I Agree"}
+              </button>
+            </div>
+          </>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ─── Plaid Link wrapper (consent-gated) ──────────────────────────────────────
 
 function PlaidLinkButton({
   entitySlug,
@@ -84,6 +178,7 @@ function PlaidLinkButton({
   entitySlug: string;
   onSuccess: () => void;
 }) {
+  const [showConsent, setShowConsent] = useState(false);
   const [linkToken, setLinkToken] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -95,11 +190,22 @@ function PlaidLinkButton({
       const data = await apiPost<{ linkToken: string }>("/plaid/link-token", { entitySlug });
       setLinkToken(data.linkToken);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to initialize Plaid Link");
+      const msg = err instanceof Error ? err.message : "Failed to initialize Plaid Link";
+      // If consent is required, show the consent modal
+      if (msg.includes("Consent required") || msg.includes("CONSENT_REQUIRED")) {
+        setShowConsent(true);
+      } else {
+        setError(msg);
+      }
     } finally {
       setLoading(false);
     }
   }, [entitySlug]);
+
+  const handleConsentGranted = useCallback(() => {
+    setShowConsent(false);
+    void fetchLinkToken();
+  }, [fetchLinkToken]);
 
   const { open, ready } = usePlaidLink({
     token: linkToken ?? "",
@@ -129,27 +235,37 @@ function PlaidLinkButton({
   }, [linkToken, ready, open]);
 
   return (
-    <div className="flex flex-col items-start gap-2">
-      <button
-        onClick={fetchLinkToken}
-        disabled={loading}
-        className="inline-flex items-center gap-2 px-4 py-2 text-sm font-medium
-                   bg-blue-600 text-white rounded-lg hover:bg-blue-700
-                   disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-      >
-        {loading ? (
-          <>
-            <span className="inline-block w-3 h-3 border-2 border-white/40 border-t-white rounded-full animate-spin" />
-            Initializing…
-          </>
-        ) : (
-          <>
-            <span>+</span> Connect bank account
-          </>
-        )}
-      </button>
-      {error && <p className="text-xs text-red-600">{error}</p>}
-    </div>
+    <>
+      {showConsent && (
+        <ConsentModal
+          entitySlug={entitySlug}
+          onConsented={handleConsentGranted}
+          onCancel={() => setShowConsent(false)}
+        />
+      )}
+
+      <div className="flex flex-col items-start gap-2">
+        <button
+          onClick={() => void fetchLinkToken()}
+          disabled={loading}
+          className="inline-flex items-center gap-2 px-4 py-2 text-sm font-medium
+                     bg-blue-600 text-white rounded-lg hover:bg-blue-700
+                     disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+        >
+          {loading ? (
+            <>
+              <span className="inline-block w-3 h-3 border-2 border-white/40 border-t-white rounded-full animate-spin" />
+              Initializing…
+            </>
+          ) : (
+            <>
+              <span>+</span> Connect bank account
+            </>
+          )}
+        </button>
+        {error && <p className="text-xs text-red-600">{error}</p>}
+      </div>
+    </>
   );
 }
 
@@ -382,7 +498,7 @@ export default function AccountingBankingPage() {
   return (
     <AccountingLayout
       title="Bank Accounts"
-      subtitle="Plaid-connected bank and credit accounts — sandbox environment"
+      subtitle="Plaid-connected bank and credit accounts"
     >
       <div className="space-y-6">
         {/* Connect button + status */}

@@ -27,3 +27,16 @@ if (!process.env["SESSION_SECRET"]) {
 if (!process.env["PORT"]) {
   process.env["PORT"] = "5001";
 }
+// Prevent plaidClient.ts from throwing during module initialization in unit tests.
+// Individual test files mock plaidClient.js — these stub values satisfy the
+// fail-closed guard so vitest can collect the module graph before mocks apply.
+// No real Plaid calls are made in unit tests.
+if (!process.env["PLAID_ENV"]) {
+  process.env["PLAID_ENV"] = "production";
+}
+if (!process.env["PLAID_CLIENT_ID"]) {
+  process.env["PLAID_CLIENT_ID"] = "test_client_id_stub_not_real";
+}
+if (!process.env["PLAID_SECRET"]) {
+  process.env["PLAID_SECRET"] = "test_secret_stub_not_real";
+}

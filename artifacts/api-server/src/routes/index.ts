@@ -1,4 +1,4 @@
-import { Router, type IRouter } from "express";
+import { Router, type IRouter, raw } from "express";
 import healthRouter from "./health";
 import authRouter from "./auth";
 import entitiesRouter from "./entities";
@@ -37,7 +37,8 @@ router.use(invitationsPublicRouter);
 
 // Plaid webhook is public — Plaid calls it without a session.
 // Must be registered before the blanket requireAuth gate.
-router.use(plaidWebhookRouter);
+// Uses express.raw() to preserve the raw body required for JOSE ES256 signature verification.
+router.use("/api/plaid/webhook", raw({ type: "application/json" }), plaidWebhookRouter);
 
 // Everything below requires an authenticated session.
 router.use(requireAuth);
