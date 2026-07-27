@@ -70,15 +70,13 @@ export function CommissionLayout({ title, subtitle, children }: CommissionLayout
                 </SelectContent>
               </Select>
 
-              <Select defaultValue="jun26">
-                <SelectTrigger className="w-[130px] h-8 text-xs font-medium bg-white border-gray-200 shadow-sm focus:ring-emerald-500 focus:border-emerald-500">
-                  <SelectValue placeholder="Jun 2026" />
+              <Select disabled>
+                <SelectTrigger
+                  className="w-[130px] h-8 text-xs font-medium bg-gray-50 border-gray-200 text-gray-400 cursor-not-allowed"
+                  title="Period selection not yet implemented"
+                >
+                  <SelectValue placeholder="Period" />
                 </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="jun26">Jun 2026</SelectItem>
-                  <SelectItem value="may26">May 2026</SelectItem>
-                  <SelectItem value="apr26">Apr 2026</SelectItem>
-                </SelectContent>
               </Select>
 
               <button

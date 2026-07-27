@@ -1,39 +1,16 @@
-import { FORECAST_SUMMARY } from "@/lib/forecastMockData";
-import { Card } from "@/components/accounting/AccountingUI";
-
-const TONE_CLASS: Record<string, string> = {
-  positive: "text-emerald-600",
-  negative: "text-red-600",
-  neutral: "text-gray-500",
-};
+import { AlertCircle } from "lucide-react";
 
 export function ForecastSummaryTable() {
   return (
-    <Card title="Forecast Summary (FY2026)">
-      <div className="px-5 py-2 overflow-x-auto">
-        <table className="w-full min-w-[420px]">
-          <thead>
-            <tr className="border-b border-gray-100">
-              <th className="py-2 text-left text-[10px] font-semibold text-gray-500 uppercase tracking-wider">Metric</th>
-              <th className="py-2 text-right text-[10px] font-semibold text-gray-500 uppercase tracking-wider">Budget</th>
-              <th className="py-2 text-right text-[10px] font-semibold text-gray-500 uppercase tracking-wider">Forecast</th>
-              <th className="py-2 text-right text-[10px] font-semibold text-gray-500 uppercase tracking-wider">Variance</th>
-              <th className="py-2 text-right text-[10px] font-semibold text-gray-500 uppercase tracking-wider">Variance %</th>
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-gray-50">
-            {FORECAST_SUMMARY.map(row => (
-              <tr key={row.metric} data-testid={`row-summary-${row.metric.toLowerCase().replace(/\s+/g, "-")}`}>
-                <td className="py-2.5 text-[12px] font-medium text-gray-800">{row.metric}</td>
-                <td className="py-2.5 text-right text-[12px] text-gray-500">{row.budget}</td>
-                <td className="py-2.5 text-right text-[12px] font-semibold text-gray-900">{row.forecast}</td>
-                <td className={`py-2.5 text-right text-[12px] font-semibold ${TONE_CLASS[row.tone]}`}>{row.variance}</td>
-                <td className={`py-2.5 text-right text-[12px] font-semibold ${TONE_CLASS[row.tone]}`}>{row.variancePct}</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
-    </Card>
+    <div
+      data-testid="forecast-summary-unavailable"
+      className="flex items-start gap-3 rounded-lg border border-amber-100 bg-amber-50 px-4 py-3 h-full"
+    >
+      <AlertCircle className="w-4 h-4 text-amber-500 shrink-0 mt-0.5" />
+      <p className="text-[12px] text-amber-900">
+        <span className="font-semibold">Forecast summary not yet available.</span>{" "}
+        Requires forecast engine backend.
+      </p>
+    </div>
   );
 }

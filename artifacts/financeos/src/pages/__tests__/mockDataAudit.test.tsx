@@ -307,7 +307,229 @@ describe("App.tsx — CommissionEntityProvider in provider tree", () => {
     const routesIdx   = content.indexOf("CommissionRoutes");
     expect(providerIdx).toBeGreaterThan(-1);
     expect(routesIdx).toBeGreaterThan(-1);
-    // Provider import appears before CommissionRoutes usage
     expect(providerIdx).toBeLessThan(routesIdx);
+  });
+});
+
+// ─── 10. Commission settings — no hardcoded stale values ─────────────────────
+
+describe("CommissionSettings — honest unavailable state", () => {
+  it("does not contain hardcoded stale sync timestamp", () => {
+    const content = src("pages/commissions/settings.tsx");
+    expect(content).not.toContain("Jul 8, 2026");
+    expect(content).not.toContain("9:02 AM");
+  });
+
+  it('does not contain hardcoded "$100.00" minimum payout', () => {
+    const content = src("pages/commissions/settings.tsx");
+    expect(content).not.toContain('"$100.00"');
+  });
+
+  it("contains commission-settings-unavailable data-testid", () => {
+    const content = src("pages/commissions/settings.tsx");
+    expect(content).toContain("commission-settings-unavailable");
+  });
+
+  it("renders the not-implemented banner", async () => {
+    const { default: Page } = await import("../commissions/settings");
+    render(<Page />);
+    expect(screen.getByTestId("commission-settings-unavailable")).toBeTruthy();
+  });
+});
+
+// ─── 11. CommissionLayout — dead period dropdown disabled ─────────────────────
+
+describe("CommissionLayout — no dead interactive period selector", () => {
+  it('period Select does not have a static defaultValue="jun26"', () => {
+    const content = src("components/commission/CommissionLayout.tsx");
+    expect(content).not.toContain('defaultValue="jun26"');
+    expect(content).not.toContain('<SelectItem value="jun26">');
+  });
+
+  it("period Select carries disabled attribute", () => {
+    const content = src("components/commission/CommissionLayout.tsx");
+    expect(content).toContain("<Select disabled>");
+  });
+});
+
+// ─── 12. BudgetSettings — dead buttons are semantically disabled ──────────────
+
+describe("BudgetSettings — dead buttons carry disabled attribute", () => {
+  it("Edit buttons in departments list are disabled", () => {
+    const content = src("pages/budget/settings.tsx");
+    expect(content).toContain('disabled>Edit</Button>');
+  });
+
+  it("Add Department button is disabled", () => {
+    const content = src("pages/budget/settings.tsx");
+    expect(content).toContain('data-testid="button-add-department" disabled');
+  });
+});
+
+// ─── 13. Forecast module — no forecastMockData in production files ────────────
+
+const FORECAST_PRODUCTION_FILES = [
+  "components/forecast/ForecastKpiCard.tsx",
+  "components/forecast/ForecastVsBudgetChart.tsx",
+  "components/forecast/ForecastSummaryTable.tsx",
+  "components/forecast/ForecastDriversTable.tsx",
+  "components/forecast/CashFlowForecastChart.tsx",
+  "components/forecast/ForecastAiInsightCard.tsx",
+  "pages/forecast/overview.tsx",
+  "pages/forecast/revenue.tsx",
+  "pages/forecast/pnl.tsx",
+  "pages/forecast/cash-flow.tsx",
+  "pages/forecast/balance-sheet.tsx",
+  "pages/forecast/scenarios.tsx",
+  "pages/forecast/drivers.tsx",
+  "pages/forecast/reports.tsx",
+  "pages/forecast/settings.tsx",
+];
+
+describe("Forecast module — no forecastMockData imports in production", () => {
+  for (const file of FORECAST_PRODUCTION_FILES) {
+    it(`${file} — no forecastMockData import`, () => {
+      let content: string;
+      try { content = src(file); } catch { return; }
+      expect(content).not.toContain("forecastMockData");
+    });
+  }
+});
+
+// ─── 14. Forecast module — no hardcoded sync timestamp ───────────────────────
+
+describe("Forecast module — no hardcoded stale timestamps", () => {
+  it("ForecastLayout does not contain 'Today at 9:02 AM'", () => {
+    const content = src("components/forecast/ForecastLayout.tsx");
+    expect(content).not.toContain("9:02 AM");
+    expect(content).not.toContain("Today at");
+  });
+
+  it('ForecastLayout entity selector is disabled (not defaultValue="all")', () => {
+    const content = src("components/forecast/ForecastLayout.tsx");
+    expect(content).not.toContain('defaultValue="all"');
+  });
+
+  it('ForecastLayout fiscal year selector is disabled (not defaultValue="fy26")', () => {
+    const content = src("components/forecast/ForecastLayout.tsx");
+    expect(content).not.toContain('defaultValue="fy26"');
+  });
+
+  it("ForecastLayout Update Forecast button is disabled", () => {
+    const content = src("components/forecast/ForecastLayout.tsx");
+    expect(content).toContain('disabled');
+    expect(content).toContain('Update Forecast');
+  });
+
+  it("forecast/settings.tsx does not contain 'Today at 9:02 AM'", () => {
+    const content = src("pages/forecast/settings.tsx");
+    expect(content).not.toContain("9:02 AM");
+    expect(content).not.toContain("Today at");
+  });
+
+  it("forecast/settings.tsx contains not-implemented banner", () => {
+    const content = src("pages/forecast/settings.tsx");
+    expect(content).toContain("forecast-settings-unavailable");
+  });
+});
+
+// ─── 15. Forecast components — honest stubs with data-testids ────────────────
+
+vi.mock("@/components/forecast/ForecastLayout", () => ({
+  ForecastLayout: ({ children }: { children: React.ReactNode }) => <div>{children}</div>,
+}));
+vi.mock("@/components/forecast/ForecastSidebar", () => ({
+  ForecastSidebar: () => null,
+}));
+
+describe("Forecast components — honest unavailable stubs", () => {
+  const FORECAST_COMPONENT_STUBS: Array<[string, string, string]> = [
+    ["ForecastKpiCard", "ForecastKpiCards", "forecast-kpi-unavailable"],
+    ["ForecastVsBudgetChart", "ForecastVsBudgetChart", "forecast-vs-budget-unavailable"],
+    ["ForecastSummaryTable", "ForecastSummaryTable", "forecast-summary-unavailable"],
+    ["ForecastDriversTable", "ForecastDriversTable", "forecast-drivers-unavailable"],
+    ["CashFlowForecastChart", "CashFlowForecastChart", "forecast-cashflow-unavailable"],
+    ["ForecastAiInsightCard", "ForecastAiInsightCard", "forecast-ai-insight-unavailable"],
+  ];
+
+  for (const [file, exportName, testId] of FORECAST_COMPONENT_STUBS) {
+    it(`${file} renders honest unavailable notice`, async () => {
+      const mod = await import(`../../components/forecast/${file}`);
+      const Component = mod[exportName] as React.FC;
+      render(<Component />);
+      expect(screen.getByTestId(testId)).toBeTruthy();
+    });
+  }
+});
+
+describe("Forecast pages — honest unavailable stubs", () => {
+  const FORECAST_PAGE_STUBS: Array<[string, string]> = [
+    ["balance-sheet", "forecast-balance-sheet-unavailable"],
+    ["pnl", "forecast-pnl-unavailable"],
+    ["reports", "forecast-reports-unavailable"],
+    ["scenarios", "forecast-scenarios-unavailable"],
+    ["revenue", "forecast-revenue-unavailable"],
+    ["cash-flow", "forecast-cashflow-page-unavailable"],
+    ["drivers", "forecast-drivers-page-unavailable"],
+    ["settings", "forecast-settings-unavailable"],
+  ];
+
+  for (const [page, testId] of FORECAST_PAGE_STUBS) {
+    it(`forecast/${page} shows not-implemented notice`, async () => {
+      const { default: Page } = await import(`../forecast/${page}`);
+      render(<Page />);
+      expect(screen.getByTestId(testId)).toBeTruthy();
+    });
+  }
+});
+
+// ─── 16. Plaid routes — entity ownership source guards ───────────────────────
+
+describe("Plaid routes — entity ownership source audit", () => {
+  const PLAID_ROUTE_FILE = resolve(
+    import.meta.dirname,
+    "../../../../api-server/src/routes/plaid.ts",
+  );
+
+  function plaidSrc(): string {
+    return readFileSync(PLAID_ROUTE_FILE, "utf-8");
+  }
+
+  it("sync route handler contains entity ownership check before calling sync", () => {
+    const content = plaidSrc();
+    // Isolate just the sync route handler section
+    const routeStart = content.indexOf('"/plaid/items/:id/sync"');
+    const routeEnd   = content.indexOf('"/plaid/accounts"');
+    expect(routeStart).toBeGreaterThan(-1);
+    expect(routeEnd).toBeGreaterThan(routeStart);
+    const syncRouteSegment = content.slice(routeStart, routeEnd);
+    // Ownership check must be present in this handler
+    expect(syncRouteSegment).toContain("plaid_item_id = $1 AND entity_slug = $2");
+    // The sync call must also be in this handler
+    expect(syncRouteSegment).toContain("syncTransactionsForItem(plaidItemId)");
+    // Ownership check must appear before the sync call within the handler
+    const ownershipIdx = syncRouteSegment.indexOf("plaid_item_id = $1 AND entity_slug = $2");
+    const syncCallIdx  = syncRouteSegment.indexOf("syncTransactionsForItem(plaidItemId)");
+    expect(ownershipIdx).toBeLessThan(syncCallIdx);
+  });
+
+  it("disconnect route verifies entity_slug ownership before updating plaid_items", () => {
+    const content = plaidSrc();
+    expect(content).toContain("itemEntitySlug !== entitySlug");
+    expect(content).toContain("Connection does not belong to the specified entity");
+  });
+
+  it("disconnect route requires entitySlug from request body", () => {
+    const content = plaidSrc();
+    expect(content).toContain('entitySlug required and must be a valid entity');
+  });
+
+  it("sync route requires entitySlug from request", () => {
+    const content = plaidSrc();
+    // Check that validateEntitySlug is called in the sync handler
+    const syncHandlerStart = content.indexOf("/plaid/items/:id/sync");
+    const nextHandlerStart = content.indexOf("/plaid/accounts");
+    const segment = content.slice(syncHandlerStart, nextHandlerStart);
+    expect(segment).toContain("validateEntitySlug");
   });
 });

@@ -1,31 +1,19 @@
+import { AlertCircle } from "lucide-react";
 import { ForecastLayout } from "@/components/forecast/ForecastLayout";
-import { Card, DataTable, Td, PrimaryButton } from "@/components/accounting/AccountingUI";
-import { ForecastDriversTable } from "@/components/forecast/ForecastDriversTable";
-import { FORECAST_ASSUMPTIONS } from "@/lib/forecastMockData";
-import { Plus } from "lucide-react";
 
-export default function DriversPage() {
+export default function ForecastDriversPage() {
   return (
-    <ForecastLayout title="Drivers & Assumptions" subtitle="Key inputs powering the forecast model">
-      <ForecastDriversTable />
-
-      <Card
-        title="Model Assumptions"
-        action={<PrimaryButton testId="button-new-assumption"><Plus className="w-3.5 h-3.5" /> New Assumption</PrimaryButton>}
+    <ForecastLayout title="Forecast Drivers" subtitle="Driver assumptions — not yet implemented">
+      <div
+        data-testid="forecast-drivers-page-unavailable"
+        className="flex items-start gap-3 rounded-lg border border-amber-100 bg-amber-50 px-4 py-3"
       >
-        <DataTable headers={[
-          { label: "Driver" }, { label: "Value" }, { label: "Basis" }, { label: "Last Updated" },
-        ]}>
-          {FORECAST_ASSUMPTIONS.map(a => (
-            <tr key={a.id} data-testid={`row-assumption-${a.id}`} className="hover:bg-gray-50 transition-colors">
-              <Td className="font-semibold text-gray-900 text-[13px]">{a.driver}</Td>
-              <Td className="font-semibold text-gray-900">{a.value}</Td>
-              <Td className="text-gray-500">{a.basis}</Td>
-              <Td>{a.updated}</Td>
-            </tr>
-          ))}
-        </DataTable>
-      </Card>
+        <AlertCircle className="w-4 h-4 text-amber-500 shrink-0 mt-0.5" />
+        <p className="text-[12px] text-amber-900">
+          <span className="font-semibold">Forecast driver assumptions are not yet available.</span>{" "}
+          The forecast engine is planned for a future release.
+        </p>
+      </div>
     </ForecastLayout>
   );
 }
