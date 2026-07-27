@@ -786,6 +786,31 @@ router.post(
       return;
     }
 
+    // Verify the item belongs to an entity the requester is allowed to manage.
+    // Without this check any canManageBanking user could sync any entity's item.
+    let entitySlug: string;
+    try {
+      entitySlug = validateEntitySlug(req.query["entitySlug"] ?? req.body?.["entitySlug"]);
+    } catch {
+      res.status(400).json({ ok: false, error: "entitySlug required and must be a valid entity", ts: ts() });
+      return;
+    }
+
+    try {
+      const ownershipRes = await query<{ plaid_item_id: string }>(
+        `SELECT plaid_item_id FROM plaid_items WHERE plaid_item_id = $1 AND entity_slug = $2 AND status = 'active' LIMIT 1`,
+        [plaidItemId, entitySlug],
+      );
+      if (ownershipRes.rows.length === 0) {
+        res.status(404).json({ ok: false, error: "Item not found for the specified entity", ts: ts() });
+        return;
+      }
+    } catch (err) {
+      req.log.error({ err }, "[plaid] ownership check failed for sync");
+      res.status(500).json({ ok: false, error: "Failed to verify item ownership", ts: ts() });
+      return;
+    }
+
     try {
       const summary = await syncTransactionsForItem(plaidItemId);
       res.json({ ok: true, data: { plaidItemId, ...summary }, ts: ts() });
@@ -944,33 +969,59 @@ router.post(
     }
 
     const connectionId = req.params["connectionId"];
+
+    // Require entitySlug so we can verify ownership before disconnecting.
+    // Without this any canManageBanking user could disconnect any entity's connection.
+    let entitySlug: string;
+    try {
+      entitySlug = validateEntitySlug(
+        (req.body as Record<string, unknown> | undefined)?.["entitySlug"] ?? req.query["entitySlug"],
+      );
+    } catch {
+      res.status(400).json({ ok: false, error: "entitySlug required and must be a valid entity", ts: ts() });
+      return;
+    }
+
     try {
       const itemRes = await query<Record<string, unknown>>(
-        `SELECT access_token_encrypted, access_token_iv, access_token_tag
+        `SELECT access_token_encrypted, access_token_iv, access_token_tag, entity_slug
          FROM plaid_items WHERE plaid_item_id = $1`,
         [connectionId],
       );
-      if (itemRes.rows.length > 0) {
-        const row = itemRes.rows[0]!;
-        try {
-          const accessToken = decryptAccessToken(
-            String(row["access_token_encrypted"]),
-            String(row["access_token_iv"]),
-            String(row["access_token_tag"]),
-          );
-          await plaidClient.itemRemove({ access_token: accessToken });
-        } catch (revokeErr) {
-          req.log.warn({ err: revokeErr }, "[plaid] Token revocation failed — marking disconnected anyway");
-        }
-        await query(
-          `UPDATE plaid_items SET status = 'disconnected', updated_at = NOW() WHERE plaid_item_id = $1`,
-          [connectionId],
-        );
-        await query(
-          `UPDATE plaid_accounts SET status = 'closed', updated_at = NOW() WHERE plaid_item_id = $1`,
-          [connectionId],
-        );
+
+      if (itemRes.rows.length === 0) {
+        res.status(404).json({ ok: false, error: "Connection not found", ts: ts() });
+        return;
       }
+
+      // Ownership check — item must belong to the entity the caller declared.
+      const itemEntitySlug = String(itemRes.rows[0]!["entity_slug"] ?? "");
+      if (itemEntitySlug !== entitySlug) {
+        req.log.warn({ connectionId, callerEntitySlug: entitySlug, itemEntitySlug }, "[plaid] disconnect entity mismatch");
+        res.status(403).json({ ok: false, error: "Connection does not belong to the specified entity", ts: ts() });
+        return;
+      }
+
+      const row = itemRes.rows[0]!;
+      try {
+        const accessToken = decryptAccessToken(
+          String(row["access_token_encrypted"]),
+          String(row["access_token_iv"]),
+          String(row["access_token_tag"]),
+        );
+        await plaidClient.itemRemove({ access_token: accessToken });
+      } catch (revokeErr) {
+        req.log.warn({ err: revokeErr }, "[plaid] Token revocation failed — marking disconnected anyway");
+      }
+      await query(
+        `UPDATE plaid_items SET status = 'disconnected', updated_at = NOW() WHERE plaid_item_id = $1`,
+        [connectionId],
+      );
+      await query(
+        `UPDATE plaid_accounts SET status = 'closed', updated_at = NOW() WHERE plaid_item_id = $1`,
+        [connectionId],
+      );
+
       res.json({ ok: true, data: { message: "Disconnected" }, ts: ts() });
     } catch (err) {
       req.log.error({ err }, "[plaid] disconnect failed");
