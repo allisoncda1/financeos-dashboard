@@ -1,32 +1,18 @@
 import { CommissionLayout } from "@/components/commission/CommissionLayout";
-import { Card } from "@/components/accounting/AccountingUI";
-import { COMMISSION_REPORTS } from "@/lib/commissionMockData";
-import { BarChart3, ArrowRight } from "lucide-react";
+import { AlertCircle } from "lucide-react";
 
 export default function CommissionReportsPage() {
   return (
     <CommissionLayout title="Reports" subtitle="Commission reports and statements">
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-        {COMMISSION_REPORTS.map(r => (
-          <Card key={r.id}>
-            <div className="p-5 flex items-start gap-4">
-              <div className="w-10 h-10 rounded-lg bg-emerald-50 flex items-center justify-center flex-shrink-0">
-                <BarChart3 className="w-5 h-5 text-emerald-600" />
-              </div>
-              <div className="flex-1 min-w-0">
-                <h3 className="text-[14px] font-semibold text-gray-900">{r.name}</h3>
-                <p className="text-[12px] text-gray-500 mt-1 leading-relaxed">{r.description}</p>
-                <p className="text-[11px] text-gray-400 mt-2">Last run {r.lastRun}</p>
-              </div>
-              <button
-                data-testid={`button-run-${r.id}`}
-                className="flex items-center gap-1.5 h-8 px-3 rounded-lg border border-gray-200 bg-white text-[12px] font-semibold text-gray-700 shadow-sm hover:bg-gray-50 transition-colors flex-shrink-0"
-              >
-                Run <ArrowRight className="w-3.5 h-3.5" />
-              </button>
-            </div>
-          </Card>
-        ))}
+      <div className="bg-white rounded-xl border border-amber-100 shadow-sm p-8 flex items-start gap-4" data-testid="commission-reports-unavailable">
+        <AlertCircle className="w-5 h-5 text-amber-500 shrink-0 mt-1" />
+        <div>
+          <p className="text-[14px] font-semibold text-gray-900">Commission reports not available</p>
+          <p className="text-[13px] text-gray-500 mt-2 leading-relaxed">
+            Commission reports require completed calculation runs. Reports will be available once the commission
+            engine is configured and calculation runs have been approved. Not yet implemented in FinanceOS.
+          </p>
+        </div>
       </div>
     </CommissionLayout>
   );

@@ -1,34 +1,19 @@
 import { CommissionLayout } from "@/components/commission/CommissionLayout";
-import { Card, DataTable, Td, Pill, PrimaryButton } from "@/components/accounting/AccountingUI";
-import { COMMISSION_CLIENTS } from "@/lib/commissionMockData";
-import { Plus } from "lucide-react";
-
-const fmt = (n: number) => n.toLocaleString("en-US", { style: "currency", currency: "USD", maximumFractionDigits: 0 });
+import { AlertCircle } from "lucide-react";
 
 export default function CommissionClientsPage() {
   return (
-    <CommissionLayout title="Clients" subtitle="Clients assigned to sales reps for commission tracking">
-      <Card
-        title="Clients"
-        action={<PrimaryButton testId="button-new-client"><Plus className="w-3.5 h-3.5" /> New Client</PrimaryButton>}
-      >
-        <DataTable headers={[
-          { label: "Client" }, { label: "Sales Rep" },
-          { label: "MRR", className: "text-right" }, { label: "Lifetime Value", className: "text-right" },
-          { label: "Client Since" }, { label: "Status" },
-        ]}>
-          {COMMISSION_CLIENTS.map(c => (
-            <tr key={c.id} data-testid={`row-client-${c.id}`} className="hover:bg-gray-50 transition-colors">
-              <Td className="font-semibold text-gray-900 text-[13px]">{c.name}</Td>
-              <Td>{c.rep}</Td>
-              <Td className="text-right font-semibold text-gray-900">{fmt(c.mrr)}</Td>
-              <Td className="text-right">{fmt(c.ltv)}</Td>
-              <Td>{c.since}</Td>
-              <Td>{c.status === "Active" ? <Pill tone="emerald">Active</Pill> : <Pill tone="blue">Trial</Pill>}</Td>
-            </tr>
-          ))}
-        </DataTable>
-      </Card>
+    <CommissionLayout title="Clients" subtitle="Client commission assignments and rates">
+      <div className="bg-white rounded-xl border border-amber-100 shadow-sm p-8 flex items-start gap-4" data-testid="commission-clients-unavailable">
+        <AlertCircle className="w-5 h-5 text-amber-500 shrink-0 mt-1" />
+        <div>
+          <p className="text-[14px] font-semibold text-gray-900">Client commission data not available</p>
+          <p className="text-[13px] text-gray-500 mt-2 leading-relaxed">
+            Client-level commission tracking requires a commission engine with invoice eligibility rules
+            and client-to-sales-rep assignments. Not yet implemented in FinanceOS.
+          </p>
+        </div>
+      </div>
     </CommissionLayout>
   );
 }
