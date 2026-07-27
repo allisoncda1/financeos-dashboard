@@ -60,6 +60,33 @@ async function getSourced<T>(path: string): Promise<Sourced<T>> {
   return { data: json.data as T, source: normalizeSource(json.source) };
 }
 
+/** Extended response shape for accounting endpoints that carry optional top-level metadata. */
+export type AccountingSourced<T> = Sourced<T> & {
+  reconciliation?: ArApReconciliation | null;
+  priorPeriod?: PriorPeriodMeta | null;
+};
+
+/**
+ * Like getSourced but also extracts the optional `reconciliation` and `priorPeriod`
+ * fields present on accounting invoices, bills, and transactions endpoints.
+ */
+async function getAccountingSourced<T>(path: string): Promise<AccountingSourced<T>> {
+  const res = await fetch(`${BASE}${path}`, { credentials: "include" });
+  if (res.status === 401) {
+    handleUnauthorized();
+    throw new Error("Session expired");
+  }
+  if (!res.ok) throw new Error(`API ${path} → ${res.status}`);
+  const json = await res.json();
+  if (!json.ok) throw new Error(json.error ?? "API error");
+  return {
+    data: json.data as T,
+    source: normalizeSource(json.source),
+    reconciliation: (json.reconciliation as ArApReconciliation | null | undefined) ?? null,
+    priorPeriod: (json.priorPeriod as PriorPeriodMeta | null | undefined) ?? null,
+  };
+}
+
 async function put<T>(path: string, body: unknown): Promise<T> {
   const res = await fetch(`${BASE}${path}`, {
     method: "PUT",
@@ -247,16 +274,16 @@ export const api = {
   accountingVendors:      (slug: string) => getSourced<AccountingVendor[]>(`/accounting/${slug}/vendors`),
   accountingInvoices:     (slug: string, from?: string | null, to?: string | null) => {
     const qs = buildPeriodQS(from, to);
-    return getSourced<AccountingInvoice[]>(`/accounting/${slug}/invoices${qs}`);
+    return getAccountingSourced<AccountingInvoice[]>(`/accounting/${slug}/invoices${qs}`);
   },
   accountingAccounts:     (slug: string) => getSourced<AccountingAccount[]>(`/accounting/${slug}/accounts`),
   accountingTransactions: (slug: string, from?: string | null, to?: string | null) => {
     const qs = buildPeriodQS(from, to);
-    return getSourced<AccountingTransaction[]>(`/accounting/${slug}/transactions${qs}`);
+    return getAccountingSourced<AccountingTransaction[]>(`/accounting/${slug}/transactions${qs}`);
   },
   accountingBills:        (slug: string, from?: string | null, to?: string | null) => {
     const qs = buildPeriodQS(from, to);
-    return getSourced<AccountingBill[]>(`/accounting/${slug}/bills${qs}`);
+    return getAccountingSourced<AccountingBill[]>(`/accounting/${slug}/bills${qs}`);
   },
 };
 
@@ -344,6 +371,26 @@ export type AccountingBill = {
   currency: string;
   memo: string | null;
   syncedAt: string | null;
+};
+
+/**
+ * Prior-period open item metadata — returned alongside invoices, bills, and
+ * transactions when a period lower-bound (`from`) is active and open items
+ * exist before that date. Null when no prior-period open items exist or when
+ * the selected period has no lower bound (all_time).
+ */
+export type PriorPeriodMeta = {
+  /** Number of excluded open items (invoices / bills / unreconciled transactions). */
+  count: number;
+  /**
+   * Sum of open balances for excluded invoices or bills.
+   * Undefined for transactions (no balance column).
+   */
+  totalBalance?: number;
+  /** ISO date of the earliest excluded item. */
+  earliestDate: string | null;
+  /** ISO date of the latest excluded item. */
+  latestDate: string | null;
 };
 
 /** AR/AP reconciliation metadata returned alongside invoices and bills endpoints. */

@@ -71,14 +71,14 @@ export function BudgetLayout({ title, subtitle, showTabs = false, children }: Bu
                 </SelectContent>
               </Select>
 
-              <Select defaultValue="fy26">
-                <SelectTrigger className="w-[180px] h-8 text-xs font-medium bg-white border-gray-200 shadow-sm focus:ring-emerald-500 focus:border-emerald-500">
-                  <SelectValue placeholder="FY2026" />
+              <Select disabled>
+                <SelectTrigger
+                  className="w-[180px] h-8 text-xs font-medium bg-white border-gray-200 shadow-sm opacity-60 cursor-not-allowed"
+                  title="Period filtering will apply once the Budget module is connected to live data"
+                  data-testid="budget-period-select-disabled"
+                >
+                  <SelectValue placeholder="Period (pending)" />
                 </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="fy26">FY2026 (Jul 26 - Jun 27)</SelectItem>
-                  <SelectItem value="fy25">FY2025 (Jul 25 - Jun 26)</SelectItem>
-                </SelectContent>
               </Select>
 
               <Button variant="outline" size="icon" className="h-8 w-8 border-gray-200">

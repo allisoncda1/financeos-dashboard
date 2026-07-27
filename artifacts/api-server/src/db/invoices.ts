@@ -1,4 +1,4 @@
-import { eq, and, gt, gte, lte, desc } from "drizzle-orm";
+import { eq, and, gt, gte, lte, lt, desc, min, max, count, sum } from "drizzle-orm";
 import { db } from "./connection";
 import { invoices, customers } from "@workspace/db";
 import { parseNumeric } from "../services/numerics";
@@ -93,6 +93,50 @@ export async function computeDso(entityId: string): Promise<number> {
   return Math.round(
     debit.reduce((s, inv) => s + inv.balance * (inv.daysOverdue ?? 0), 0) / totalBalance,
   );
+}
+
+export type PriorPeriodInvoiceMeta = {
+  count: number;
+  totalBalance: number;
+  earliestDate: string | null;
+  latestDate: string | null;
+};
+
+/**
+ * Open invoices (balance > 0, not deleted) dated strictly before `before`.
+ * Used to surface prior-period cleanup notices when period filtering is active.
+ * Returns null when no such invoices exist.
+ */
+export async function getPriorPeriodOpenInvoices(
+  entityId: string,
+  before: string,
+): Promise<PriorPeriodInvoiceMeta | null> {
+  const rows = await db
+    .select({
+      cnt:      count(),
+      totalBal: sum(invoices.balance),
+      earliest: min(invoices.invoiceDate),
+      latest:   max(invoices.invoiceDate),
+    })
+    .from(invoices)
+    .where(
+      and(
+        eq(invoices.entityId, entityId),
+        gt(invoices.balance, "0"),
+        eq(invoices.isDeleted, false),
+        lt(invoices.invoiceDate, before),
+      ),
+    );
+
+  const row = rows[0];
+  if (!row || Number(row.cnt) === 0) return null;
+
+  return {
+    count:        Number(row.cnt),
+    totalBalance: parseNumeric(row.totalBal ?? "0"),
+    earliestDate: row.earliest ?? null,
+    latestDate:   row.latest ?? null,
+  };
 }
 
 export async function getInvoiceById(entityId: string, invoiceId: string) {

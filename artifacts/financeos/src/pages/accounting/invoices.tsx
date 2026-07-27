@@ -1,5 +1,6 @@
 import { AccountingLayout } from "@/components/accounting/AccountingLayout";
 import { Card, DataTable, Td, Pill, MiniKpi } from "@/components/accounting/AccountingUI";
+import { PriorPeriodBannerGuard } from "@/components/accounting/PriorPeriodBanner";
 import { useAccountingEntity } from "@/lib/accounting-context";
 import { useAccountingPeriod } from "@/lib/accounting-period-context";
 import { useAccountingInvoices } from "@/hooks/useApi";
@@ -82,7 +83,8 @@ function ReconBanner({ recon }: { recon: ArApReconciliation }) {
 export default function InvoicesPage(_props: { filter?: string } = {}) {
   const { activeSlug } = useAccountingEntity();
   const { activePeriod } = useAccountingPeriod();
-  const { data: invoices, source, reconciliation } = useAccountingInvoices(activeSlug, activePeriod.from, activePeriod.to);
+  const { setPreset } = useAccountingPeriod();
+  const { data: invoices, source, reconciliation, priorPeriod } = useAccountingInvoices(activeSlug, activePeriod.from, activePeriod.to);
 
   if (source === "loading" || (source !== "unavailable" && !invoices)) {
     return (
@@ -109,6 +111,11 @@ export default function InvoicesPage(_props: { filter?: string } = {}) {
   return (
     <AccountingLayout title="Invoices" subtitle="View and track customer invoices from QBO">
       {reconciliation && <ReconBanner recon={reconciliation} />}
+      <PriorPeriodBannerGuard
+        priorPeriod={priorPeriod}
+        itemLabel="invoice"
+        onViewAllTime={() => setPreset("all_time")}
+      />
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
         <MiniKpi label="Total Invoiced" value={formatCurrency(totalAmount)} sub={`${invoices.length} invoices`} tone="blue" />
         <MiniKpi label="Outstanding AR" value={formatCurrency(outstanding)} sub="Open balance" tone="blue" />

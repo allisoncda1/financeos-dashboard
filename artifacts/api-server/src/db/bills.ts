@@ -1,4 +1,4 @@
-import { eq, and, gt, gte, lte, desc } from "drizzle-orm";
+import { eq, and, gt, gte, lte, lt, desc, min, max, count, sum } from "drizzle-orm";
 import { db } from "./connection";
 import { bills } from "@workspace/db";
 import { parseNumeric } from "../services/numerics";
@@ -83,6 +83,50 @@ export async function getTopVendorsByAp(
     }))
     .sort((a, b) => b.balance - a.balance)
     .slice(0, limit);
+}
+
+export type PriorPeriodBillMeta = {
+  count: number;
+  totalBalance: number;
+  earliestDate: string | null;
+  latestDate: string | null;
+};
+
+/**
+ * Open bills (balance > 0, not deleted) dated strictly before `before`.
+ * Used to surface prior-period cleanup notices when period filtering is active.
+ * Returns null when no such bills exist.
+ */
+export async function getPriorPeriodOpenBills(
+  entityId: string,
+  before: string,
+): Promise<PriorPeriodBillMeta | null> {
+  const rows = await db
+    .select({
+      cnt:      count(),
+      totalBal: sum(bills.balance),
+      earliest: min(bills.billDate),
+      latest:   max(bills.billDate),
+    })
+    .from(bills)
+    .where(
+      and(
+        eq(bills.entityId, entityId),
+        gt(bills.balance, "0"),
+        eq(bills.isDeleted, false),
+        lt(bills.billDate, before),
+      ),
+    );
+
+  const row = rows[0];
+  if (!row || Number(row.cnt) === 0) return null;
+
+  return {
+    count:        Number(row.cnt),
+    totalBalance: parseNumeric(row.totalBal ?? "0"),
+    earliestDate: row.earliest ?? null,
+    latestDate:   row.latest ?? null,
+  };
 }
 
 export async function getBillById(entityId: string, billId: string) {

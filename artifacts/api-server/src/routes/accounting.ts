@@ -35,10 +35,10 @@ import { requirePermission } from "../auth/permissions";
 import { ENTITY_SLUGS } from "../lib/mockData";
 import { getCustomers } from "../db/customers";
 import { getVendors } from "../db/vendors";
-import { getAllInvoices } from "../db/invoices";
+import { getAllInvoices, getPriorPeriodOpenInvoices } from "../db/invoices";
 import { getAllAccounts } from "../db/accounts";
-import { getRecentTransactions } from "../db/transactions";
-import { getOpenBills } from "../db/bills";
+import { getRecentTransactions, getPriorPeriodUnreconciledTransactions } from "../db/transactions";
+import { getOpenBills, getPriorPeriodOpenBills } from "../db/bills";
 import { getArApReconciliation } from "../db/snapshots";
 
 const router: IRouter = Router();
@@ -174,9 +174,11 @@ router.get(
     const to    = parseDateParam(req.query["to"]);
 
     try {
-      const [rows, recon] = await Promise.all([
+      const [rows, recon, priorPeriod] = await Promise.all([
         getAllInvoices(entityId, limit, from, to),
         getArApReconciliation(entityId),
+        // Only query prior-period when a lower bound is active (not all_time).
+        from ? getPriorPeriodOpenInvoices(entityId, from) : Promise.resolve(null),
       ]);
       const data = rows.map((r) => ({
         id:           r.id,
@@ -210,7 +212,9 @@ router.get(
         explanation:            recon.arExplanation,
       };
 
-      res.json({ ok: true, data, reconciliation, source: "db", ts: new Date().toISOString() });
+      // priorPeriod: open invoices dated before the selected period start.
+      // Null when no period lower bound is active (all_time) or no excluded rows exist.
+      res.json({ ok: true, data, reconciliation, priorPeriod, source: "db", ts: new Date().toISOString() });
     } catch (err) {
       req.log.error({ err }, `accounting/invoices failed for ${slug}`);
       res.status(500).json({ ok: false, error: "Failed to load invoices" });
@@ -292,7 +296,10 @@ router.get(
     const to    = parseDateParam(req.query["to"]);
 
     try {
-      const rows = await getRecentTransactions(entityId, limit, from, to);
+      const [rows, priorPeriod] = await Promise.all([
+        getRecentTransactions(entityId, limit, from, to),
+        from ? getPriorPeriodUnreconciledTransactions(entityId, from) : Promise.resolve(null),
+      ]);
       const data = rows.map((r) => ({
         id:              r.id,
         qboId:           r.qboId ?? null,
@@ -309,7 +316,7 @@ router.get(
         syncedAt:        r.syncedAt?.toISOString() ?? null,
       }));
 
-      res.json({ ok: true, data, source: "db", ts: new Date().toISOString() });
+      res.json({ ok: true, data, priorPeriod, source: "db", ts: new Date().toISOString() });
     } catch (err) {
       req.log.error({ err }, `accounting/transactions failed for ${slug}`);
       res.status(500).json({ ok: false, error: "Failed to load transactions" });
@@ -339,9 +346,10 @@ router.get(
     const toBills   = parseDateParam(req.query["to"]);
 
     try {
-      const [rows, recon] = await Promise.all([
+      const [rows, recon, priorPeriod] = await Promise.all([
         getOpenBills(entityId, fromBills, toBills),
         getArApReconciliation(entityId),
+        fromBills ? getPriorPeriodOpenBills(entityId, fromBills) : Promise.resolve(null),
       ]);
       const data = rows.map((r) => ({
         id:          r.id,
@@ -374,7 +382,7 @@ router.get(
         explanation:            recon.apExplanation,
       };
 
-      res.json({ ok: true, data, reconciliation, source: "db", ts: new Date().toISOString() });
+      res.json({ ok: true, data, reconciliation, priorPeriod, source: "db", ts: new Date().toISOString() });
     } catch (err) {
       req.log.error({ err }, `accounting/bills failed for ${slug}`);
       res.status(500).json({ ok: false, error: "Failed to load bills" });
