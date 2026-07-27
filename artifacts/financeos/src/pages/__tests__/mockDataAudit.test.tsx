@@ -293,6 +293,62 @@ describe("CommissionSidebar — no hardcoded default entity", () => {
   });
 });
 
+// ─── 9a. CommissionSettings — no hardcoded timestamps or amounts ──────────────
+
+describe("CommissionSettings — honest unavailable state", () => {
+  it("does not contain hardcoded 'Jul 8, 2026 9:02 AM' sync timestamp", () => {
+    const content = src("pages/commissions/settings.tsx");
+    expect(content).not.toContain("Jul 8, 2026");
+    expect(content).not.toContain("9:02 AM");
+  });
+
+  it("does not contain hardcoded '$100.00' minimum payout amount", () => {
+    const content = src("pages/commissions/settings.tsx");
+    expect(content).not.toContain('"$100.00"');
+  });
+
+  it("contains not-implemented banner data-testid", () => {
+    const content = src("pages/commissions/settings.tsx");
+    expect(content).toContain("commission-settings-unavailable");
+  });
+
+  it("renders the not-implemented banner", async () => {
+    const { default: Page } = await import("../commissions/settings");
+    render(<Page />);
+    expect(screen.getByTestId("commission-settings-unavailable")).toBeTruthy();
+  });
+});
+
+// ─── 9b. CommissionLayout — period dropdown disabled (dead affordance) ────────
+
+describe("CommissionLayout — no dead interactive period selector", () => {
+  it("period Select does not have a defaultValue bound to static options", () => {
+    const content = src("components/commission/CommissionLayout.tsx");
+    expect(content).not.toContain('defaultValue="jun26"');
+    expect(content).not.toContain('<SelectItem value="jun26">');
+  });
+
+  it("period Select is disabled", () => {
+    const content = src("components/commission/CommissionLayout.tsx");
+    // The Select must carry disabled so it is not an interactive dead affordance
+    expect(content).toContain("<Select disabled>");
+  });
+});
+
+// ─── 9c. BudgetSettings — Edit/Add Department buttons are semantically disabled
+
+describe("BudgetSettings — dead buttons carry disabled attribute", () => {
+  it("Edit buttons inside departments section are disabled", () => {
+    const content = src("pages/budget/settings.tsx");
+    expect(content).toContain('disabled>Edit</Button>');
+  });
+
+  it("Add Department button is disabled", () => {
+    const content = src("pages/budget/settings.tsx");
+    expect(content).toContain('data-testid="button-add-department" disabled');
+  });
+});
+
 // ─── 9. App.tsx — CommissionEntityProvider wraps commission routes ─────────────
 
 describe("App.tsx — CommissionEntityProvider in provider tree", () => {
