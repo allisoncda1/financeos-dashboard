@@ -1,4 +1,5 @@
 import { SidebarCompanyCard } from "@/components/shared/SidebarCompanyCard";
+import { useCommissionEntity } from "@/lib/commission-context";
 import { useState, useRef, useEffect } from "react";
 import Link from "@/lib/next-compat";
 import { usePathname } from "@/lib/next-compat";
@@ -55,6 +56,7 @@ export function CommissionSidebar({ onClose }: { onClose?: () => void }) {
   const [profileOpen, setProfileOpen] = useState(false);
   const profileRef = useRef<HTMLDivElement>(null);
   const { user, logout } = useAuth();
+  const { activeSlug } = useCommissionEntity();
 
   useEffect(() => {
     const handler = (e: MouseEvent) => {
@@ -108,7 +110,7 @@ export function CommissionSidebar({ onClose }: { onClose?: () => void }) {
       </nav>
 
       {/* Company card */}
-      <SidebarCompanyCard />
+      <SidebarCompanyCard slug={activeSlug} label="Active Company" />
 
       {/* Profile card */}
       <div className="mx-3 mb-3 relative" ref={profileRef}>

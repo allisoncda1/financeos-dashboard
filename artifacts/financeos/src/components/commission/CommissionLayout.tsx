@@ -3,6 +3,8 @@ import { CommissionSidebar } from "@/components/commission/CommissionSidebar";
 import { GlobalHeader } from "@/components/layout/GlobalHeader";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { CompanySelectItems } from "@/components/shared/CompanySelectItems";
+import { useCommissionEntity } from "@/lib/commission-context";
+import type { EntitySlug } from "@/lib/entities";
 import { useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { Zap } from "lucide-react";
@@ -15,6 +17,7 @@ type CommissionLayoutProps = {
 
 export function CommissionLayout({ title, subtitle, children }: CommissionLayoutProps) {
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const { activeSlug, setActiveSlug } = useCommissionEntity();
 
   return (
     <div className="flex h-screen w-full bg-slate-50 overflow-hidden font-sans">
@@ -54,12 +57,16 @@ export function CommissionLayout({ title, subtitle, children }: CommissionLayout
             </div>
 
             <div className="flex items-center gap-3 flex-wrap">
-              <Select defaultValue="all">
+              <Select
+                value={activeSlug}
+                onValueChange={(v) => setActiveSlug(v as EntitySlug)}
+                data-testid="commission-entity-select"
+              >
                 <SelectTrigger className="w-[150px] h-8 text-xs font-medium bg-white border-gray-200 shadow-sm focus:ring-emerald-500 focus:border-emerald-500">
-                  <SelectValue placeholder="All Companies" />
+                  <SelectValue placeholder="Select company" />
                 </SelectTrigger>
                 <SelectContent>
-                  <CompanySelectItems />
+                  <CompanySelectItems includeAll={false} />
                 </SelectContent>
               </Select>
 
@@ -76,7 +83,9 @@ export function CommissionLayout({ title, subtitle, children }: CommissionLayout
 
               <button
                 data-testid="button-calculate-commissions"
-                className="flex items-center gap-2 px-4 h-8 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg shadow-sm transition-colors text-[12px] font-semibold"
+                disabled
+                title="Commission engine not yet implemented"
+                className="flex items-center gap-2 px-4 h-8 bg-gray-300 text-gray-500 rounded-lg shadow-sm text-[12px] font-semibold cursor-not-allowed"
               >
                 <Zap className="w-3.5 h-3.5" />
                 Calculate Commissions

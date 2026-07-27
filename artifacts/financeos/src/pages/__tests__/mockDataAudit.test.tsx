@@ -7,7 +7,7 @@
  * instead of fabricated data.
  */
 
-import { describe, it, expect, vi } from "vitest";
+import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, screen } from "@testing-library/react";
 import React from "react";
 import { readFileSync } from "fs";
@@ -240,5 +240,74 @@ describe("Accounting workspace — null safety (no silent zero substitution)", (
     // No KPI card should show a bare zero value
     const zeros = screen.queryAllByText("0");
     expect(zeros.length).toBe(0);
+  });
+});
+
+// ─── 7. CommissionLayout — entity selector wired, Calculate button disabled ───
+
+vi.mock("@/lib/commission-context", () => {
+  let slug = "CarDealer_ai";
+  const setActiveSlug = (s: string) => { slug = s; };
+  return {
+    useCommissionEntity: () => ({ activeSlug: slug, setActiveSlug }),
+    CommissionEntityProvider: ({ children }: { children: React.ReactNode }) => <>{children}</>,
+  };
+});
+vi.mock("@/components/commission/CommissionSidebar", () => ({
+  CommissionSidebar: () => null,
+}));
+vi.mock("@/components/shared/CompanySelectItems", () => ({
+  CompanySelectItems: () => null,
+}));
+
+describe("CommissionLayout — entity context wired, no dead affordances", () => {
+  it("source does not contain defaultValue='all' entity selector", () => {
+    const content = src("components/commission/CommissionLayout.tsx");
+    // The old dead defaultValue="all" must be gone
+    expect(content).not.toContain('defaultValue="all"');
+  });
+
+  it("source imports useCommissionEntity (not a dead static dropdown)", () => {
+    const content = src("components/commission/CommissionLayout.tsx");
+    expect(content).toContain("useCommissionEntity");
+    expect(content).toContain("setActiveSlug");
+  });
+
+  it("Calculate Commissions button is disabled", () => {
+    const content = src("components/commission/CommissionLayout.tsx");
+    // The button must carry a disabled attribute
+    expect(content).toContain("disabled");
+    expect(content).toContain("Calculate Commissions");
+  });
+});
+
+// ─── 8. CommissionSidebar — SidebarCompanyCard wired to active entity ─────────
+
+describe("CommissionSidebar — no hardcoded default entity", () => {
+  it("source passes activeSlug to SidebarCompanyCard", () => {
+    const content = src("components/commission/CommissionSidebar.tsx");
+    expect(content).toContain("useCommissionEntity");
+    expect(content).toContain("activeSlug");
+    // The bare <SidebarCompanyCard /> with no slug must be gone
+    expect(content).not.toMatch(/<SidebarCompanyCard\s*\/>/);
+  });
+});
+
+// ─── 9. App.tsx — CommissionEntityProvider wraps commission routes ─────────────
+
+describe("App.tsx — CommissionEntityProvider in provider tree", () => {
+  it("imports CommissionEntityProvider", () => {
+    const content = src("App.tsx");
+    expect(content).toContain("CommissionEntityProvider");
+  });
+
+  it("CommissionEntityProvider wraps CommissionRoutes", () => {
+    const content = src("App.tsx");
+    const providerIdx = content.indexOf("CommissionEntityProvider");
+    const routesIdx   = content.indexOf("CommissionRoutes");
+    expect(providerIdx).toBeGreaterThan(-1);
+    expect(routesIdx).toBeGreaterThan(-1);
+    // Provider import appears before CommissionRoutes usage
+    expect(providerIdx).toBeLessThan(routesIdx);
   });
 });

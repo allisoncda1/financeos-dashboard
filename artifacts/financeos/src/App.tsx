@@ -43,6 +43,7 @@ import BudgetPnLPage from "@/pages/budget/pnl";
 import BudgetCashFlowPage from "@/pages/budget/cash-flow";
 import BudgetBalanceSheetPage from "@/pages/budget/balance-sheet";
 import { BudgetEntityProvider } from "@/lib/budget-context";
+import { CommissionEntityProvider } from "@/lib/commission-context";
 import BudgetDepartmentsPage from "@/pages/budget/departments";
 import BudgetVersionsPage from "@/pages/budget/versions";
 import BudgetAssumptionsPage from "@/pages/budget/assumptions";
@@ -245,6 +246,7 @@ function AccountingRoutes() {
 
 function CommissionRoutes() {
   return (
+    <CommissionEntityProvider>
     <Switch>
       <Route path="/commissions" component={CommissionOverviewPage} />
       <Route path="/commissions/invoices" component={CommissionInvoicesPage} />
@@ -257,6 +259,7 @@ function CommissionRoutes() {
       <Route path="/commissions/settings" component={CommissionSettingsPage} />
       <Route component={NotFound} />
     </Switch>
+    </CommissionEntityProvider>
   );
 }
 
