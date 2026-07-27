@@ -109,10 +109,10 @@ export default function BudgetSettingsPage() {
                     <p className="text-[12px] font-semibold text-gray-900">{dept.name}</p>
                     <p className="text-[11px] text-gray-500 mt-0.5">Owner: {dept.owner}</p>
                   </div>
-                  <Button variant="ghost" size="sm" className="h-7 text-xs text-gray-500">Edit</Button>
+                  <Button variant="ghost" size="sm" className="h-7 text-xs text-gray-500" disabled>Edit</Button>
                 </div>
               ))}
-              <Button variant="outline" size="sm" className="mt-3 h-8 text-xs text-gray-600 bg-white" data-testid="button-add-department">
+              <Button variant="outline" size="sm" className="mt-3 h-8 text-xs text-gray-600 bg-white" data-testid="button-add-department" disabled>
                 Add Department
               </Button>
             </div>
