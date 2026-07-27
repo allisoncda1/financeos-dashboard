@@ -3,9 +3,10 @@ import { AccountingSidebar } from "@/components/accounting/AccountingSidebar";
 import { GlobalHeader } from "@/components/layout/GlobalHeader";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { CompanySelectItems } from "@/components/shared/CompanySelectItems";
+import { useAccountingEntity } from "@/lib/accounting-context";
 import { useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { CheckCircle2 } from "lucide-react";
+import { AlertCircle } from "lucide-react";
 
 type AccountingLayoutProps = {
   title: string;
@@ -15,6 +16,7 @@ type AccountingLayoutProps = {
 
 export function AccountingLayout({ title, subtitle, children }: AccountingLayoutProps) {
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const { activeSlug, setActiveSlug } = useAccountingEntity();
 
   return (
     <div className="flex h-screen w-full bg-slate-50 overflow-hidden font-sans">
@@ -52,13 +54,22 @@ export function AccountingLayout({ title, subtitle, children }: AccountingLayout
                 <p className="text-[11px] text-gray-400">{subtitle}</p>
               </div>
             </div>
-            
+
             <div className="flex items-center gap-3">
-              <div className="flex items-center gap-1.5 text-[11px] font-medium text-gray-500 mr-2">
-                <CheckCircle2 className="w-3.5 h-3.5 text-emerald-500" />
-                Last sync 9:02 AM
+              <div
+                className="flex items-center gap-1.5 text-[11px] font-medium text-gray-400 mr-2"
+                data-testid="sync-status"
+                title="Live sync status is not yet available"
+              >
+                <AlertCircle className="w-3.5 h-3.5 text-gray-300" />
+                Sync status unavailable
               </div>
-              <Select defaultValue="T3_Marketing">
+
+              <Select
+                value={activeSlug}
+                onValueChange={(v) => setActiveSlug(v as Parameters<typeof setActiveSlug>[0])}
+                data-testid="accounting-entity-select"
+              >
                 <SelectTrigger className="w-[180px] h-8 text-xs font-medium bg-white border-gray-200 shadow-sm focus:ring-emerald-500 focus:border-emerald-500">
                   <SelectValue placeholder="Select company" />
                 </SelectTrigger>
