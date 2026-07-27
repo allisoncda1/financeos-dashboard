@@ -1,4 +1,4 @@
-import { eq, and, gt, desc } from "drizzle-orm";
+import { eq, and, gt, gte, lte, desc } from "drizzle-orm";
 import { db } from "./connection";
 import { bills } from "@workspace/db";
 import { parseNumeric } from "../services/numerics";
@@ -24,8 +24,13 @@ function toStatus(daysOverdue: number, dueDate: string | null): VendorAp["status
 
 /**
  * Open bills for one entity (balance > 0, not deleted), newest first.
+ * Optional from/to (YYYY-MM-DD, inclusive) filter by billDate.
  */
-export async function getOpenBills(entityId: string) {
+export async function getOpenBills(
+  entityId: string,
+  from?: string | null,
+  to?: string | null,
+) {
   const rows = await db
     .select()
     .from(bills)
@@ -34,6 +39,8 @@ export async function getOpenBills(entityId: string) {
         eq(bills.entityId, entityId),
         gt(bills.balance, "0"),
         eq(bills.isDeleted, false),
+        from ? gte(bills.billDate, from) : undefined,
+        to   ? lte(bills.billDate, to)   : undefined,
       ),
     )
     .orderBy(desc(bills.billDate));

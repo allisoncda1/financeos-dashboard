@@ -1,6 +1,7 @@
 import { AccountingLayout } from "@/components/accounting/AccountingLayout";
 import { Card, DataTable, Td, Pill, MiniKpi } from "@/components/accounting/AccountingUI";
 import { useAccountingEntity } from "@/lib/accounting-context";
+import { useAccountingPeriod } from "@/lib/accounting-period-context";
 import { useAccountingInvoices } from "@/hooks/useApi";
 import { formatCurrency } from "@/lib/format";
 import type { AccountingInvoice, ArApReconciliation } from "@/lib/api";
@@ -80,7 +81,8 @@ function ReconBanner({ recon }: { recon: ArApReconciliation }) {
 
 export default function InvoicesPage(_props: { filter?: string } = {}) {
   const { activeSlug } = useAccountingEntity();
-  const { data: invoices, source, reconciliation } = useAccountingInvoices(activeSlug);
+  const { activePeriod } = useAccountingPeriod();
+  const { data: invoices, source, reconciliation } = useAccountingInvoices(activeSlug, activePeriod.from, activePeriod.to);
 
   if (source === "loading" || (source !== "unavailable" && !invoices)) {
     return (

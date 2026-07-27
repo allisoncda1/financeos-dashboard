@@ -465,18 +465,45 @@ export function useAccountingVendors(slug: EntitySlug): FetchState<AccountingVen
   return useTrackedFetch(`accountingVendors:${slug}`, () => api.accountingVendors(slug), null, [slug]);
 }
 
-export function useAccountingInvoices(slug: EntitySlug): FetchState<AccountingInvoice[]> {
-  return useTrackedFetch(`accountingInvoices:${slug}`, () => api.accountingInvoices(slug), null, [slug]);
+export function useAccountingInvoices(
+  slug: EntitySlug,
+  from?: string | null,
+  to?: string | null,
+): FetchState<AccountingInvoice[]> {
+  return useTrackedFetch(
+    `accountingInvoices:${slug}:${from ?? ""}:${to ?? ""}`,
+    () => api.accountingInvoices(slug, from, to),
+    null,
+    [slug, from, to],
+  );
 }
 
 export function useAccountingAccounts(slug: EntitySlug): FetchState<AccountingAccount[]> {
   return useTrackedFetch(`accountingAccounts:${slug}`, () => api.accountingAccounts(slug), null, [slug]);
 }
 
-export function useAccountingTransactions(slug: EntitySlug): FetchState<AccountingTransaction[]> {
-  return useTrackedFetch(`accountingTransactions:${slug}`, () => api.accountingTransactions(slug), null, [slug]);
+export function useAccountingTransactions(
+  slug: EntitySlug,
+  from?: string | null,
+  to?: string | null,
+): FetchState<AccountingTransaction[]> {
+  return useTrackedFetch(
+    `accountingTransactions:${slug}:${from ?? ""}:${to ?? ""}`,
+    () => api.accountingTransactions(slug, from, to),
+    null,
+    [slug, from, to],
+  );
 }
 
-export function useAccountingBills(slug: EntitySlug): FetchState<AccountingBill[]> {
-  return useTrackedFetch(`accountingBills:${slug}`, () => api.accountingBills(slug), null, [slug]);
+export function useAccountingBills(
+  slug: EntitySlug,
+  from?: string | null,
+  to?: string | null,
+): FetchState<AccountingBill[]> {
+  return useTrackedFetch(
+    `accountingBills:${slug}:${from ?? ""}:${to ?? ""}`,
+    () => api.accountingBills(slug, from, to),
+    null,
+    [slug, from, to],
+  );
 }

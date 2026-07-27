@@ -1,6 +1,7 @@
 import { Link } from "wouter";
 import { AccountingLayout } from "@/components/accounting/AccountingLayout";
 import { useAccountingEntity } from "@/lib/accounting-context";
+import { useAccountingPeriod } from "@/lib/accounting-period-context";
 import { useAccountingAccounts, useAccountingTransactions, useAccountingInvoices } from "@/hooks/useApi";
 import {
   FileText, ArrowRightLeft, CheckCircle, Users, Building2, MoreHorizontal,
@@ -12,9 +13,10 @@ const fmt = formatCurrency;
 
 export default function WorkspacePage() {
   const { activeSlug } = useAccountingEntity();
+  const { activePeriod } = useAccountingPeriod();
   const { data: accounts }     = useAccountingAccounts(activeSlug);
-  const { data: transactions }  = useAccountingTransactions(activeSlug);
-  const { data: invoices }      = useAccountingInvoices(activeSlug);
+  const { data: transactions }  = useAccountingTransactions(activeSlug, activePeriod.from, activePeriod.to);
+  const { data: invoices }      = useAccountingInvoices(activeSlug, activePeriod.from, activePeriod.to);
 
   const bankAccounts  = (accounts ?? []).filter(a => a.accountType === "Bank" && a.isActive);
   const totalTx       = transactions?.length ?? null;

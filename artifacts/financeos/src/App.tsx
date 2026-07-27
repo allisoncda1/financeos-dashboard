@@ -43,6 +43,7 @@ import BudgetPnLPage from "@/pages/budget/pnl";
 import BudgetCashFlowPage from "@/pages/budget/cash-flow";
 import BudgetBalanceSheetPage from "@/pages/budget/balance-sheet";
 import { AccountingEntityProvider } from "@/lib/accounting-context";
+import { AccountingPeriodProvider } from "@/lib/accounting-period-context";
 import { BudgetEntityProvider } from "@/lib/budget-context";
 import { CommissionEntityProvider } from "@/lib/commission-context";
 import BudgetDepartmentsPage from "@/pages/budget/departments";
@@ -191,6 +192,7 @@ function AnalyticsRoutes() {
 function AccountingRoutes() {
   return (
     <AccountingEntityProvider>
+    <AccountingPeriodProvider>
     <Switch>
       <Route path="/accounting" component={AccountingWorkspacePage} />
       <Route path="/accounting/invoices">
@@ -243,6 +245,7 @@ function AccountingRoutes() {
       <Route path="/accounting/banking" component={AccountingBankingPage} />
       <Route component={NotFound} />
     </Switch>
+    </AccountingPeriodProvider>
     </AccountingEntityProvider>
   );
 }

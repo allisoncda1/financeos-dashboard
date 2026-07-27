@@ -1,5 +1,6 @@
 import { AccountingLayout } from "@/components/accounting/AccountingLayout";
 import { useAccountingEntity } from "@/lib/accounting-context";
+import { useAccountingPeriod } from "@/lib/accounting-period-context";
 import { useAccountingAccounts, useAccountingTransactions } from "@/hooks/useApi";
 import { AlertCircle } from "lucide-react";
 import { formatCurrency } from "@/lib/format";
@@ -8,8 +9,11 @@ const fmt = formatCurrency;
 
 export default function ReconciliationPage(_props: { view?: string } = {}) {
   const { activeSlug } = useAccountingEntity();
+  const { activePeriod } = useAccountingPeriod();
   const { data: accounts }    = useAccountingAccounts(activeSlug);
-  const { data: transactions } = useAccountingTransactions(activeSlug);
+  // accounts = chart of accounts (not date-filtered — master records)
+  // transactions = bank activity scoped to the selected period
+  const { data: transactions } = useAccountingTransactions(activeSlug, activePeriod.from, activePeriod.to);
 
   const bankAccounts   = (accounts ?? []).filter(a => a.accountType === "Bank" && a.isActive);
   const unreconciled   = (transactions ?? []).filter(t => !t.isReconciled).length;

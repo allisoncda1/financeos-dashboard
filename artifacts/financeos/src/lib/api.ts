@@ -8,6 +8,14 @@ import { SESSION_EXPIRED_EVENT } from "./auth";
 
 const BASE = "/api";
 
+/** Build a ?from=…&to=… query string for period-scoped endpoints. Returns "" when both are null. */
+function buildPeriodQS(from?: string | null, to?: string | null): string {
+  const parts: string[] = [];
+  if (from) parts.push(`from=${encodeURIComponent(from)}`);
+  if (to)   parts.push(`to=${encodeURIComponent(to)}`);
+  return parts.length ? `?${parts.join("&")}` : "";
+}
+
 export type Sourced<T> = { data: T; source: ApiSource };
 
 function normalizeSource(value: unknown): ApiSource {
@@ -233,12 +241,23 @@ export const api = {
     post<void>("/drafts/commentary/reorder", { ids }),
 
   // ── Accounting module ─────────────────────────────────────────────────────
+  // customers/vendors/accounts are master records — not date-filtered.
+  // invoices/transactions/bills accept optional from/to (YYYY-MM-DD) for period scoping.
   accountingCustomers:    (slug: string) => getSourced<AccountingCustomer[]>(`/accounting/${slug}/customers`),
   accountingVendors:      (slug: string) => getSourced<AccountingVendor[]>(`/accounting/${slug}/vendors`),
-  accountingInvoices:     (slug: string) => getSourced<AccountingInvoice[]>(`/accounting/${slug}/invoices`),
+  accountingInvoices:     (slug: string, from?: string | null, to?: string | null) => {
+    const qs = buildPeriodQS(from, to);
+    return getSourced<AccountingInvoice[]>(`/accounting/${slug}/invoices${qs}`);
+  },
   accountingAccounts:     (slug: string) => getSourced<AccountingAccount[]>(`/accounting/${slug}/accounts`),
-  accountingTransactions: (slug: string) => getSourced<AccountingTransaction[]>(`/accounting/${slug}/transactions`),
-  accountingBills:        (slug: string) => getSourced<AccountingBill[]>(`/accounting/${slug}/bills`),
+  accountingTransactions: (slug: string, from?: string | null, to?: string | null) => {
+    const qs = buildPeriodQS(from, to);
+    return getSourced<AccountingTransaction[]>(`/accounting/${slug}/transactions${qs}`);
+  },
+  accountingBills:        (slug: string, from?: string | null, to?: string | null) => {
+    const qs = buildPeriodQS(from, to);
+    return getSourced<AccountingBill[]>(`/accounting/${slug}/bills${qs}`);
+  },
 };
 
 // ── Accounting module types ────────────────────────────────────────────────
