@@ -16,6 +16,12 @@ export type FetchState<T> = {
    * entity_snapshots. Absent (undefined) on all other endpoints.
    */
   reconciliation?: import("@/lib/api").ArApReconciliation | null;
+  /**
+   * Prior-period open item metadata. Present when a period lower-bound (`from`) is
+   * active and open invoices/bills/unreconciled transactions exist before that date.
+   * Null/undefined on all other endpoints or when no excluded items exist.
+   */
+  priorPeriod?: import("@/lib/api").PriorPeriodMeta | null;
   /** Manually re-runs the fetch (same endpoint, no side effects). */
   refetch?: () => Promise<void>;
 };

@@ -1,4 +1,4 @@
-import { eq, and, gte, lte, desc } from "drizzle-orm";
+import { eq, and, gte, lte, lt, desc, min, max, count } from "drizzle-orm";
 import { db } from "./connection";
 import { transactions } from "@workspace/db";
 
@@ -40,6 +40,47 @@ export async function getRecentTransactions(
     .limit(limit);
 
   return rows.map((r) => ({ ...r, amount: parseAmount(r.amount) }));
+}
+
+export type PriorPeriodTransactionMeta = {
+  count: number;
+  earliestDate: string | null;
+  latestDate: string | null;
+};
+
+/**
+ * Unreconciled, non-deleted transactions dated strictly before `before`.
+ * Used to surface prior-period cleanup notices when period filtering is active.
+ * Returns null when none exist.
+ */
+export async function getPriorPeriodUnreconciledTransactions(
+  entityId: string,
+  before: string,
+): Promise<PriorPeriodTransactionMeta | null> {
+  const rows = await db
+    .select({
+      cnt:      count(),
+      earliest: min(transactions.transactionDate),
+      latest:   max(transactions.transactionDate),
+    })
+    .from(transactions)
+    .where(
+      and(
+        eq(transactions.entityId, entityId),
+        eq(transactions.isReconciled, false),
+        eq(transactions.isDeleted, false),
+        lt(transactions.transactionDate, before),
+      ),
+    );
+
+  const row = rows[0];
+  if (!row || Number(row.cnt) === 0) return null;
+
+  return {
+    count:        Number(row.cnt),
+    earliestDate: row.earliest ?? null,
+    latestDate:   row.latest ?? null,
+  };
 }
 
 /**

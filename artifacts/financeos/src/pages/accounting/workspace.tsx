@@ -1,5 +1,6 @@
 import { Link } from "wouter";
 import { AccountingLayout } from "@/components/accounting/AccountingLayout";
+import { PriorPeriodBannerGuard } from "@/components/accounting/PriorPeriodBanner";
 import { useAccountingEntity } from "@/lib/accounting-context";
 import { useAccountingPeriod } from "@/lib/accounting-period-context";
 import { useAccountingAccounts, useAccountingTransactions, useAccountingInvoices } from "@/hooks/useApi";
@@ -13,10 +14,10 @@ const fmt = formatCurrency;
 
 export default function WorkspacePage() {
   const { activeSlug } = useAccountingEntity();
-  const { activePeriod } = useAccountingPeriod();
-  const { data: accounts }     = useAccountingAccounts(activeSlug);
-  const { data: transactions }  = useAccountingTransactions(activeSlug, activePeriod.from, activePeriod.to);
-  const { data: invoices }      = useAccountingInvoices(activeSlug, activePeriod.from, activePeriod.to);
+  const { activePeriod, setPreset } = useAccountingPeriod();
+  const { data: accounts }                         = useAccountingAccounts(activeSlug);
+  const { data: transactions, priorPeriod: priorTx } = useAccountingTransactions(activeSlug, activePeriod.from, activePeriod.to);
+  const { data: invoices, priorPeriod: priorInv }   = useAccountingInvoices(activeSlug, activePeriod.from, activePeriod.to);
 
   const bankAccounts  = (accounts ?? []).filter(a => a.accountType === "Bank" && a.isActive);
   const totalTx       = transactions?.length ?? null;
@@ -25,6 +26,9 @@ export default function WorkspacePage() {
 
   return (
     <AccountingLayout title="Accounting Workspace" subtitle="Your daily accounting tasks at a glance">
+
+      <PriorPeriodBannerGuard priorPeriod={priorInv} itemLabel="invoice" onViewAllTime={() => setPreset("all_time")} />
+      <PriorPeriodBannerGuard priorPeriod={priorTx} itemLabel="transaction" onViewAllTime={() => setPreset("all_time")} />
 
       {/* Live KPI strip */}
       <section>

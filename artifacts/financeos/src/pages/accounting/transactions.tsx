@@ -1,5 +1,6 @@
 import { AccountingLayout } from "@/components/accounting/AccountingLayout";
 import { Card, DataTable, Td, Pill } from "@/components/accounting/AccountingUI";
+import { PriorPeriodBannerGuard } from "@/components/accounting/PriorPeriodBanner";
 import { useAccountingEntity } from "@/lib/accounting-context";
 import { useAccountingPeriod } from "@/lib/accounting-period-context";
 import { useAccountingTransactions } from "@/hooks/useApi";
@@ -34,8 +35,8 @@ function amountClass(transactionType: string | null): string {
 
 export default function TransactionsPage(_props: { view?: string } = {}) {
   const { activeSlug } = useAccountingEntity();
-  const { activePeriod } = useAccountingPeriod();
-  const { data: transactions, source } = useAccountingTransactions(activeSlug, activePeriod.from, activePeriod.to);
+  const { activePeriod, setPreset } = useAccountingPeriod();
+  const { data: transactions, source, priorPeriod } = useAccountingTransactions(activeSlug, activePeriod.from, activePeriod.to);
 
   if (source === "loading" || (source !== "unavailable" && !transactions)) {
     return (
@@ -70,6 +71,7 @@ export default function TransactionsPage(_props: { view?: string } = {}) {
       title="Bank Transactions"
       subtitle="QBO-synced bank and payment activity — not a complete general ledger"
     >
+      <PriorPeriodBannerGuard priorPeriod={priorPeriod} itemLabel="transaction" onViewAllTime={() => setPreset("all_time")} />
       <div className="flex gap-4 text-sm text-gray-500 mb-2 flex-wrap">
         <span><span className="font-semibold text-gray-900">{transactions.length}</span> transactions</span>
         <span><span className="font-semibold text-emerald-700">{reconciled}</span> reconciled</span>
