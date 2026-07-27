@@ -1,6 +1,7 @@
 import { AccountingLayout } from "@/components/accounting/AccountingLayout";
 import { Card, DataTable, Td, Pill } from "@/components/accounting/AccountingUI";
 import { useAccountingEntity } from "@/lib/accounting-context";
+import { useAccountingPeriod } from "@/lib/accounting-period-context";
 import { useAccountingTransactions } from "@/hooks/useApi";
 import { formatCurrency } from "@/lib/format";
 
@@ -33,7 +34,8 @@ function amountClass(transactionType: string | null): string {
 
 export default function TransactionsPage(_props: { view?: string } = {}) {
   const { activeSlug } = useAccountingEntity();
-  const { data: transactions, source } = useAccountingTransactions(activeSlug);
+  const { activePeriod } = useAccountingPeriod();
+  const { data: transactions, source } = useAccountingTransactions(activeSlug, activePeriod.from, activePeriod.to);
 
   if (source === "loading" || (source !== "unavailable" && !transactions)) {
     return (

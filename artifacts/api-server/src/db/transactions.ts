@@ -1,4 +1,4 @@
-import { eq, and, desc } from "drizzle-orm";
+import { eq, and, gte, lte, desc } from "drizzle-orm";
 import { db } from "./connection";
 import { transactions } from "@workspace/db";
 
@@ -17,8 +17,14 @@ function parseAmount(v: string | null | undefined): number | null {
 
 /**
  * Most recent transactions for one entity, newest first.
+ * Optional from/to (YYYY-MM-DD, inclusive) filter by transactionDate.
  */
-export async function getRecentTransactions(entityId: string, limit = 50) {
+export async function getRecentTransactions(
+  entityId: string,
+  limit = 50,
+  from?: string | null,
+  to?: string | null,
+) {
   const rows = await db
     .select()
     .from(transactions)
@@ -26,6 +32,8 @@ export async function getRecentTransactions(entityId: string, limit = 50) {
       and(
         eq(transactions.entityId, entityId),
         eq(transactions.isDeleted, false),
+        from ? gte(transactions.transactionDate, from) : undefined,
+        to   ? lte(transactions.transactionDate, to)   : undefined,
       ),
     )
     .orderBy(desc(transactions.transactionDate))

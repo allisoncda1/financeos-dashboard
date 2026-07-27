@@ -1,4 +1,4 @@
-import { eq, and, gt, desc } from "drizzle-orm";
+import { eq, and, gt, gte, lte, desc } from "drizzle-orm";
 import { db } from "./connection";
 import { invoices, customers } from "@workspace/db";
 import { parseNumeric } from "../services/numerics";
@@ -107,8 +107,14 @@ export async function getInvoiceById(entityId: string, invoiceId: string) {
 /**
  * All non-deleted invoices for one entity, newest first.
  * Used by the Accounting module invoice list (all statuses, not just open).
+ * Optional from/to (YYYY-MM-DD, inclusive) filter by invoiceDate.
  */
-export async function getAllInvoices(entityId: string, limit = 200) {
+export async function getAllInvoices(
+  entityId: string,
+  limit = 200,
+  from?: string | null,
+  to?: string | null,
+) {
   const rows = await db
     .select()
     .from(invoices)
@@ -116,6 +122,8 @@ export async function getAllInvoices(entityId: string, limit = 200) {
       and(
         eq(invoices.entityId, entityId),
         eq(invoices.isDeleted, false),
+        from ? gte(invoices.invoiceDate, from) : undefined,
+        to   ? lte(invoices.invoiceDate, to)   : undefined,
       ),
     )
     .orderBy(desc(invoices.invoiceDate))

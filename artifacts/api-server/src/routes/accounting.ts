@@ -58,6 +58,16 @@ async function resolveEntityId(slug: string): Promise<string | null> {
   return getCachedEntityId(slug);
 }
 
+/**
+ * Parse optional date range query params (from/to).
+ * Accepts YYYY-MM-DD strings only. Invalid values are silently dropped.
+ * Returns null when the param is absent or malformed.
+ */
+function parseDateParam(value: unknown): string | null {
+  if (typeof value !== "string" || !/^\d{4}-\d{2}-\d{2}$/.test(value)) return null;
+  return value;
+}
+
 // ─── GET /api/accounting/:slug/customers ─────────────────────────────────────
 
 router.get(
@@ -160,10 +170,12 @@ router.get(
 
     const limitParam = parseInt(String(req.query["limit"] ?? "200"), 10);
     const limit = Number.isFinite(limitParam) && limitParam > 0 ? Math.min(limitParam, 500) : 200;
+    const from  = parseDateParam(req.query["from"]);
+    const to    = parseDateParam(req.query["to"]);
 
     try {
       const [rows, recon] = await Promise.all([
-        getAllInvoices(entityId, limit),
+        getAllInvoices(entityId, limit, from, to),
         getArApReconciliation(entityId),
       ]);
       const data = rows.map((r) => ({
@@ -276,9 +288,11 @@ router.get(
 
     const limitParam = parseInt(String(req.query["limit"] ?? "100"), 10);
     const limit = Number.isFinite(limitParam) && limitParam > 0 ? Math.min(limitParam, 500) : 100;
+    const from  = parseDateParam(req.query["from"]);
+    const to    = parseDateParam(req.query["to"]);
 
     try {
-      const rows = await getRecentTransactions(entityId, limit);
+      const rows = await getRecentTransactions(entityId, limit, from, to);
       const data = rows.map((r) => ({
         id:              r.id,
         qboId:           r.qboId ?? null,
@@ -321,9 +335,12 @@ router.get(
       return;
     }
 
+    const fromBills = parseDateParam(req.query["from"]);
+    const toBills   = parseDateParam(req.query["to"]);
+
     try {
       const [rows, recon] = await Promise.all([
-        getOpenBills(entityId),
+        getOpenBills(entityId, fromBills, toBills),
         getArApReconciliation(entityId),
       ]);
       const data = rows.map((r) => ({

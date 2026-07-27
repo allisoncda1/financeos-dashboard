@@ -4,6 +4,8 @@ import { GlobalHeader } from "@/components/layout/GlobalHeader";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { CompanySelectItems } from "@/components/shared/CompanySelectItems";
 import { useAccountingEntity } from "@/lib/accounting-context";
+import { useAccountingPeriod } from "@/lib/accounting-period-context";
+import { PERIOD_PRESET_OPTIONS, type PeriodPreset } from "@/lib/period";
 import { useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { AlertCircle } from "lucide-react";
@@ -17,6 +19,7 @@ type AccountingLayoutProps = {
 export function AccountingLayout({ title, subtitle, children }: AccountingLayoutProps) {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const { activeSlug, setActiveSlug } = useAccountingEntity();
+  const { activePeriod, setPreset } = useAccountingPeriod();
 
   return (
     <div className="flex h-screen w-full bg-slate-50 overflow-hidden font-sans">
@@ -78,13 +81,18 @@ export function AccountingLayout({ title, subtitle, children }: AccountingLayout
                 </SelectContent>
               </Select>
 
-              <Select defaultValue="jul26">
-                <SelectTrigger className="w-[140px] h-8 text-xs font-medium bg-white border-gray-200 shadow-sm focus:ring-emerald-500 focus:border-emerald-500">
-                  <SelectValue placeholder="July 2026" />
+              <Select
+                value={activePeriod.preset}
+                onValueChange={(v) => setPreset(v as PeriodPreset)}
+                data-testid="accounting-period-select"
+              >
+                <SelectTrigger className="w-[160px] h-8 text-xs font-medium bg-white border-gray-200 shadow-sm focus:ring-emerald-500 focus:border-emerald-500">
+                  <SelectValue placeholder="Select period" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="jul26">July 2026</SelectItem>
-                  <SelectItem value="jun26">June 2026</SelectItem>
+                  {PERIOD_PRESET_OPTIONS.map(opt => (
+                    <SelectItem key={opt.value} value={opt.value}>{opt.label}</SelectItem>
+                  ))}
                 </SelectContent>
               </Select>
             </div>
