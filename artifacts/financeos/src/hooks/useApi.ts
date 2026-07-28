@@ -3,7 +3,7 @@ import { api } from '@/lib/api';
 import { getMockData, getFinancials, getCustomers, getVendors, getBanking } from '@/lib/mock';
 import { ENTITY_SLUGS } from '@/lib/entities';
 import type { DashboardData, FinancialsData, CustomersData, VendorsData, BankingData, EntitySlug, BriefingResponse, Alert, ValidationMatrixData, EntityHistoryData, MetricSnapshotsData, EntityBudget, BvsAData, PortfolioBudget, BudgetPeriodInput, ConsolidatedCashFlow, HistoryResponse } from '@/lib/types';
-import type { AccountingCustomer, AccountingVendor, AccountingInvoice, AccountingAccount, AccountingTransaction, AccountingBill } from '@/lib/api';
+import type { AccountingCustomer, AccountingVendor, AccountingInvoice, AccountingAccount, AccountingTransaction, AccountingBill, AccountingCreditMemo, AccountingVendorCredit } from '@/lib/api';
 import type { ReportTemplateSummary, ReportGenerateRequest, BuiltReport, ReportHistoryEntry } from '@/lib/reportTypes';
 import type { AIStatus } from '@/lib/aiTypes';
 import type { PipelineStatus } from '@/lib/pipelineTypes';
@@ -506,4 +506,12 @@ export function useAccountingBills(
     null,
     [slug, from, to],
   );
+}
+
+export function useAccountingCreditMemos(slug: EntitySlug): FetchState<AccountingCreditMemo[]> {
+  return useTrackedFetch(`accountingCreditMemos:${slug}`, () => api.accountingCreditMemos(slug), null, [slug]);
+}
+
+export function useAccountingVendorCredits(slug: EntitySlug): FetchState<AccountingVendorCredit[]> {
+  return useTrackedFetch(`accountingVendorCredits:${slug}`, () => api.accountingVendorCredits(slug), null, [slug]);
 }

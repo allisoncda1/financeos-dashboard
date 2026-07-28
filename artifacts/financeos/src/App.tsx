@@ -70,6 +70,8 @@ import AccountingTransactionsPage from "@/pages/accounting/transactions";
 import AccountingReconciliationPage from "@/pages/accounting/reconciliation";
 import AccountingCustomersPage from "@/pages/accounting/customers";
 import AccountingVendorsPage from "@/pages/accounting/vendors";
+import AccountingCreditMemosPage from "@/pages/accounting/credit-memos";
+import AccountingVendorCreditsPage from "@/pages/accounting/vendor-credits";
 import AccountingChartOfAccountsPage from "@/pages/accounting/chart-of-accounts";
 import AccountingRulesPage from "@/pages/accounting/rules";
 import AccountingJournalEntriesPage from "@/pages/accounting/journal-entries";
@@ -236,6 +238,8 @@ function AccountingRoutes() {
       </Route>
       <Route path="/accounting/customers" component={AccountingCustomersPage} />
       <Route path="/accounting/vendors" component={AccountingVendorsPage} />
+      <Route path="/accounting/credit-memos" component={AccountingCreditMemosPage} />
+      <Route path="/accounting/vendor-credits" component={AccountingVendorCreditsPage} />
       <Route path="/accounting/chart-of-accounts" component={AccountingChartOfAccountsPage} />
       <Route path="/accounting/rules" component={AccountingRulesPage} />
       <Route path="/accounting/journal-entries" component={AccountingJournalEntriesPage} />

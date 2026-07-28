@@ -285,6 +285,8 @@ export const api = {
     const qs = buildPeriodQS(from, to);
     return getAccountingSourced<AccountingBill[]>(`/accounting/${slug}/bills${qs}`);
   },
+  accountingCreditMemos:  (slug: string) => getSourced<AccountingCreditMemo[]>(`/accounting/${slug}/credit-memos`),
+  accountingVendorCredits:(slug: string) => getSourced<AccountingVendorCredit[]>(`/accounting/${slug}/vendor-credits`),
 };
 
 // ── Accounting module types ────────────────────────────────────────────────
@@ -391,6 +393,34 @@ export type PriorPeriodMeta = {
   earliestDate: string | null;
   /** ISO date of the latest excluded item. */
   latestDate: string | null;
+};
+
+export type AccountingCreditMemo = {
+  id: string;
+  qboId: string;
+  docNumber: string | null;
+  customerName: string | null;
+  txnDate: string | null;
+  currency: string;
+  totalAmt: number;
+  remainingCredit: number;
+  applyStatus: string;
+  isVoided: boolean;
+  syncedAt: string | null;
+};
+
+export type AccountingVendorCredit = {
+  id: string;
+  qboId: string;
+  docNumber: string | null;
+  vendorName: string | null;
+  txnDate: string | null;
+  currency: string;
+  totalAmt: number;
+  remainingBalance: number;
+  applyStatus: string;
+  isVoided: boolean;
+  syncedAt: string | null;
 };
 
 /** AR/AP reconciliation metadata returned alongside invoices and bills endpoints. */
