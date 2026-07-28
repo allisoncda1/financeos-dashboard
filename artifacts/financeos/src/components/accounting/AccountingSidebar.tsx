@@ -23,6 +23,8 @@ import {
   ChevronDown,
   LogOut,
   HelpCircle,
+  ReceiptText,
+  FileCheck,
 } from "lucide-react";
 import { FinanceOSLogo } from "@/components/ui/FinanceOSLogo";
 import { useAuth } from "@/lib/auth";
@@ -149,6 +151,8 @@ export function AccountingSidebar({ onClose }: { onClose?: () => void }) {
 
           <NavItem icon={Users} label="Customers" href="/accounting/customers" active={pathname === "/accounting/customers"} testId="nav-accounting-customers" />
           <NavItem icon={Building2} label="Vendors" href="/accounting/vendors" active={pathname === "/accounting/vendors"} testId="nav-accounting-vendors" />
+          <NavItem icon={ReceiptText} label="Customer Credits" href="/accounting/credit-memos" active={pathname === "/accounting/credit-memos"} testId="nav-accounting-credit-memos" />
+          <NavItem icon={FileCheck} label="Vendor Credits" href="/accounting/vendor-credits" active={pathname === "/accounting/vendor-credits"} testId="nav-accounting-vendor-credits" />
           <NavItem icon={List} label="Chart of Accounts" href="/accounting/chart-of-accounts" active={pathname === "/accounting/chart-of-accounts"} testId="nav-accounting-chart-of-accounts" />
           <NavItem icon={GitMerge} label="Categorization Rules" href="/accounting/rules" active={pathname === "/accounting/rules"} testId="nav-accounting-rules" />
           <NavItem icon={BookOpen} label="Journal Entries" href="/accounting/journal-entries" active={pathname === "/accounting/journal-entries"} testId="nav-accounting-journal-entries" />

@@ -16,4 +16,7 @@ export * from "./alerts";
 export * from "./budget";
 export * from "./cashFlowStatements";
 export * from "./reportCommentary";
+export * from "./creditMemos";
+export * from "./vendorCredits";
+export * from "./syncRunObjects";
 //# sourceMappingURL=index.d.ts.map

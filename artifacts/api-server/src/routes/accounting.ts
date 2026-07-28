@@ -40,6 +40,8 @@ import { getAllAccounts } from "../db/accounts";
 import { getRecentTransactions, getPriorPeriodUnreconciledTransactions } from "../db/transactions";
 import { getOpenBills, getPriorPeriodOpenBills } from "../db/bills";
 import { getArApReconciliation } from "../db/snapshots";
+import { getCreditMemos } from "../db/creditMemos";
+import { getVendorCredits } from "../db/vendorCredits";
 
 const router: IRouter = Router();
 
@@ -386,6 +388,88 @@ router.get(
     } catch (err) {
       req.log.error({ err }, `accounting/bills failed for ${slug}`);
       res.status(500).json({ ok: false, error: "Failed to load bills" });
+    }
+  },
+);
+
+// ─── GET /api/accounting/:slug/credit-memos ──────────────────────────────────
+
+router.get(
+  "/accounting/:slug/credit-memos",
+  requirePermission("financials"),
+  async (req, res) => {
+    const slug = req.params["slug"] as string;
+    if (!isValidSlug(slug)) {
+      res.status(404).json({ ok: false, error: `Unknown entity slug "${slug}"` });
+      return;
+    }
+
+    const entityId = await resolveEntityId(slug);
+    if (!entityId) {
+      res.status(404).json({ ok: false, error: `Entity "${slug}" not found in database` });
+      return;
+    }
+
+    try {
+      const rows = await getCreditMemos(entityId);
+      const data = rows.map((r) => ({
+        id:              r.id,
+        qboId:           r.qboId,
+        docNumber:       r.docNumber ?? null,
+        customerName:    r.customerName ?? null,
+        txnDate:         r.txnDate ?? null,
+        currency:        r.currency,
+        totalAmt:        r.totalAmt,
+        remainingCredit: r.remainingCredit,
+        applyStatus:     r.applyStatus,
+        isVoided:        r.isVoided,
+        syncedAt:        r.syncedAt?.toISOString() ?? null,
+      }));
+      res.json({ ok: true, data, source: "db", ts: new Date().toISOString() });
+    } catch (err) {
+      req.log.error({ err }, `accounting/credit-memos failed for ${slug}`);
+      res.status(500).json({ ok: false, error: "Failed to load credit memos" });
+    }
+  },
+);
+
+// ─── GET /api/accounting/:slug/vendor-credits ────────────────────────────────
+
+router.get(
+  "/accounting/:slug/vendor-credits",
+  requirePermission("vendors"),
+  async (req, res) => {
+    const slug = req.params["slug"] as string;
+    if (!isValidSlug(slug)) {
+      res.status(404).json({ ok: false, error: `Unknown entity slug "${slug}"` });
+      return;
+    }
+
+    const entityId = await resolveEntityId(slug);
+    if (!entityId) {
+      res.status(404).json({ ok: false, error: `Entity "${slug}" not found in database` });
+      return;
+    }
+
+    try {
+      const rows = await getVendorCredits(entityId);
+      const data = rows.map((r) => ({
+        id:               r.id,
+        qboId:            r.qboId,
+        docNumber:        r.docNumber ?? null,
+        vendorName:       r.vendorName ?? null,
+        txnDate:          r.txnDate ?? null,
+        currency:         r.currency,
+        totalAmt:         r.totalAmt,
+        remainingBalance: r.remainingBalance,
+        applyStatus:      r.applyStatus,
+        isVoided:         r.isVoided,
+        syncedAt:         r.syncedAt?.toISOString() ?? null,
+      }));
+      res.json({ ok: true, data, source: "db", ts: new Date().toISOString() });
+    } catch (err) {
+      req.log.error({ err }, `accounting/vendor-credits failed for ${slug}`);
+      res.status(500).json({ ok: false, error: "Failed to load vendor credits" });
     }
   },
 );

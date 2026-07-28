@@ -45,6 +45,8 @@ vi.mock("../db/bills", () => ({
   getApAgingBuckets:    vi.fn(),
   getTopVendorsByAp:    vi.fn(),
 }));
+vi.mock("../db/creditMemos",   () => ({ getCreditMemos: vi.fn() }));
+vi.mock("../db/vendorCredits", () => ({ getVendorCredits: vi.fn() }));
 // getArApReconciliation reads entity_snapshots — mock to avoid CORE_DATABASE_URL requirement.
 // Tests that specifically verify reconciliation metadata should test snapshots.ts directly.
 vi.mock("../db/snapshots", () => ({
@@ -84,6 +86,8 @@ import { getAllInvoices } from "../db/invoices";
 import { getAllAccounts } from "../db/accounts";
 import { getRecentTransactions } from "../db/transactions";
 import { getOpenBills } from "../db/bills";
+import { getCreditMemos } from "../db/creditMemos";
+import { getVendorCredits } from "../db/vendorCredits";
 import { getCachedEntityId } from "../services/entityCache";
 import accountingRouter from "../routes/accounting";
 
@@ -703,5 +707,290 @@ describe("Null, zero, and edge-case data correctness", () => {
     vi.mocked(getCachedEntityId).mockResolvedValue(null);
     const res2 = await request(app).get("/api/accounting/CarDealer_ai/customers");
     expect(res2.status).toBe(404);
+  });
+});
+
+// ─── GET /api/accounting/:slug/credit-memos ───────────────────────────────────
+
+describe("GET /api/accounting/:slug/credit-memos", () => {
+  const app  = buildApp(ADMIN_USER);
+  const SLUG = "T3_Marketing";
+
+  // Mock returns what getCreditMemos() returns after parseNumeric — numbers not strings.
+  const MOCK_CREDIT_MEMOS = [
+    {
+      id: "cm-1", entityId: UUID[SLUG]!, qboId: "QBO-CM1",
+      qboSyncToken: null, qboRawId: null, syncRunId: null,
+      customerId: null, customerQboId: "CUST-1", customerName: "Acme Corp",
+      docNumber: "CM-001", txnDate: "2026-05-01",
+      currency: "USD", exchangeRate: "1.0000000000",
+      totalAmt: 500, remainingCredit: 0,
+      applyStatus: "fully_applied", isVoided: false, isDeleted: false,
+      qboStatus: "Synchronized", privateNote: null,
+      qboCreatedAt: new Date("2026-05-01T00:00:00Z"),
+      qboUpdatedAt: new Date("2026-05-15T00:00:00Z"),
+      syncedAt: new Date("2026-07-01T00:00:00Z"),
+    },
+    {
+      id: "cm-2", entityId: UUID[SLUG]!, qboId: "QBO-CM2",
+      qboSyncToken: null, qboRawId: null, syncRunId: null,
+      customerId: null, customerQboId: "CUST-2", customerName: "Widgets LLC",
+      docNumber: "CM-002", txnDate: "2026-06-10",
+      currency: "USD", exchangeRate: "1.0000000000",
+      totalAmt: 250, remainingCredit: 100,
+      applyStatus: "partially_applied", isVoided: false, isDeleted: false,
+      qboStatus: "Synchronized", privateNote: null,
+      qboCreatedAt: new Date("2026-06-10T00:00:00Z"),
+      qboUpdatedAt: new Date("2026-06-20T00:00:00Z"),
+      syncedAt: new Date("2026-07-01T00:00:00Z"),
+    },
+  ];
+
+  beforeEach(() => {
+    vi.mocked(getCachedEntityId).mockResolvedValue(UUID[SLUG]!);
+    vi.mocked(getCreditMemos).mockResolvedValue(MOCK_CREDIT_MEMOS as never);
+  });
+
+  it("returns 401 without authentication", async () => {
+    const noAuthApp = buildApp(null);
+    const res = await request(noAuthApp).get(`/api/accounting/${SLUG}/credit-memos`);
+    expect(res.status).toBe(401);
+  });
+
+  it("returns 403 for investor role (missing financials permission)", async () => {
+    const invApp = buildApp(INVESTOR);
+    const res = await request(invApp).get(`/api/accounting/${SLUG}/credit-memos`);
+    expect(res.status).toBe(403);
+  });
+
+  it("returns 404 for unknown slug", async () => {
+    const res = await request(app).get("/api/accounting/unknown_entity/credit-memos");
+    expect(res.status).toBe(404);
+  });
+
+  it("returns 404 when entity UUID not in DB", async () => {
+    vi.mocked(getCachedEntityId).mockResolvedValue(null);
+    const res = await request(app).get(`/api/accounting/${SLUG}/credit-memos`);
+    expect(res.status).toBe(404);
+  });
+
+  it("returns 200 with ok:true and data array for authorised admin", async () => {
+    const res = await request(app).get(`/api/accounting/${SLUG}/credit-memos`);
+    expect(res.status).toBe(200);
+    expect(res.body.ok).toBe(true);
+    expect(Array.isArray(res.body.data)).toBe(true);
+    expect(res.body.source).toBe("db");
+  });
+
+  it("calls getCreditMemos with entity UUID (entity isolation)", async () => {
+    await request(app).get(`/api/accounting/${SLUG}/credit-memos`);
+    expect(vi.mocked(getCreditMemos)).toHaveBeenCalledWith(UUID[SLUG]);
+  });
+
+  it("maps totalAmt and remainingCredit as numbers (not strings)", async () => {
+    const res = await request(app).get(`/api/accounting/${SLUG}/credit-memos`);
+    expect(typeof res.body.data[0].totalAmt).toBe("number");
+    expect(typeof res.body.data[0].remainingCredit).toBe("number");
+    expect(res.body.data[0].totalAmt).toBe(500);
+    expect(res.body.data[0].remainingCredit).toBe(0);
+  });
+
+  it("exposes expected fields: id, qboId, docNumber, customerName, txnDate, currency, applyStatus, isVoided", async () => {
+    const res = await request(app).get(`/api/accounting/${SLUG}/credit-memos`);
+    const row = res.body.data[0];
+    expect(row).toHaveProperty("id");
+    expect(row).toHaveProperty("qboId");
+    expect(row).toHaveProperty("docNumber");
+    expect(row).toHaveProperty("customerName");
+    expect(row).toHaveProperty("txnDate");
+    expect(row).toHaveProperty("currency");
+    expect(row).toHaveProperty("totalAmt");
+    expect(row).toHaveProperty("remainingCredit");
+    expect(row).toHaveProperty("applyStatus");
+    expect(row).toHaveProperty("isVoided");
+  });
+
+  it("never exposes remainingBalance (AP field must not appear on AR response)", async () => {
+    const res = await request(app).get(`/api/accounting/${SLUG}/credit-memos`);
+    expect(res.body.data[0]).not.toHaveProperty("remainingBalance");
+  });
+
+  it("partially_applied row has correct remainingCredit", async () => {
+    const res = await request(app).get(`/api/accounting/${SLUG}/credit-memos`);
+    const partial = res.body.data.find((r: { applyStatus: string }) => r.applyStatus === "partially_applied");
+    expect(partial).toBeDefined();
+    expect(partial.remainingCredit).toBe(100);
+  });
+
+  it("empty data array returns 200 not 404", async () => {
+    vi.mocked(getCreditMemos).mockResolvedValue([] as never);
+    const res = await request(app).get(`/api/accounting/${SLUG}/credit-memos`);
+    expect(res.status).toBe(200);
+    expect(res.body.data).toHaveLength(0);
+  });
+
+  it("DB error returns 500", async () => {
+    vi.mocked(getCreditMemos).mockRejectedValue(new Error("neon timeout"));
+    const res = await request(app).get(`/api/accounting/${SLUG}/credit-memos`);
+    expect(res.status).toBe(500);
+    expect(res.body.ok).toBe(false);
+  });
+});
+
+// ─── GET /api/accounting/:slug/vendor-credits ─────────────────────────────────
+
+describe("GET /api/accounting/:slug/vendor-credits", () => {
+  const app  = buildApp(ADMIN_USER);
+  const SLUG = "T3_Marketing";
+
+  // Mock returns what getVendorCredits() returns after parseNumeric — numbers not strings.
+  const MOCK_VENDOR_CREDITS = [
+    {
+      id: "vc-1", entityId: UUID[SLUG]!, qboId: "QBO-VC1",
+      qboSyncToken: null, qboRawId: null, syncRunId: null,
+      vendorId: null, vendorQboId: "VEND-1", vendorName: "Acme Supplies",
+      docNumber: "VC-001", txnDate: "2026-04-01",
+      currency: "USD", exchangeRate: "1.0000000000",
+      totalAmt: 1200, remainingBalance: 0,
+      applyStatus: "fully_applied", isVoided: false, isDeleted: false,
+      qboStatus: "Synchronized", privateNote: null,
+      qboCreatedAt: new Date("2026-04-01T00:00:00Z"),
+      qboUpdatedAt: new Date("2026-04-15T00:00:00Z"),
+      syncedAt: new Date("2026-07-01T00:00:00Z"),
+    },
+    {
+      id: "vc-2", entityId: UUID[SLUG]!, qboId: "QBO-VC2",
+      qboSyncToken: null, qboRawId: null, syncRunId: null,
+      vendorId: null, vendorQboId: "VEND-2", vendorName: "Beta Media",
+      docNumber: "VC-002", txnDate: "2026-06-01",
+      currency: "USD", exchangeRate: "1.0000000000",
+      totalAmt: 800, remainingBalance: 317.54,
+      applyStatus: "partially_applied", isVoided: false, isDeleted: false,
+      qboStatus: "Synchronized", privateNote: null,
+      qboCreatedAt: new Date("2026-06-01T00:00:00Z"),
+      qboUpdatedAt: new Date("2026-06-20T00:00:00Z"),
+      syncedAt: new Date("2026-07-01T00:00:00Z"),
+    },
+    {
+      id: "vc-3", entityId: UUID[SLUG]!, qboId: "QBO-VC3",
+      qboSyncToken: null, qboRawId: null, syncRunId: null,
+      vendorId: null, vendorQboId: "VEND-3", vendorName: "Gamma Services",
+      docNumber: null, txnDate: "2026-07-01",
+      currency: "USD", exchangeRate: "1.0000000000",
+      totalAmt: 450, remainingBalance: 450,
+      applyStatus: "unapplied", isVoided: false, isDeleted: false,
+      qboStatus: "Synchronized", privateNote: null,
+      qboCreatedAt: new Date("2026-07-01T00:00:00Z"),
+      qboUpdatedAt: new Date("2026-07-01T00:00:00Z"),
+      syncedAt: new Date("2026-07-01T00:00:00Z"),
+    },
+  ];
+
+  beforeEach(() => {
+    vi.mocked(getCachedEntityId).mockResolvedValue(UUID[SLUG]!);
+    vi.mocked(getVendorCredits).mockResolvedValue(MOCK_VENDOR_CREDITS as never);
+  });
+
+  it("returns 401 without authentication", async () => {
+    const noAuthApp = buildApp(null);
+    const res = await request(noAuthApp).get(`/api/accounting/${SLUG}/vendor-credits`);
+    expect(res.status).toBe(401);
+  });
+
+  it("returns 403 for readonly role (missing vendors permission)", async () => {
+    const roApp = buildApp(READONLY);
+    const res = await request(roApp).get(`/api/accounting/${SLUG}/vendor-credits`);
+    expect(res.status).toBe(403);
+  });
+
+  it("returns 404 for unknown slug", async () => {
+    const res = await request(app).get("/api/accounting/unknown_entity/vendor-credits");
+    expect(res.status).toBe(404);
+  });
+
+  it("returns 404 when entity UUID not in DB", async () => {
+    vi.mocked(getCachedEntityId).mockResolvedValue(null);
+    const res = await request(app).get(`/api/accounting/${SLUG}/vendor-credits`);
+    expect(res.status).toBe(404);
+  });
+
+  it("returns 200 with ok:true and data array for authorised admin", async () => {
+    const res = await request(app).get(`/api/accounting/${SLUG}/vendor-credits`);
+    expect(res.status).toBe(200);
+    expect(res.body.ok).toBe(true);
+    expect(Array.isArray(res.body.data)).toBe(true);
+    expect(res.body.source).toBe("db");
+  });
+
+  it("calls getVendorCredits with entity UUID (entity isolation)", async () => {
+    await request(app).get(`/api/accounting/${SLUG}/vendor-credits`);
+    expect(vi.mocked(getVendorCredits)).toHaveBeenCalledWith(UUID[SLUG]);
+  });
+
+  it("maps totalAmt and remainingBalance as numbers (not strings)", async () => {
+    const res = await request(app).get(`/api/accounting/${SLUG}/vendor-credits`);
+    expect(typeof res.body.data[0].totalAmt).toBe("number");
+    expect(typeof res.body.data[0].remainingBalance).toBe("number");
+    expect(res.body.data[1].remainingBalance).toBeCloseTo(317.54, 2);
+  });
+
+  it("exposes expected fields: id, qboId, docNumber, vendorName, txnDate, currency, applyStatus, isVoided", async () => {
+    const res = await request(app).get(`/api/accounting/${SLUG}/vendor-credits`);
+    const row = res.body.data[0];
+    expect(row).toHaveProperty("id");
+    expect(row).toHaveProperty("qboId");
+    expect(row).toHaveProperty("docNumber");
+    expect(row).toHaveProperty("vendorName");
+    expect(row).toHaveProperty("txnDate");
+    expect(row).toHaveProperty("currency");
+    expect(row).toHaveProperty("totalAmt");
+    expect(row).toHaveProperty("remainingBalance");
+    expect(row).toHaveProperty("applyStatus");
+    expect(row).toHaveProperty("isVoided");
+  });
+
+  it("never exposes remainingCredit (AR field must not appear on AP response)", async () => {
+    const res = await request(app).get(`/api/accounting/${SLUG}/vendor-credits`);
+    expect(res.body.data[0]).not.toHaveProperty("remainingCredit");
+  });
+
+  it("never exposes customerName (AR field must not appear on AP response)", async () => {
+    const res = await request(app).get(`/api/accounting/${SLUG}/vendor-credits`);
+    expect(res.body.data[0]).not.toHaveProperty("customerName");
+  });
+
+  it("null docNumber serialised as null not empty string", async () => {
+    const res = await request(app).get(`/api/accounting/${SLUG}/vendor-credits`);
+    const noDoc = res.body.data.find((r: { docNumber: string | null }) => r.docNumber === null);
+    expect(noDoc).toBeDefined();
+  });
+
+  it("unapplied row has correct remainingBalance", async () => {
+    const res = await request(app).get(`/api/accounting/${SLUG}/vendor-credits`);
+    const unapplied = res.body.data.find((r: { applyStatus: string }) => r.applyStatus === "unapplied");
+    expect(unapplied).toBeDefined();
+    expect(unapplied.remainingBalance).toBe(450);
+  });
+
+  it("empty data array returns 200 not 404", async () => {
+    vi.mocked(getVendorCredits).mockResolvedValue([] as never);
+    const res = await request(app).get(`/api/accounting/${SLUG}/vendor-credits`);
+    expect(res.status).toBe(200);
+    expect(res.body.data).toHaveLength(0);
+  });
+
+  it("DB error returns 500", async () => {
+    vi.mocked(getVendorCredits).mockRejectedValue(new Error("neon timeout"));
+    const res = await request(app).get(`/api/accounting/${SLUG}/vendor-credits`);
+    expect(res.status).toBe(500);
+    expect(res.body.ok).toBe(false);
+  });
+
+  it("bookkeeper role (has vendors permission) can access vendor-credits", async () => {
+    const bkApp = buildApp(BOOKKEEPER);
+    vi.mocked(getCachedEntityId).mockResolvedValue(UUID[SLUG]!);
+    vi.mocked(getVendorCredits).mockResolvedValue(MOCK_VENDOR_CREDITS as never);
+    const res = await request(bkApp).get(`/api/accounting/${SLUG}/vendor-credits`);
+    expect(res.status).toBe(200);
   });
 });

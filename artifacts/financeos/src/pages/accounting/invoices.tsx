@@ -5,6 +5,7 @@ import { useAccountingEntity } from "@/lib/accounting-context";
 import { useAccountingPeriod } from "@/lib/accounting-period-context";
 import { useAccountingInvoices } from "@/hooks/useApi";
 import { formatCurrency } from "@/lib/format";
+import Link from "@/lib/next-compat";
 import type { AccountingInvoice, ArApReconciliation } from "@/lib/api";
 
 const fmt = (v: number | null | undefined) =>
@@ -69,7 +70,11 @@ function ReconBanner({ recon }: { recon: ArApReconciliation }) {
           <span>Gross open invoices:</span>
           <span className="font-mono">{fmt(recon.normalizedGrossTotal)}</span>
           <span>Unapplied customer credits:</span>
-          <span className="font-mono">{recon.unappliedCredits !== null ? fmt(recon.unappliedCredits) : "N/A"}</span>
+          <span className="font-mono">
+            {recon.unappliedCredits !== null ? fmt(recon.unappliedCredits) : "N/A"}
+            {" "}
+            <Link href="/accounting/credit-memos" className="underline text-amber-700 hover:text-amber-900 text-xs">View credit memos →</Link>
+          </span>
           <span>Net normalized AR:</span>
           <span className="font-mono">{recon.normalizedNetTotal !== null ? fmt(recon.normalizedNetTotal) : "N/A"}</span>
           <span>Gap:</span>
