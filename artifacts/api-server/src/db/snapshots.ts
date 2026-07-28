@@ -94,9 +94,239 @@ export interface ArApReconciliation {
   arExplanation: string;
   /** Human-readable explanation for the current status. */
   apExplanation: string;
+
+  /** Per-currency coverage detail for CreditMemo (from sync_run_objects + normalized table). */
+  creditMemoCoverage: CreditCoverageDetail[];
+  /** Per-currency coverage detail for VendorCredit (from sync_run_objects + normalized table). */
+  vendorCreditCoverage: CreditCoverageDetail[];
 }
 
 const RECON_TOLERANCE = 0.02;
+
+// ── PR #43: CreditCoverageDetail types ────────────────────────────────────────
+
+type SyncStatus =
+  | "never_attempted"
+  | "running"
+  | "failed"
+  | "success_zero_rows"
+  | "success_with_rows"
+  | "success_with_exceptions";
+
+type DataSourceUsed = "none" | "raw" | "normalized";
+type VerificationStatus = "not_available" | "pending" | "verified" | "parity_mismatch";
+
+interface CreditCoverageDetail {
+  /** Sync status derived from sync_run_objects or sync_runs. */
+  syncStatus: SyncStatus;
+  /** Which data source was used for the total. */
+  dataSourceUsed: DataSourceUsed;
+  /** Whether we can treat the data as audit-quality. */
+  verificationStatus: VerificationStatus;
+  /** True only when dataSourceUsed=normalized and verificationStatus=verified. */
+  coverageComplete: boolean;
+  /** Raw JSONB total from qbo_raw (null when no raw rows exist). */
+  rawTotal: number | null;
+  /** Normalized table total (null when no normalized rows exist or not verified). */
+  normalizedTotal: number | null;
+  /** |rawTotal - normalizedTotal|. Null when either is unavailable. */
+  difference: number | null;
+  /** The currency this coverage record applies to. */
+  currency: string;
+  /** records_fetched from sync_run_objects. Null when no sync row found. */
+  recordsFetched: number | null;
+  /** records_skipped from sync_run_objects. Null when no sync row found. */
+  recordsSkipped: number | null;
+  /** error_message from sync_run_objects. Null on success. */
+  errorSummary: string | null;
+}
+
+// Parity tolerance for normalized vs raw comparison (same as overall recon tolerance)
+const PARITY_TOLERANCE = 0.02;
+
+/**
+ * Build per-currency CreditCoverageDetail[] for one entity + credit type.
+ * Uses sync_run_objects for authoritative syncStatus, then reads normalized table
+ * (credit_memos / vendor_credits) and qbo_raw for parity comparison.
+ *
+ * Transition rule: normalized table is only trusted when syncStatus = success_with_rows
+ * AND parity is within tolerance. Otherwise, raw is the operational source.
+ */
+async function _getCreditCoverageDetails(
+  entityId: string,
+  creditType: "CreditMemo" | "VendorCredit",
+  entityCurrency: string,
+): Promise<CreditCoverageDetail[]> {
+  // 1. Most recent sync_run_objects row for this (entity, type)
+  const sroRows = await db.execute<{
+    status: string;
+    records_fetched: number | null;
+    records_skipped: number | null;
+    error_message: string | null;
+    completed_at: string | null;
+  }>(
+    sql`SELECT status, records_fetched, records_skipped, error_message, completed_at::text
+        FROM sync_run_objects
+        WHERE entity_id = ${entityId}
+          AND object_type = ${creditType}
+        ORDER BY completed_at DESC NULLS LAST
+        LIMIT 1`,
+  );
+  const sro = sroRows.rows[0] ?? null;
+
+  const rawStatus = sro?.status ?? null;
+  const recordsFetched = sro?.records_fetched ?? null;
+  const recordsSkipped = sro?.records_skipped ?? null;
+  const errorSummary = sro?.error_message ?? null;
+
+  // Derive syncStatus from sync_run_objects row
+  let syncStatus: SyncStatus;
+  if (!sro) {
+    syncStatus = "never_attempted";
+  } else if (rawStatus === "running") {
+    syncStatus = "running";
+  } else if (rawStatus === "failed") {
+    syncStatus = "failed";
+  } else if (rawStatus === "success_with_exceptions") {
+    syncStatus = "success_with_exceptions";
+  } else if (rawStatus === "success" && recordsFetched === 0 && (recordsSkipped ?? 0) === 0) {
+    syncStatus = "success_zero_rows";
+  } else if (rawStatus === "success") {
+    syncStatus = "success_with_rows";
+  } else {
+    syncStatus = "never_attempted";
+  }
+
+  // 2. success_zero_rows: entity has no credits — authoritative empty
+  if (syncStatus === "success_zero_rows") {
+    return [{
+      syncStatus,
+      dataSourceUsed: "normalized",
+      verificationStatus: "verified",
+      coverageComplete: true,
+      rawTotal: null,
+      normalizedTotal: 0,
+      difference: null,
+      currency: entityCurrency,
+      recordsFetched,
+      recordsSkipped,
+      errorSummary: null,
+    }];
+  }
+
+  // 3. For states where we can query normalized data, try normalized table
+  const normalizedTable = creditType === "CreditMemo" ? "credit_memos" : "vendor_credits";
+  const amountCol = creditType === "CreditMemo" ? "remaining_credit" : "remaining_balance";
+
+  const normalizedRows = await db.execute<{ currency: string; total: string }>(
+    sql.raw(`SELECT currency, COALESCE(SUM(${amountCol}), 0)::text AS total
+             FROM ${normalizedTable}
+             WHERE entity_id = '${entityId}'
+               AND is_deleted = false
+               AND is_voided = false
+             GROUP BY currency`),
+  );
+
+  // 4. Raw totals from qbo_raw JSONB per currency
+  const rawField = creditType === "CreditMemo" ? "RemainingCredit" : "Balance";
+  const rawRows = await db.execute<{ currency: string; total: string }>(
+    sql`SELECT
+          COALESCE(payload->>'CurrencyRef'->>'value', 'USD') AS currency,
+          COALESCE(SUM((payload->>${rawField})::numeric), 0)::text AS total
+        FROM qbo_raw
+        WHERE entity_id = ${entityId}
+          AND object_type = ${creditType}
+          AND is_deleted = false
+          AND (payload->>${rawField}) IS NOT NULL
+          AND (payload->>${rawField})::numeric > 0
+        GROUP BY COALESCE(payload->>'CurrencyRef'->>'value', 'USD')`,
+  );
+
+  // Build maps
+  const normalizedByCurrency = new Map<string, number>(
+    normalizedRows.rows.map(r => [r.currency, parseFloat(r.total)]),
+  );
+  const rawByCurrency = new Map<string, number>(
+    rawRows.rows.map(r => [r.currency, parseFloat(r.total)]),
+  );
+
+  // All currencies present in either source
+  const currencies = new Set<string>([
+    ...normalizedByCurrency.keys(),
+    ...rawByCurrency.keys(),
+    ...(normalizedRows.rows.length === 0 && rawRows.rows.length === 0 ? [entityCurrency] : []),
+  ]);
+
+  if (currencies.size === 0) currencies.add(entityCurrency);
+
+  return Array.from(currencies).map((currency): CreditCoverageDetail => {
+    const rawTotal = rawByCurrency.get(currency) ?? null;
+    const normalizedTotal = normalizedByCurrency.get(currency) ?? null;
+    const difference =
+      rawTotal !== null && normalizedTotal !== null
+        ? Math.abs(rawTotal - normalizedTotal)
+        : null;
+
+    // Determine data source + verification
+    if (syncStatus === "success_with_exceptions") {
+      return {
+        syncStatus,
+        dataSourceUsed: rawTotal !== null ? "raw" : "none",
+        verificationStatus: "pending",
+        coverageComplete: false,
+        rawTotal, normalizedTotal, difference, currency,
+        recordsFetched, recordsSkipped, errorSummary,
+      };
+    }
+
+    if (syncStatus === "failed" || syncStatus === "running" || syncStatus === "never_attempted") {
+      return {
+        syncStatus,
+        dataSourceUsed: rawTotal !== null ? "raw" : "none",
+        verificationStatus: "not_available",
+        coverageComplete: false,
+        rawTotal, normalizedTotal, difference, currency,
+        recordsFetched, recordsSkipped, errorSummary,
+      };
+    }
+
+    // success_with_rows: compare parity
+    if (normalizedTotal !== null && rawTotal !== null) {
+      const withinTolerance = difference !== null && difference <= PARITY_TOLERANCE;
+      if (withinTolerance) {
+        return {
+          syncStatus,
+          dataSourceUsed: "normalized",
+          verificationStatus: "verified",
+          coverageComplete: true,
+          rawTotal, normalizedTotal, difference, currency,
+          recordsFetched, recordsSkipped, errorSummary: null,
+        };
+      } else {
+        return {
+          syncStatus,
+          dataSourceUsed: "raw",
+          verificationStatus: "parity_mismatch",
+          coverageComplete: false,
+          rawTotal, normalizedTotal, difference, currency,
+          recordsFetched, recordsSkipped, errorSummary,
+        };
+      }
+    }
+
+    // Only one source exists
+    const onlyNormalized = normalizedTotal !== null && rawTotal === null;
+    const onlyRaw = rawTotal !== null && normalizedTotal === null;
+    return {
+      syncStatus,
+      dataSourceUsed: onlyNormalized ? "normalized" : onlyRaw ? "raw" : "none",
+      verificationStatus: "pending",
+      coverageComplete: false,
+      rawTotal, normalizedTotal, difference, currency,
+      recordsFetched, recordsSkipped, errorSummary,
+    };
+  });
+}
 
 type CoverageStatus = "ok" | "no_sync" | "date_mismatch" | "lineage_unavailable";
 
@@ -363,6 +593,18 @@ export async function getArApReconciliation(entityId: string): Promise<ArApRecon
   const arStatus = _classifyStatus(officialAr, normalizedNetAr, arCoverageStatus);
   const apStatus = _classifyStatus(officialAp, normalizedNetAp, apCoverageStatus);
 
+  // ── PR #43: per-currency coverage detail from sync_run_objects ────────────
+  // Entity functional currency: needed for zero-row case coverage output
+  const entityCurrencyRows = await db.execute<{ currency: string }>(
+    sql`SELECT currency FROM entities WHERE id = ${entityId} LIMIT 1`,
+  );
+  const entityCurrency = entityCurrencyRows.rows[0]?.currency ?? "USD";
+
+  const [creditMemoCoverage, vendorCreditCoverage] = await Promise.all([
+    _getCreditCoverageDetails(entityId, "CreditMemo", entityCurrency),
+    _getCreditCoverageDetails(entityId, "VendorCredit", entityCurrency),
+  ]);
+
   return {
     officialAr,
     officialAp,
@@ -389,6 +631,8 @@ export async function getArApReconciliation(entityId: string): Promise<ArApRecon
       apStatus, "AP", officialAp, normalizedGrossAp, unappliedVendorCredits, normalizedNetAp, apAbsDiff,
       apLastSyncAt, officialAsOf,
     ),
+    creditMemoCoverage,
+    vendorCreditCoverage,
   };
 }
 
