@@ -44,7 +44,7 @@ const NAV_ITEMS: { icon: LucideIcon; label: string; href: string; exact?: boolea
   { icon: FileText, label: "Invoices", href: "/commissions/invoices" },
   { icon: Users, label: "Sales Reps", href: "/commissions/sales-reps" },
   { icon: Building2, label: "Clients", href: "/commissions/clients" },
-  { icon: ClipboardList, label: "Commission Plans", href: "/commissions/plans" },
+  { icon: ClipboardList, label: "Rule Builder", href: "/commissions/plans" },
   { icon: Calculator, label: "Calculations", href: "/commissions/calculations" },
   { icon: Banknote, label: "Payouts", href: "/commissions/payouts" },
   { icon: BarChart3, label: "Reports", href: "/commissions/reports" },

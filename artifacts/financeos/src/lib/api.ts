@@ -287,6 +287,38 @@ export const api = {
   },
   accountingCreditMemos:  (slug: string) => getSourced<AccountingCreditMemo[]>(`/accounting/${slug}/credit-memos`),
   accountingVendorCredits:(slug: string) => getSourced<AccountingVendorCredit[]>(`/accounting/${slug}/vendor-credits`),
+
+  // ── Commissions module ─────────────────────────────────────────────────────
+  commissionLines: (slug: string, params?: {
+    representativeId?: string; lineStatus?: string;
+    periodYear?: number; periodMonth?: number; limit?: number; offset?: number;
+  }) => {
+    const qs = new URLSearchParams();
+    if (params?.representativeId) qs.set("representativeId", params.representativeId);
+    if (params?.lineStatus) qs.set("lineStatus", params.lineStatus);
+    if (params?.periodYear)  qs.set("periodYear", String(params.periodYear));
+    if (params?.periodMonth) qs.set("periodMonth", String(params.periodMonth));
+    if (params?.limit)  qs.set("limit", String(params.limit));
+    if (params?.offset) qs.set("offset", String(params.offset));
+    const q = qs.toString();
+    return get<{ data: CommissionRunLine[]; total: number }>(`/commissions/${slug}/lines${q ? `?${q}` : ""}`);
+  },
+  commissionSummary: (slug: string) =>
+    get<{ data: CommissionRepSummary[] }>(`/commissions/${slug}/summary`),
+  commissionRepresentatives: (slug: string) =>
+    get<{ data: CommissionRepresentative[] }>(`/commissions/${slug}/representatives`),
+  commissionRules: (slug: string) =>
+    get<{ data: CommissionRule[] }>(`/commissions/${slug}/rules`),
+  commissionRulePreview: (slug: string, body: CommissionRuleInput) =>
+    post<{ data: CommissionRulePreview }>(`/commissions/${slug}/rules/preview`, body),
+  createCommissionRule: (slug: string, body: CommissionRuleInput) =>
+    post<{ data: CommissionRule }>(`/commissions/${slug}/rules`, body),
+  ingestCommissions: (slug: string, body?: { fromDate?: string; toDate?: string }) =>
+    post<{ data: unknown }>(`/commissions/${slug}/ingest`, body ?? {}),
+  approveCommissionLine: (slug: string, lineId: string) =>
+    post<{ ok: boolean }>(`/commissions/${slug}/lines/${lineId}/approve`, {}),
+  lockCommissionPeriod: (slug: string, year: number, month: number) =>
+    post<{ ok: boolean }>(`/commissions/${slug}/periods/lock`, { year, month }),
 };
 
 // ── Accounting module types ────────────────────────────────────────────────
@@ -494,3 +526,113 @@ export type ReportDraftVersion = {
   createdBy: string | null;
   createdAt: string;
 };
+
+// ── Commission module types ────────────────────────────────────────────────────
+
+export type CommissionRepresentative = {
+  id: string;
+  slug: string;
+  displayName: string;
+  representativeType: "external_rep" | "internal_house";
+  payoutEligible: boolean;
+  notes: string | null;
+};
+
+export type CommissionRule = {
+  id: string;
+  entityId: string;
+  representativeId: string;
+  coreCustomerId: string | null;
+  customerNamePattern: string | null;
+  formulaType: string;
+  calculationBasis: string | null;
+  commissionRate: number | null;
+  fixedAmount: number | null;
+  payableTrigger: string;
+  ruleVersion: number;
+  status: string;
+  effectiveFrom: string;
+  effectiveTo: string | null;
+  notes: string | null;
+};
+
+export type CommissionRuleInput = {
+  representativeId: string;
+  coreCustomerId?: string | null;
+  customerNamePattern?: string | null;
+  formulaType: string;
+  calculationBasis?: string | null;
+  commissionRate?: number | null;
+  fixedAmount?: number | null;
+  payableTrigger: string;
+  effectiveFrom?: string;
+  effectiveTo?: string | null;
+  notes?: string | null;
+};
+
+export type CommissionRunLine = {
+  id: string;
+  entityId: string;
+  invoiceId: string;
+  invoiceQboId: string;
+  invoiceDocNumber: string | null;
+  invoiceDate: string | null;
+  customerId: string | null;
+  customerName: string | null;
+  invoiceAmount: number | null;
+  invoiceStatus: string | null;
+  representativeId: string | null;
+  representativeSlug: string | null;
+  representativeDisplayName: string | null;
+  attributionMatchType: string | null;
+  commissionRuleId: string | null;
+  formulaType: string | null;
+  calculationBasis: string | null;
+  commissionRate: number | null;
+  grossProfit: number | null;
+  expensesAmount: number | null;
+  commissionAmount: number | null;
+  lineStatus: string;
+  payoutEligible: boolean;
+  exclusionReason: string | null;
+  sourceFingerprint: string;
+  createdAt: string;
+  updatedAt: string;
+  approvedAt: string | null;
+  approvedBy: string | null;
+  lockedAt: string | null;
+  lockedBy: string | null;
+};
+
+export type CommissionRepSummary = {
+  repSlug: string | null;
+  repName: string | null;
+  payoutEligible: boolean | null;
+  lineCount: number;
+  totalInvoiceAmount: number | null;
+  totalGrossProfit: number | null;
+  totalCommission: number | null;
+  needsConfig: number;
+  needsReview: number;
+  calculated: number;
+  approved: number;
+  locked: number;
+};
+
+export type CommissionRulePreview = {
+  lines: {
+    invoiceId: string;
+    invoiceDocNumber: string | null;
+    invoiceDate: string | null;
+    customerName: string | null;
+    invoiceAmount: number | null;
+    currentStatus: string;
+    currentCommission: number | null;
+    projectedCommission: number | null;
+    projectedBasis: string | null;
+    projectedStatus: string;
+  }[];
+  affectedCount: number;
+  projectedTotal: number | null;
+};
+
