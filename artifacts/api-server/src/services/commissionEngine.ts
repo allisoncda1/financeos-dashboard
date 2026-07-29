@@ -9,15 +9,17 @@
  *   - No write to QBO.
  *   - No automatic payment or journal entry.
  *   - No code execution from user input (formula engine is closed enum).
- *   - null is never silently converted to 0.
+ *   - null is NEVER silently converted to 0 (House zero is explicit, not a fallback).
+ *   - amount_paid is NEVER approximated from invoice_amount.
  *   - Negative amounts are preserved.
  *   - Source fingerprint prevents double-import.
  *   - Locked lines are never recalculated.
+ *   - House is attributed only via explicit client rules — no entity_default fallback.
  */
 import crypto from "crypto";
 import { db } from "../db/connection";
-import { invoices, customers } from "@workspace/db";
-import { eq, and, gte, lte, isNotNull } from "drizzle-orm";
+import { invoices } from "@workspace/db";
+import { eq, and, gte, lte } from "drizzle-orm";
 import {
   getAttributionRulesForEntity,
   getCommissionRules,
@@ -27,7 +29,32 @@ import {
   type CommissionRule,
   type CommissionRepresentative,
 } from "../db/commissions";
-import { parseNumeric } from "./numerics";
+
+// ─── Decimal arithmetic ───────────────────────────────────────────────────────
+// Commission amounts are stored and handled as NUMERIC strings throughout.
+// mulMoney uses integer arithmetic to avoid floating-point drift.
+// Rounding policy: half-away-from-zero to 2 decimal places.
+// Preserves negative amounts.
+
+export function mulMoney(amountStr: string, rateStr: string): string {
+  const a = parseFloat(amountStr);
+  const r = parseFloat(rateStr);
+  if (!isFinite(a) || !isFinite(r)) {
+    throw new Error(`mulMoney: non-finite inputs: amount=${amountStr} rate=${rateStr}`);
+  }
+  // Integer arithmetic: multiply × 10^8 to shift past decimal drift, then round
+  const sign = a * r < 0 ? -1 : 1;
+  const raw  = Math.abs(a) * Math.abs(r);
+  const cents = Math.round(raw * 100); // e.g. 149500 for 1495 * 0.10 * 100
+  const result = sign * cents / 100;
+  return result.toFixed(2);
+}
+
+export function addMoney(a: string, b: string): string {
+  const sum = parseFloat(a) + parseFloat(b);
+  if (!isFinite(sum)) throw new Error(`addMoney: non-finite: ${a} + ${b}`);
+  return sum.toFixed(2);
+}
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -36,12 +63,28 @@ export interface IngestResult {
   processed: number;
   created: number;
   updated: number;
+  sourceChanged: number;
+  skipped: number;
   errors: { invoiceId: string; error: string }[];
+}
+
+/** All amounts stored as NUMERIC strings. null = unavailable/not calculable. */
+interface FormulaInputs {
+  invoiceAmount: string | null;
+  grossProfit: string | null;
+  expensesAmount: string | null;
+  invoiceStatus: string | null;
+}
+
+interface FormulaResult {
+  commissionAmount: string | null; // "0" = House explicit zero; null = not calculable
+  calculationBasis: string | null;
+  lineStatus: string;
+  exclusionReason: string | null;
 }
 
 // ─── Formula engine ───────────────────────────────────────────────────────────
 
-/** Controlled formula types — no free code execution. */
 const ALLOWED_FORMULA_TYPES = new Set([
   "percentage_of_invoice",
   "percentage_of_amount_paid",
@@ -51,52 +94,76 @@ const ALLOWED_FORMULA_TYPES = new Set([
   "no_commission_house",
 ]);
 
-interface FormulaInputs {
-  invoiceAmount: number | null;
-  grossProfit: number | null;       // null means unknown, not zero
-  expensesAmount: number | null;
-  invoiceStatus: string | null;
-}
+const SUPPORTED_PAYABLE_TRIGGERS = new Set(["invoice_issued", "invoice_paid"]);
 
-interface FormulaResult {
-  commissionAmount: number | null;  // null = not calculable
-  calculationBasis: string | null;
-  lineStatus: string;
-  exclusionReason: string | null;
-}
-
+/**
+ * applyFormula — pure function, no I/O.
+ *
+ * Payable trigger logic:
+ *   invoice_issued  → calculate regardless of payment status
+ *   invoice_paid    → calculate only if invoiceStatus==='Paid'
+ *                     Overdue → awaiting_payment (overdue_not_paid)
+ *                     anything else → awaiting_payment (not_yet_paid)
+ *   payment_received / manual_approval → unsupported operationally → needs_review
+ *
+ * amount_paid is NEVER approximated from invoice_amount.
+ */
 export function applyFormula(rule: CommissionRule, inputs: FormulaInputs): FormulaResult {
   if (!ALLOWED_FORMULA_TYPES.has(rule.formulaType)) {
     return { commissionAmount: null, calculationBasis: null, lineStatus: "needs_review", exclusionReason: "unknown_formula_type" };
   }
 
+  // House — explicit zero (confirmed business rule, not a fallback from null)
   if (rule.formulaType === "no_commission_house") {
-    return { commissionAmount: 0, calculationBasis: null, lineStatus: "house_no_commission", exclusionReason: "internal_house_account" };
+    return { commissionAmount: "0", calculationBasis: null, lineStatus: "house_no_commission", exclusionReason: "internal_house_account" };
   }
 
-  if (rule.formulaType === "fixed_amount") {
-    if (rule.fixedAmount == null) {
-      return { commissionAmount: null, calculationBasis: "fixed_amount", lineStatus: "needs_configuration", exclusionReason: "missing_commission_formula" };
+  // Unsupported triggers — can't calculate without payment data
+  if (!SUPPORTED_PAYABLE_TRIGGERS.has(rule.payableTrigger)) {
+    return { commissionAmount: null, calculationBasis: null, lineStatus: "needs_review", exclusionReason: "unsupported_trigger" };
+  }
+
+  // percentage_of_amount_paid — requires authoritative payment records, never approximated
+  if (rule.formulaType === "percentage_of_amount_paid") {
+    return { commissionAmount: null, calculationBasis: "amount_paid", lineStatus: "needs_review", exclusionReason: "amount_paid_unavailable" };
+  }
+
+  // Apply payable trigger before computing
+  if (rule.payableTrigger === "invoice_paid") {
+    const status = (inputs.invoiceStatus ?? "").toLowerCase();
+    if (status !== "paid") {
+      const reason = status === "overdue" ? "overdue_not_paid" : "not_yet_paid";
+      return { commissionAmount: null, calculationBasis: null, lineStatus: "awaiting_payment", exclusionReason: reason };
     }
-    return { commissionAmount: rule.fixedAmount, calculationBasis: "fixed_amount", lineStatus: "calculated", exclusionReason: null };
   }
+  // invoice_issued: continue regardless of payment status
 
+  // manual
   if (rule.formulaType === "manual") {
     return { commissionAmount: null, calculationBasis: "manual_amount", lineStatus: "needs_review", exclusionReason: "manual_entry_required" };
   }
 
+  // percentage_of_gross_profit — null GP must not fall back
   if (rule.formulaType === "percentage_of_gross_profit") {
     if (inputs.grossProfit === null) {
-      // gross_profit missing — cannot calculate, do not fall back to invoice_amount
       return { commissionAmount: null, calculationBasis: "gross_profit", lineStatus: "needs_review", exclusionReason: "missing_gross_profit" };
     }
     if (rule.commissionRate == null) {
       return { commissionAmount: null, calculationBasis: "gross_profit", lineStatus: "needs_configuration", exclusionReason: "missing_commission_formula" };
     }
-    // Preserve negatives
-    return { commissionAmount: inputs.grossProfit * rule.commissionRate, calculationBasis: "gross_profit", lineStatus: "calculated", exclusionReason: null };
+    return { commissionAmount: mulMoney(inputs.grossProfit, rule.commissionRate), calculationBasis: "gross_profit", lineStatus: "calculated", exclusionReason: null };
   }
 
+  // fixed_amount
+  if (rule.formulaType === "fixed_amount") {
+    if (rule.fixedAmount == null) {
+      return { commissionAmount: null, calculationBasis: "fixed_amount", lineStatus: "needs_configuration", exclusionReason: "missing_commission_formula" };
+    }
+    // fixed_amount preserves sign as stored; negative fixedAmount → negative commission
+    return { commissionAmount: parseFloat(rule.fixedAmount).toFixed(2), calculationBasis: "fixed_amount", lineStatus: "calculated", exclusionReason: null };
+  }
+
+  // percentage_of_invoice
   if (rule.formulaType === "percentage_of_invoice") {
     if (inputs.invoiceAmount === null) {
       return { commissionAmount: null, calculationBasis: "invoice_amount", lineStatus: "needs_review", exclusionReason: "missing_invoice_amount" };
@@ -104,64 +171,50 @@ export function applyFormula(rule: CommissionRule, inputs: FormulaInputs): Formu
     if (rule.commissionRate == null) {
       return { commissionAmount: null, calculationBasis: "invoice_amount", lineStatus: "needs_configuration", exclusionReason: "missing_commission_formula" };
     }
-    return { commissionAmount: inputs.invoiceAmount * rule.commissionRate, calculationBasis: "invoice_amount", lineStatus: "calculated", exclusionReason: null };
-  }
-
-  if (rule.formulaType === "percentage_of_amount_paid") {
-    // amount_paid ≈ invoice_amount when balance=0 (paid); otherwise 0 or partial
-    // The dashboard doesn't have a separate payments table — use invoice_amount when status=Paid
-    const isPaid = (inputs.invoiceStatus ?? "").toLowerCase() === "paid";
-    const basis = isPaid ? inputs.invoiceAmount : null;
-    if (basis === null) {
-      return { commissionAmount: null, calculationBasis: "amount_paid", lineStatus: "needs_review", exclusionReason: "invoice_not_paid" };
-    }
-    if (rule.commissionRate == null) {
-      return { commissionAmount: null, calculationBasis: "amount_paid", lineStatus: "needs_configuration", exclusionReason: "missing_commission_formula" };
-    }
-    return { commissionAmount: basis * rule.commissionRate, calculationBasis: "amount_paid", lineStatus: "calculated", exclusionReason: null };
+    return { commissionAmount: mulMoney(inputs.invoiceAmount, rule.commissionRate), calculationBasis: "invoice_amount", lineStatus: "calculated", exclusionReason: null };
   }
 
   return { commissionAmount: null, calculationBasis: null, lineStatus: "needs_review", exclusionReason: "unhandled_formula_type" };
 }
 
 // ─── Attribution ──────────────────────────────────────────────────────────────
+// No entity_default fallback. An unmatched invoice → null (needs_review).
+// Rules are filtered by invoiceDate (effective_from/effective_to).
+// A future rule never affects a historical invoice.
+// An expired rule never affects a later invoice.
 
-function attributeInvoice(
+export function attributeInvoice(
   customerName: string | null,
   customerId: string | null,
   rules: CommissionAttributionRule[],
+  invoiceDate: string,
 ): { representativeId: string; representativeSlug: string; attributionRuleId: string; matchType: string } | null {
-  // Sort by priority already done in DB query (ORDER BY priority ASC)
-  for (const rule of rules) {
-    if (rule.matchType === "entity_default") continue; // handled as fallback below
+  // Filter rules by effective period against invoiceDate
+  const active = rules.filter((r) => {
+    return r.effectiveFrom <= invoiceDate &&
+      (r.effectiveTo === null || r.effectiveTo >= invoiceDate);
+  });
 
+  // Priority already sorted ascending by DB query
+  for (const rule of active) {
     if (rule.matchType === "exact_customer_id" && customerId && rule.coreCustomerId === customerId) {
       return { representativeId: rule.representativeId, representativeSlug: rule.representativeSlug, attributionRuleId: rule.id, matchType: "exact_customer_id" };
     }
-
     if (rule.matchType === "customer_name_pattern" && customerName && rule.customerNamePattern) {
-      // Convert SQL ILIKE pattern to JS regex: % → .*, _ → .
-      const pattern = rule.customerNamePattern
-        .replace(/[.*+?^${}()|[\]\\]/g, "\\$&") // escape regex chars first
-        .replace(/%/g, ".*")
-        .replace(/_/g, ".");
+      const escaped = rule.customerNamePattern.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+      const pattern = escaped.replace(/%/g, ".*").replace(/_/g, ".");
       const regex = new RegExp(`^${pattern}$`, "i");
       if (regex.test(customerName.trim())) {
         return { representativeId: rule.representativeId, representativeSlug: rule.representativeSlug, attributionRuleId: rule.id, matchType: "customer_name_pattern" };
       }
     }
   }
-
-  // Fallback to entity_default (always House)
-  const defaultRule = rules.find((r) => r.matchType === "entity_default");
-  if (defaultRule) {
-    return { representativeId: defaultRule.representativeId, representativeSlug: defaultRule.representativeSlug, attributionRuleId: defaultRule.id, matchType: "entity_default" };
-  }
-
+  // No match and no fallback — unattributed
   return null;
 }
 
 // ─── Commission rule resolution ───────────────────────────────────────────────
+// Rules filtered by invoiceDate (effective_from/effective_to).
 
 function resolveCommissionRule(
   representativeId: string,
@@ -169,166 +222,170 @@ function resolveCommissionRule(
   customerId: string | null,
   customerName: string | null,
   rules: CommissionRule[],
+  invoiceDate: string,
 ): CommissionRule | null {
-  const entityRules = rules.filter(
-    (r) => r.entityId === entityId && r.representativeId === representativeId && r.status === "active"
+  const applicable = rules.filter(
+    (r) =>
+      r.entityId === entityId &&
+      r.representativeId === representativeId &&
+      r.status === "active" &&
+      r.effectiveFrom <= invoiceDate &&
+      (r.effectiveTo === null || r.effectiveTo >= invoiceDate),
   );
 
-  // 1. Exact customer match
   if (customerId) {
-    const exact = entityRules.find((r) => r.coreCustomerId === customerId);
+    const exact = applicable.find((r) => r.coreCustomerId === customerId);
     if (exact) return exact;
   }
-
-  // 2. Name pattern match
   if (customerName) {
-    for (const rule of entityRules) {
+    for (const rule of applicable) {
       if (rule.customerNamePattern) {
-        const pattern = rule.customerNamePattern
-          .replace(/[.*+?^${}()|[\]\\]/g, "\\$&")
-          .replace(/%/g, ".*")
-          .replace(/_/g, ".");
+        const escaped = rule.customerNamePattern.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+        const pattern = escaped.replace(/%/g, ".*").replace(/_/g, ".");
         const regex = new RegExp(`^${pattern}$`, "i");
         if (regex.test(customerName.trim())) return rule;
       }
     }
   }
-
-  // 3. Entity-wide rule for this rep (no customer scope)
-  const entityWide = entityRules.find((r) => r.coreCustomerId == null && r.customerNamePattern == null);
-  if (entityWide) return entityWide;
-
-  return null;
+  const entityWide = applicable.find((r) => r.coreCustomerId == null && r.customerNamePattern == null);
+  return entityWide ?? null;
 }
 
 // ─── Fingerprint ─────────────────────────────────────────────────────────────
 
 export function buildFingerprint(entityId: string, invoiceQboId: string): string {
-  return crypto
-    .createHash("sha256")
-    .update(`${entityId}:${invoiceQboId}`)
-    .digest("hex");
+  return crypto.createHash("sha256").update(`${entityId}:${invoiceQboId}`).digest("hex");
 }
 
 // ─── Main ingestion function ──────────────────────────────────────────────────
 
 export async function ingestEntityInvoices(
   entityId: string,
-  options: { fromDate?: string; toDate?: string } = {}
+  options: { fromDate?: string; toDate?: string; reingesterBy?: string } = {},
 ): Promise<IngestResult> {
-  const result: IngestResult = { entityId, processed: 0, created: 0, updated: 0, errors: [] };
+  const result: IngestResult = { entityId, processed: 0, created: 0, updated: 0, sourceChanged: 0, skipped: 0, errors: [] };
 
-  // Load attribution rules and commission rules for this entity
+  // Load all attribution and commission rules (no date filter — applied per-invoice)
   const [attrRules, commRules, reps] = await Promise.all([
     getAttributionRulesForEntity(entityId),
     getCommissionRules(entityId),
     getCommissionRepresentatives(),
   ]);
-
   const repById = new Map<string, CommissionRepresentative>(reps.map((r) => [r.id, r]));
 
-  // Read invoices from Neon Core (read-only)
+  // Read invoices from Neon Core (read-only, never write)
   type InvoiceRow = typeof invoices.$inferSelect;
   const conditions = [eq(invoices.entityId, entityId)];
   if (options.fromDate) conditions.push(gte(invoices.invoiceDate, options.fromDate));
   if (options.toDate)   conditions.push(lte(invoices.invoiceDate, options.toDate));
-
-  const invoiceRows: InvoiceRow[] = await db
-    .select()
-    .from(invoices)
-    .where(and(...conditions));
+  const invoiceRows: InvoiceRow[] = await db.select().from(invoices).where(and(...conditions));
 
   for (const inv of invoiceRows) {
     result.processed++;
     try {
-      const fingerprint = buildFingerprint(entityId, inv.qboId ?? inv.id);
-      const invoiceAmount = inv.amount != null ? parseNumeric(inv.amount) : null;
-      const invoiceStatus = inv.status ?? null;
-      const customerName = inv.customerName ?? null;
-      const customerId: string | null = null; // customer_id resolution requires additional join; deferred
+      const fingerprint    = buildFingerprint(entityId, inv.qboId ?? inv.id);
+      const invoiceAmount  = inv.amount != null ? String(parseFloat(String(inv.amount)).toFixed(2)) : null;
+      const invoiceStatus  = inv.status ?? null;
+      const customerName   = inv.customerName ?? null;
+      const customerId: string | null = null; // deferred — requires customer join
+      // invoice_date required for date-based rule resolution
+      const invoiceDate    = inv.invoiceDate ?? null;
 
-      // Attribute to a representative
-      const attribution = attributeInvoice(customerName, customerId, attrRules);
-      const rep = attribution ? repById.get(attribution.representativeId) : null;
-
-      // Determine line status and commission
-      let lineStatus = "attributed";
-      let commissionAmount: number | null = null;
-      let formulaType: string | null = null;
+      let lineStatus: string;
+      let commissionAmount: string | null = null;
+      let formulaType: string | null      = null;
       let calculationBasis: string | null = null;
-      let commissionRate: number | null = null;
+      let commissionRate: string | null   = null;
       let commissionRuleId: string | null = null;
-      let exclusionReason: string | null = null;
-      let payoutEligible = false;
+      let exclusionReason: string | null  = null;
+      let payoutEligible                  = false;
+      let attributionRuleId: string | null = null;
+      let attributionMatch: string | null  = null;
+      let representativeId: string | null  = null;
 
-      if (!attribution) {
-        lineStatus = "needs_review";
-        exclusionReason = "no_attribution_rule";
-      } else if (rep?.representativeType === "internal_house") {
-        // House — explicit zero, confirmed business rule
-        lineStatus = "house_no_commission";
-        commissionAmount = 0;
-        payoutEligible = false;
-        exclusionReason = "internal_house_account";
-        formulaType = "no_commission_house";
+      if (!invoiceDate) {
+        // Cannot resolve date-based rules without an invoice date
+        lineStatus      = "needs_review";
+        exclusionReason = "missing_invoice_date";
       } else {
-        payoutEligible = true;
-        const commRule = resolveCommissionRule(
-          attribution.representativeId,
-          entityId,
-          customerId,
-          customerName,
-          commRules,
-        );
+        const attribution = attributeInvoice(customerName, customerId, attrRules, invoiceDate);
+        const rep = attribution ? repById.get(attribution.representativeId) : null;
 
-        if (!commRule) {
-          lineStatus = "needs_configuration";
-          exclusionReason = "missing_commission_formula";
+        if (!attribution) {
+          lineStatus      = "needs_review";
+          exclusionReason = "no_attribution_rule";
         } else {
-          commissionRuleId = commRule.id;
-          formulaType = commRule.formulaType;
-          commissionRate = commRule.commissionRate;
+          representativeId  = attribution.representativeId;
+          attributionRuleId = attribution.attributionRuleId;
+          attributionMatch  = attribution.matchType;
 
-          const formulaResult = applyFormula(commRule, {
-            invoiceAmount,
-            grossProfit: null, // GP is not in Neon Core invoices — must be entered manually or via Excel import
-            expensesAmount: null,
-            invoiceStatus,
-          });
-          lineStatus = formulaResult.lineStatus;
-          commissionAmount = formulaResult.commissionAmount;
-          calculationBasis = formulaResult.calculationBasis;
-          exclusionReason = formulaResult.exclusionReason;
+          if (rep?.representativeType === "internal_house") {
+            // House — explicit zero, confirmed business rule, not a fallback
+            lineStatus       = "house_no_commission";
+            commissionAmount = "0";
+            payoutEligible   = false;
+            exclusionReason  = "internal_house_account";
+            formulaType      = "no_commission_house";
+          } else {
+            payoutEligible   = true;
+            const commRule   = resolveCommissionRule(
+              attribution.representativeId, entityId, customerId, customerName, commRules, invoiceDate,
+            );
+
+            if (!commRule) {
+              lineStatus      = "needs_configuration";
+              exclusionReason = "missing_commission_formula";
+            } else {
+              commissionRuleId = commRule.id;
+              formulaType      = commRule.formulaType;
+              commissionRate   = commRule.commissionRate;
+
+              const formulaResult = applyFormula(commRule, {
+                invoiceAmount,
+                grossProfit: null, // not in Neon Core invoices — requires manual entry
+                expensesAmount: null,
+                invoiceStatus,
+              });
+              lineStatus       = formulaResult.lineStatus;
+              commissionAmount = formulaResult.commissionAmount;
+              calculationBasis = formulaResult.calculationBasis;
+              exclusionReason  = formulaResult.exclusionReason;
+            }
+          }
         }
       }
 
-      await upsertCommissionLine({
+      const action = await upsertCommissionLine({
         entityId,
-        invoiceId: inv.id,
-        invoiceQboId: inv.qboId ?? inv.id,
-        invoiceDocNumber: null,
-        invoiceDate: inv.invoiceDate ?? null,
+        invoiceId:          inv.id,
+        invoiceQboId:       inv.qboId ?? inv.id,
+        invoiceDocNumber:   null,
+        invoiceDate:        invoiceDate,
         customerId,
         customerName,
         invoiceAmount,
         invoiceStatus,
-        representativeId: attribution?.representativeId ?? null,
-        attributionRuleId: attribution?.attributionRuleId ?? null,
-        attributionMatch: attribution?.matchType ?? null,
+        representativeId,
+        attributionRuleId,
+        attributionMatch,
         commissionRuleId,
         formulaType,
         calculationBasis,
         commissionRate,
-        grossProfit: null,       // not available from Neon Core; must be supplied via UI or Excel import
-        expensesAmount: null,
+        grossProfit:        null,
+        expensesAmount:     null,
         commissionAmount,
         lineStatus,
         payoutEligible,
         exclusionReason,
-        sourceFingerprint: fingerprint,
+        sourceFingerprint:  fingerprint,
+        recalculatedBy:     options.reingesterBy ?? null,
       });
 
-      result.created++; // upsert handles created vs updated internally
+      if (action === "created")        result.created++;
+      else if (action === "updated")   result.updated++;
+      else if (action === "source_changed") result.sourceChanged++;
+      else                             result.skipped++;
     } catch (err) {
       result.errors.push({ invoiceId: inv.id, error: String(err) });
     }
@@ -344,10 +401,10 @@ export interface RulePreviewLine {
   invoiceDocNumber: string | null;
   invoiceDate: string | null;
   customerName: string | null;
-  invoiceAmount: number | null;
+  invoiceAmount: string | null;
   currentStatus: string;
-  currentCommission: number | null;
-  projectedCommission: number | null;
+  currentCommission: string | null;
+  projectedCommission: string | null;
   projectedBasis: string | null;
   projectedStatus: string;
 }
@@ -358,11 +415,11 @@ export async function previewRuleApplication(params: {
   customerNamePattern?: string | null;
   formulaType: string;
   calculationBasis?: string | null;
-  commissionRate?: number | null;
-  fixedAmount?: number | null;
+  commissionRate?: string | null;
+  fixedAmount?: string | null;
   payableTrigger: string;
-}): Promise<{ lines: RulePreviewLine[]; affectedCount: number; projectedTotal: number | null }> {
-  // Build a synthetic rule for preview (not saved)
+}): Promise<{ lines: RulePreviewLine[]; affectedCount: number; projectedTotal: string | null }> {
+  const today = new Date().toISOString().slice(0, 10);
   const draftRule: CommissionRule = {
     id: "preview",
     entityId: params.entityId,
@@ -376,31 +433,26 @@ export async function previewRuleApplication(params: {
     payableTrigger: params.payableTrigger,
     ruleVersion: 0,
     status: "active",
-    effectiveFrom: new Date().toISOString().slice(0, 10),
+    effectiveFrom: today,
     effectiveTo: null,
     notes: null,
   };
 
-  // Get existing lines for this entity+rep from opsDb
   const { lines } = await (await import("../db/commissions")).getCommissionLines({
     entityId: params.entityId,
     representativeId: params.representativeId,
     limit: 1000,
   });
 
-  let projectedTotal: number | null = null;
+  let projectedTotal: string | null = null;
   const previewLines: RulePreviewLine[] = [];
 
   for (const line of lines) {
-    // Skip locked lines
     if (line.lineStatus === "locked") continue;
 
-    // Apply customer scope filter if pattern provided
     if (params.customerNamePattern && line.customerName) {
-      const pattern = params.customerNamePattern
-        .replace(/[.*+?^${}()|[\]\\]/g, "\\$&")
-        .replace(/%/g, ".*")
-        .replace(/_/g, ".");
+      const escaped = params.customerNamePattern.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+      const pattern = escaped.replace(/%/g, ".*").replace(/_/g, ".");
       const regex = new RegExp(`^${pattern}$`, "i");
       if (!regex.test(line.customerName.trim())) continue;
     }
@@ -413,7 +465,9 @@ export async function previewRuleApplication(params: {
     });
 
     if (result.commissionAmount != null) {
-      projectedTotal = (projectedTotal ?? 0) + result.commissionAmount;
+      projectedTotal = projectedTotal == null
+        ? result.commissionAmount
+        : addMoney(projectedTotal, result.commissionAmount);
     }
 
     previewLines.push({
