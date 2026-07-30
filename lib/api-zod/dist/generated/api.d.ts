@@ -1644,4 +1644,455 @@ export declare const ApproveCommentaryResponse: zod.ZodObject<{
     data?: unknown;
     source?: "live" | "mock" | "cache" | "db" | undefined;
 }>;
+/**
+ * Returns all users created via invitation (DB-resident). Env-var accounts
+ * (FINANCEOS_ADMIN_EMAIL, FINANCEOS_USERS) are not included.
+ * Requires `user-management` permission (admin and controller roles).
+ * password_hash is never returned.
+ * @summary List all DB-resident app users
+ */
+export declare const ListAppUsersResponse: zod.ZodIntersection<zod.ZodObject<{
+    ok: zod.ZodLiteral<true>;
+    data: zod.ZodUnknown;
+    source: zod.ZodOptional<zod.ZodEnum<["live", "mock", "cache", "db"]>>;
+    ts: zod.ZodDate;
+}, "strip", zod.ZodTypeAny, {
+    ok: true;
+    ts: Date;
+    data?: unknown;
+    source?: "live" | "mock" | "cache" | "db" | undefined;
+}, {
+    ok: true;
+    ts: Date;
+    data?: unknown;
+    source?: "live" | "mock" | "cache" | "db" | undefined;
+}>, zod.ZodObject<{
+    data: zod.ZodArray<zod.ZodObject<{
+        id: zod.ZodString;
+        email: zod.ZodString;
+        first_name: zod.ZodOptional<zod.ZodNullable<zod.ZodString>>;
+        last_name: zod.ZodOptional<zod.ZodNullable<zod.ZodString>>;
+        display_name: zod.ZodString;
+        role: zod.ZodEnum<["admin", "cfo", "controller", "bookkeeper", "investor", "readonly"]>;
+        status: zod.ZodEnum<["active", "disabled"]>;
+        mfa_required: zod.ZodBoolean;
+        mfa_complete: zod.ZodBoolean;
+        invited_by: zod.ZodString;
+        created_at: zod.ZodDate;
+        updated_at: zod.ZodDate;
+        last_login_at: zod.ZodOptional<zod.ZodNullable<zod.ZodDate>>;
+    }, "strip", zod.ZodTypeAny, {
+        status: "active" | "disabled";
+        email: string;
+        id: string;
+        display_name: string;
+        role: "admin" | "cfo" | "controller" | "bookkeeper" | "investor" | "readonly";
+        mfa_required: boolean;
+        mfa_complete: boolean;
+        invited_by: string;
+        created_at: Date;
+        updated_at: Date;
+        first_name?: string | null | undefined;
+        last_name?: string | null | undefined;
+        last_login_at?: Date | null | undefined;
+    }, {
+        status: "active" | "disabled";
+        email: string;
+        id: string;
+        display_name: string;
+        role: "admin" | "cfo" | "controller" | "bookkeeper" | "investor" | "readonly";
+        mfa_required: boolean;
+        mfa_complete: boolean;
+        invited_by: string;
+        created_at: Date;
+        updated_at: Date;
+        first_name?: string | null | undefined;
+        last_name?: string | null | undefined;
+        last_login_at?: Date | null | undefined;
+    }>, "many">;
+}, "strip", zod.ZodTypeAny, {
+    data: {
+        status: "active" | "disabled";
+        email: string;
+        id: string;
+        display_name: string;
+        role: "admin" | "cfo" | "controller" | "bookkeeper" | "investor" | "readonly";
+        mfa_required: boolean;
+        mfa_complete: boolean;
+        invited_by: string;
+        created_at: Date;
+        updated_at: Date;
+        first_name?: string | null | undefined;
+        last_name?: string | null | undefined;
+        last_login_at?: Date | null | undefined;
+    }[];
+}, {
+    data: {
+        status: "active" | "disabled";
+        email: string;
+        id: string;
+        display_name: string;
+        role: "admin" | "cfo" | "controller" | "bookkeeper" | "investor" | "readonly";
+        mfa_required: boolean;
+        mfa_complete: boolean;
+        invited_by: string;
+        created_at: Date;
+        updated_at: Date;
+        first_name?: string | null | undefined;
+        last_name?: string | null | undefined;
+        last_login_at?: Date | null | undefined;
+    }[];
+}>>;
+/**
+ * Returns all invitation records (pending, accepted, and revoked).
+ * Requires `user-management` permission.
+ * token_hash is never returned in any record.
+ * @summary List all invitations
+ */
+export declare const ListInvitationsResponse: zod.ZodIntersection<zod.ZodObject<{
+    ok: zod.ZodLiteral<true>;
+    data: zod.ZodUnknown;
+    source: zod.ZodOptional<zod.ZodEnum<["live", "mock", "cache", "db"]>>;
+    ts: zod.ZodDate;
+}, "strip", zod.ZodTypeAny, {
+    ok: true;
+    ts: Date;
+    data?: unknown;
+    source?: "live" | "mock" | "cache" | "db" | undefined;
+}, {
+    ok: true;
+    ts: Date;
+    data?: unknown;
+    source?: "live" | "mock" | "cache" | "db" | undefined;
+}>, zod.ZodObject<{
+    data: zod.ZodArray<zod.ZodObject<{
+        id: zod.ZodString;
+        email: zod.ZodString;
+        first_name: zod.ZodString;
+        last_name: zod.ZodString;
+        display_name: zod.ZodString;
+        role: zod.ZodEnum<["admin", "cfo", "controller", "bookkeeper", "investor", "readonly"]>;
+        invited_by: zod.ZodString;
+        expires_at: zod.ZodDate;
+        accepted_at: zod.ZodOptional<zod.ZodNullable<zod.ZodDate>>;
+        revoked_at: zod.ZodOptional<zod.ZodNullable<zod.ZodDate>>;
+        created_at: zod.ZodDate;
+    }, "strip", zod.ZodTypeAny, {
+        email: string;
+        id: string;
+        first_name: string;
+        last_name: string;
+        display_name: string;
+        role: "admin" | "cfo" | "controller" | "bookkeeper" | "investor" | "readonly";
+        invited_by: string;
+        created_at: Date;
+        expires_at: Date;
+        accepted_at?: Date | null | undefined;
+        revoked_at?: Date | null | undefined;
+    }, {
+        email: string;
+        id: string;
+        first_name: string;
+        last_name: string;
+        display_name: string;
+        role: "admin" | "cfo" | "controller" | "bookkeeper" | "investor" | "readonly";
+        invited_by: string;
+        created_at: Date;
+        expires_at: Date;
+        accepted_at?: Date | null | undefined;
+        revoked_at?: Date | null | undefined;
+    }>, "many">;
+}, "strip", zod.ZodTypeAny, {
+    data: {
+        email: string;
+        id: string;
+        first_name: string;
+        last_name: string;
+        display_name: string;
+        role: "admin" | "cfo" | "controller" | "bookkeeper" | "investor" | "readonly";
+        invited_by: string;
+        created_at: Date;
+        expires_at: Date;
+        accepted_at?: Date | null | undefined;
+        revoked_at?: Date | null | undefined;
+    }[];
+}, {
+    data: {
+        email: string;
+        id: string;
+        first_name: string;
+        last_name: string;
+        display_name: string;
+        role: "admin" | "cfo" | "controller" | "bookkeeper" | "investor" | "readonly";
+        invited_by: string;
+        created_at: Date;
+        expires_at: Date;
+        accepted_at?: Date | null | undefined;
+        revoked_at?: Date | null | undefined;
+    }[];
+}>>;
+/**
+ * Generates a cryptographically random 64-char hex invite token (from
+ * crypto.randomBytes(32)). Only the SHA-256 digest is stored — the raw token
+ * is returned once in `invite_url` and never persisted or logged.
+ * Requires `user-management` permission.
+ * @summary Create a new user invitation
+ */
+export declare const CreateInvitationBody: zod.ZodObject<{
+    email: zod.ZodString;
+    first_name: zod.ZodString;
+    last_name: zod.ZodString;
+    role: zod.ZodEnum<["admin", "cfo", "controller", "bookkeeper", "investor", "readonly"]>;
+}, "strip", zod.ZodTypeAny, {
+    email: string;
+    first_name: string;
+    last_name: string;
+    role: "admin" | "cfo" | "controller" | "bookkeeper" | "investor" | "readonly";
+}, {
+    email: string;
+    first_name: string;
+    last_name: string;
+    role: "admin" | "cfo" | "controller" | "bookkeeper" | "investor" | "readonly";
+}>;
+export declare const CreateInvitationResponse: zod.ZodIntersection<zod.ZodObject<{
+    ok: zod.ZodLiteral<true>;
+    data: zod.ZodUnknown;
+    source: zod.ZodOptional<zod.ZodEnum<["live", "mock", "cache", "db"]>>;
+    ts: zod.ZodDate;
+}, "strip", zod.ZodTypeAny, {
+    ok: true;
+    ts: Date;
+    data?: unknown;
+    source?: "live" | "mock" | "cache" | "db" | undefined;
+}, {
+    ok: true;
+    ts: Date;
+    data?: unknown;
+    source?: "live" | "mock" | "cache" | "db" | undefined;
+}>, zod.ZodObject<{
+    data: zod.ZodObject<{
+        id: zod.ZodString;
+        email: zod.ZodString;
+        first_name: zod.ZodString;
+        last_name: zod.ZodString;
+        display_name: zod.ZodString;
+        role: zod.ZodEnum<["admin", "cfo", "controller", "bookkeeper", "investor", "readonly"]>;
+        invited_by: zod.ZodString;
+        expires_at: zod.ZodDate;
+        created_at: zod.ZodDate;
+        invite_url: zod.ZodString;
+    }, "strip", zod.ZodTypeAny, {
+        email: string;
+        id: string;
+        first_name: string;
+        last_name: string;
+        display_name: string;
+        role: "admin" | "cfo" | "controller" | "bookkeeper" | "investor" | "readonly";
+        invited_by: string;
+        created_at: Date;
+        expires_at: Date;
+        invite_url: string;
+    }, {
+        email: string;
+        id: string;
+        first_name: string;
+        last_name: string;
+        display_name: string;
+        role: "admin" | "cfo" | "controller" | "bookkeeper" | "investor" | "readonly";
+        invited_by: string;
+        created_at: Date;
+        expires_at: Date;
+        invite_url: string;
+    }>;
+}, "strip", zod.ZodTypeAny, {
+    data: {
+        email: string;
+        id: string;
+        first_name: string;
+        last_name: string;
+        display_name: string;
+        role: "admin" | "cfo" | "controller" | "bookkeeper" | "investor" | "readonly";
+        invited_by: string;
+        created_at: Date;
+        expires_at: Date;
+        invite_url: string;
+    };
+}, {
+    data: {
+        email: string;
+        id: string;
+        first_name: string;
+        last_name: string;
+        display_name: string;
+        role: "admin" | "cfo" | "controller" | "bookkeeper" | "investor" | "readonly";
+        invited_by: string;
+        created_at: Date;
+        expires_at: Date;
+        invite_url: string;
+    };
+}>>;
+/**
+ * Public endpoint — no session required. Called by the accept-invite page
+ * on mount to pre-fill the form and confirm the token is still valid.
+ * Returns minimal data only (email, display_name, role, expires_at).
+ * token_hash is never returned.
+ * @summary Validate an invite token and return invitation metadata
+ */
+export declare const lookupInvitationPathTokenMin = 64;
+export declare const lookupInvitationPathTokenMax = 64;
+export declare const LookupInvitationParams: zod.ZodObject<{
+    token: zod.ZodString;
+}, "strip", zod.ZodTypeAny, {
+    token: string;
+}, {
+    token: string;
+}>;
+export declare const LookupInvitationResponse: zod.ZodIntersection<zod.ZodObject<{
+    ok: zod.ZodLiteral<true>;
+    data: zod.ZodUnknown;
+    source: zod.ZodOptional<zod.ZodEnum<["live", "mock", "cache", "db"]>>;
+    ts: zod.ZodDate;
+}, "strip", zod.ZodTypeAny, {
+    ok: true;
+    ts: Date;
+    data?: unknown;
+    source?: "live" | "mock" | "cache" | "db" | undefined;
+}, {
+    ok: true;
+    ts: Date;
+    data?: unknown;
+    source?: "live" | "mock" | "cache" | "db" | undefined;
+}>, zod.ZodObject<{
+    data: zod.ZodObject<{
+        email: zod.ZodString;
+        display_name: zod.ZodString;
+        role: zod.ZodEnum<["admin", "cfo", "controller", "bookkeeper", "investor", "readonly"]>;
+        expires_at: zod.ZodDate;
+    }, "strip", zod.ZodTypeAny, {
+        email: string;
+        display_name: string;
+        role: "admin" | "cfo" | "controller" | "bookkeeper" | "investor" | "readonly";
+        expires_at: Date;
+    }, {
+        email: string;
+        display_name: string;
+        role: "admin" | "cfo" | "controller" | "bookkeeper" | "investor" | "readonly";
+        expires_at: Date;
+    }>;
+}, "strip", zod.ZodTypeAny, {
+    data: {
+        email: string;
+        display_name: string;
+        role: "admin" | "cfo" | "controller" | "bookkeeper" | "investor" | "readonly";
+        expires_at: Date;
+    };
+}, {
+    data: {
+        email: string;
+        display_name: string;
+        role: "admin" | "cfo" | "controller" | "bookkeeper" | "investor" | "readonly";
+        expires_at: Date;
+    };
+}>>;
+/**
+ * Public endpoint — no session required. Consumes the invite token
+ * (single-use), hashes the password with bcrypt (cost 12), creates
+ * the `app_users` row, and marks the invitation accepted.
+ * The new user is NOT automatically logged in — they must visit /login
+ * and complete TOTP MFA enrollment before gaining full access.
+ * token_hash is never returned.
+ * @summary Accept an invitation and create a user account
+ */
+export declare const acceptInvitationPathTokenMin = 64;
+export declare const acceptInvitationPathTokenMax = 64;
+export declare const AcceptInvitationParams: zod.ZodObject<{
+    token: zod.ZodString;
+}, "strip", zod.ZodTypeAny, {
+    token: string;
+}, {
+    token: string;
+}>;
+export declare const acceptInvitationBodyPasswordMin = 12;
+export declare const AcceptInvitationBody: zod.ZodObject<{
+    password: zod.ZodString;
+}, "strip", zod.ZodTypeAny, {
+    password: string;
+}, {
+    password: string;
+}>;
+export declare const AcceptInvitationResponse: zod.ZodIntersection<zod.ZodObject<{
+    ok: zod.ZodLiteral<true>;
+    data: zod.ZodUnknown;
+    source: zod.ZodOptional<zod.ZodEnum<["live", "mock", "cache", "db"]>>;
+    ts: zod.ZodDate;
+}, "strip", zod.ZodTypeAny, {
+    ok: true;
+    ts: Date;
+    data?: unknown;
+    source?: "live" | "mock" | "cache" | "db" | undefined;
+}, {
+    ok: true;
+    ts: Date;
+    data?: unknown;
+    source?: "live" | "mock" | "cache" | "db" | undefined;
+}>, zod.ZodObject<{
+    data: zod.ZodObject<{
+        email: zod.ZodString;
+        display_name: zod.ZodString;
+        role: zod.ZodEnum<["admin", "cfo", "controller", "bookkeeper", "investor", "readonly"]>;
+        mfa_required: zod.ZodBoolean;
+        mfa_complete: zod.ZodBoolean;
+    }, "strip", zod.ZodTypeAny, {
+        email: string;
+        display_name: string;
+        role: "admin" | "cfo" | "controller" | "bookkeeper" | "investor" | "readonly";
+        mfa_required: boolean;
+        mfa_complete: boolean;
+    }, {
+        email: string;
+        display_name: string;
+        role: "admin" | "cfo" | "controller" | "bookkeeper" | "investor" | "readonly";
+        mfa_required: boolean;
+        mfa_complete: boolean;
+    }>;
+}, "strip", zod.ZodTypeAny, {
+    data: {
+        email: string;
+        display_name: string;
+        role: "admin" | "cfo" | "controller" | "bookkeeper" | "investor" | "readonly";
+        mfa_required: boolean;
+        mfa_complete: boolean;
+    };
+}, {
+    data: {
+        email: string;
+        display_name: string;
+        role: "admin" | "cfo" | "controller" | "bookkeeper" | "investor" | "readonly";
+        mfa_required: boolean;
+        mfa_complete: boolean;
+    };
+}>>;
+/**
+ * Marks the invitation as revoked so the token can no longer be accepted.
+ * Requires `user-management` permission. Only pending (not yet accepted
+ * or already revoked) invitations can be revoked.
+ * @summary Revoke a pending invitation
+ */
+export declare const RevokeInvitationParams: zod.ZodObject<{
+    id: zod.ZodString;
+}, "strip", zod.ZodTypeAny, {
+    id: string;
+}, {
+    id: string;
+}>;
+export declare const RevokeInvitationResponse: zod.ZodObject<{
+    ok: zod.ZodLiteral<true>;
+    ts: zod.ZodDate;
+}, "strip", zod.ZodTypeAny, {
+    ok: true;
+    ts: Date;
+}, {
+    ok: true;
+    ts: Date;
+}>;
 //# sourceMappingURL=api.d.ts.map
