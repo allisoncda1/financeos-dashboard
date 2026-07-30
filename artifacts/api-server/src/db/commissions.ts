@@ -37,9 +37,13 @@ export function assertValidUuid(v: unknown, name: string): string {
 }
 
 function assertValidDate(v: unknown, name: string): string {
-  if (typeof v !== "string" || !DATE_RE.test(v)) throw new Error(`Invalid ISO date for ${name}: ${String(v)}`);
-  const d = new Date(v);
-  if (isNaN(d.getTime())) throw new Error(`Invalid date for ${name}: ${String(v)}`);
+  if (typeof v !== "string" || !DATE_RE.test(v))
+    throw new Error(`Invalid ISO date for ${name}: ${String(v)}`);
+  // Strict calendar validation — rejects normalised dates (e.g. 2026-02-31 → Mar 3).
+  const [y, m, d] = v.split("-").map(Number);
+  const dt = new Date(Date.UTC(y, m - 1, d));
+  if (dt.getUTCFullYear() !== y || dt.getUTCMonth() !== m - 1 || dt.getUTCDate() !== d)
+    throw new Error(`Invalid calendar date for ${name}: ${String(v)}`);
   return v;
 }
 
@@ -127,6 +131,55 @@ export interface CommissionRunLine {
   approvedBy: string | null;
   lockedAt: string | null;
   lockedBy: string | null;
+}
+
+// ─── Period-lock helpers (shared by lockCommissionPeriod and upsertCommissionLine) ───
+
+/** Parse year and month from a YYYY-MM-DD string. */
+function _parsePeriod(dateStr: string): [number, number] {
+  const parts = dateStr.split("-");
+  return [parseInt(parts[0], 10), parseInt(parts[1], 10)];
+}
+
+/**
+ * Returns the set of (year, month) periods to advisory-lock, sorted in a
+ * deterministic order (ascending by year*100+month) to prevent deadlocks when
+ * multiple transactions lock different periods.
+ */
+function _sortedUniquePeriods(
+  newYear: number, newMonth: number,
+  prevDateStr: string | null,
+): Array<[number, number]> {
+  const periods: Array<[number, number]> = [[newYear, newMonth]];
+  if (prevDateStr) {
+    const [oldYear, oldMonth] = _parsePeriod(prevDateStr);
+    if (oldYear !== newYear || oldMonth !== newMonth) {
+      periods.push([oldYear, oldMonth]);
+    }
+  }
+  return periods.sort((a, b) => (a[0] * 100 + a[1]) - (b[0] * 100 + b[1]));
+}
+
+/**
+ * Check whether a period is locked — called INSIDE a transaction under the
+ * advisory lock so the read is consistent with the lock state.
+ */
+async function _isPeriodLockedTx(
+  tx: { execute: (query: ReturnType<typeof sql>) => Promise<{ rows: unknown[] }> },
+  entityId: string,
+  year: number,
+  month: number,
+): Promise<boolean> {
+  const rows = await tx.execute(sql`
+    SELECT EXISTS(
+      SELECT 1 FROM commission_periods
+      WHERE entity_id = ${entityId}::uuid
+        AND period_year  = ${year}
+        AND period_month = ${month}
+        AND status = 'locked'
+    ) AS is_locked
+  `);
+  return (rows.rows[0] as Record<string, unknown>).is_locked as boolean;
 }
 
 // ─── Representatives ──────────────────────────────────────────────────────────
@@ -257,15 +310,43 @@ export async function createCommissionRule(rule: {
       throw new Error("customerNamePattern cannot be a bare wildcard '%' or empty");
     }
   }
-  // Validate commissionRate and fixedAmount
+  // ── Rate / amount validation ──────────────────────────────────────────────
   assertValidNumericString(rule.commissionRate, "commissionRate", { min: 0, max: 10 });
   assertValidNumericString(rule.fixedAmount, "fixedAmount", { min: -999999.99, max: 999999.99 });
-  // Formula/amount compatibility
-  if (rule.formulaType === "fixed_amount" && rule.fixedAmount == null && rule.commissionRate != null) {
-    throw new Error("fixed_amount formula requires fixedAmount, not commissionRate");
+
+  // ── Formula / field invariants (mirrors route validateFormulaMatrix) ───────
+  const _PCT = new Set(["percentage_of_invoice","percentage_of_amount_paid","percentage_of_gross_profit"]);
+  if (_PCT.has(rule.formulaType)) {
+    if (rule.commissionRate == null) throw new Error(`${rule.formulaType} requires commissionRate`);
+    if (rule.fixedAmount != null)    throw new Error(`${rule.formulaType} must not have fixedAmount`);
   }
-  if (rule.formulaType === "no_commission_house" && (rule.commissionRate != null || rule.fixedAmount != null)) {
-    throw new Error("no_commission_house formula must not have commissionRate or fixedAmount");
+  if (rule.formulaType === "fixed_amount") {
+    if (rule.fixedAmount == null)     throw new Error("fixed_amount requires fixedAmount");
+    if (rule.commissionRate != null)  throw new Error("fixed_amount must not have commissionRate");
+  }
+  if (rule.formulaType === "no_commission_house") {
+    if (rule.commissionRate != null || rule.fixedAmount != null)
+      throw new Error("no_commission_house must not have commissionRate or fixedAmount");
+    if (rule.calculationBasis != null)
+      throw new Error("no_commission_house must not have calculationBasis");
+  }
+
+  // ── calculationBasis compatibility ────────────────────────────────────────
+  const _EXPECTED_BASIS: Record<string, string | null> = {
+    percentage_of_invoice:      "invoice_amount",
+    percentage_of_amount_paid:  "amount_paid",
+    percentage_of_gross_profit: "gross_profit",
+    fixed_amount:               "fixed_amount",
+    manual:                     null,
+    no_commission_house:        null,
+  };
+  if (rule.calculationBasis != null && rule.formulaType !== "manual") {
+    const expected = _EXPECTED_BASIS[rule.formulaType];
+    if (expected !== null && rule.calculationBasis !== expected) {
+      throw new Error(
+        `calculationBasis '${rule.calculationBasis}' is incompatible with '${rule.formulaType}' (expected '${expected}')`
+      );
+    }
   }
 
   // Wrap in a transaction with an advisory lock scoped to this rule's entity+rep+scope.
@@ -503,23 +584,59 @@ export async function upsertCommissionLine(line: {
   sourceFingerprint: string;
   recalculatedBy?: string | null;
 }): Promise<UpsertAction> {
-  // Before inserting a new line, check if the invoice's period is already locked.
-  // This prevents ingestion from adding new lines into a locked period.
-  if (line.invoiceDate) {
-    const periodLockCheck = await opsDb.execute(sql`
-      SELECT EXISTS(
-        SELECT 1 FROM commission_periods
-        WHERE entity_id = ${line.entityId}::uuid
-          AND period_year  = EXTRACT(YEAR  FROM ${line.invoiceDate}::date)::int
-          AND period_month = EXTRACT(MONTH FROM ${line.invoiceDate}::date)::int
-          AND status = 'locked'
-      ) AS is_locked
-    `);
-    const isLocked = (periodLockCheck.rows[0] as Record<string, unknown>).is_locked as boolean;
-    if (isLocked) return "skipped";
+  // Lines without an invoiceDate have no period affiliation — no advisory lock needed.
+  if (!line.invoiceDate) {
+    return _upsertCore(opsDb, line);
   }
 
-  const existing = await opsDb.execute(sql`
+  const [newYear, newMonth] = _parsePeriod(line.invoiceDate);
+
+  // Phase 1 (outside transaction): discover the existing line's current invoiceDate so we
+  // can determine which periods to lock *before* starting the transaction.  Safe because
+  // source_fingerprint is content-addressed and does not change between reads.
+  const preRows = await opsDb.execute(sql`
+    SELECT invoice_date::text AS invoice_date
+    FROM commission_run_lines
+    WHERE source_fingerprint = ${line.sourceFingerprint}
+    LIMIT 1
+  `);
+  const prevDateStr = preRows.rows.length > 0
+    ? ((preRows.rows[0] as Record<string, unknown>).invoice_date as string | null)
+    : null;
+
+  // Compute the periods to lock in a deterministic sorted order to prevent deadlocks.
+  // If the invoice date changes (e.g. QBO correction), we must also guard the old period.
+  const periodsToLock = _sortedUniquePeriods(newYear, newMonth, prevDateStr);
+
+  return await opsDb.transaction(async (tx) => {
+    // Acquire advisory lock(s) — identical key formula to lockCommissionPeriod.
+    // PostgreSQL releases xact locks automatically at transaction end.
+    for (const [y, m] of periodsToLock) {
+      await tx.execute(sql`
+        SELECT pg_advisory_xact_lock(
+          ('x' || md5(${line.entityId} || '|' || ${y}::text || '|' || ${m}::text))::bit(64)::bigint
+        )
+      `);
+    }
+
+    // Under the lock, refuse ingestion into any locked period.
+    for (const [y, m] of periodsToLock) {
+      if (await _isPeriodLockedTx(tx, line.entityId, y, m)) return "skipped";
+    }
+
+    return _upsertCore(tx, line);
+  });
+}
+
+/**
+ * Core insert/update logic — runs against either `opsDb` (no-date path) or a
+ * transaction handle (date path, inside advisory lock).
+ */
+async function _upsertCore(
+  db: { execute: (q: ReturnType<typeof sql>) => Promise<{ rows: unknown[]; rowCount?: number | null }> },
+  line: Parameters<typeof upsertCommissionLine>[0],
+): Promise<UpsertAction> {
+  const existing = await db.execute(sql`
     SELECT id, line_status,
            invoice_amount::text, invoice_status, customer_name,
            invoice_date::text, customer_id::text
@@ -529,7 +646,7 @@ export async function upsertCommissionLine(line: {
   `);
 
   if (existing.rows.length === 0) {
-    await opsDb.execute(sql`
+    await db.execute(sql`
       INSERT INTO commission_run_lines (
         entity_id, invoice_id, invoice_qbo_id, invoice_doc_number, invoice_date,
         customer_id, customer_name, invoice_amount, invoice_status,
@@ -572,17 +689,14 @@ export async function upsertCommissionLine(line: {
   if (currentStatus === "locked") return "skipped";
 
   if (currentStatus === "approved") {
-    // Source change detection: include fields that can affect attribution/calculation
     const sourceChanged =
-      ex.invoice_amount  !== (line.invoiceAmount  ?? null) ||
-      ex.invoice_status  !== (line.invoiceStatus  ?? null) ||
-      ex.customer_name   !== (line.customerName   ?? null) ||
-      ex.invoice_date    !== (line.invoiceDate     ?? null) ||
-      ex.customer_id     !== (line.customerId      ?? null);
+      ex.invoice_amount !== (line.invoiceAmount ?? null) ||
+      ex.invoice_status !== (line.invoiceStatus ?? null) ||
+      ex.customer_name  !== (line.customerName  ?? null) ||
+      ex.invoice_date   !== (line.invoiceDate    ?? null) ||
+      ex.customer_id    !== (line.customerId     ?? null);
     if (sourceChanged) {
-      // Clear approved_at/approved_by — approval is no longer valid for the new source data.
-      // Prior approval is preserved in commission_rule_audit via the source_changed reason.
-      await opsDb.execute(sql`
+      await db.execute(sql`
         UPDATE commission_run_lines
         SET
           invoice_amount      = ${line.invoiceAmount ?? null}::numeric,
@@ -613,8 +727,7 @@ export async function upsertCommissionLine(line: {
     return "skipped";
   }
 
-  // All other non-locked, non-approved lines: full update
-  await opsDb.execute(sql`
+  await db.execute(sql`
     UPDATE commission_run_lines
     SET
       invoice_amount      = ${line.invoiceAmount ?? null}::numeric,

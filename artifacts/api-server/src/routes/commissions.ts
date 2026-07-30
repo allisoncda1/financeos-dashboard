@@ -59,6 +59,15 @@ const FORMULA_BASIS: Record<string, string> = {
   percentage_of_amount_paid:  "amount_paid",
   percentage_of_gross_profit: "gross_profit",
 };
+/** The exact calculationBasis required for each formula (null = flexible / none). */
+const FORMULA_CALCULATION_BASIS: Record<string, string | null> = {
+  percentage_of_invoice:      "invoice_amount",
+  percentage_of_amount_paid:  "amount_paid",
+  percentage_of_gross_profit: "gross_profit",
+  fixed_amount:               "fixed_amount",
+  manual:                     null,
+  no_commission_house:        null,
+};
 
 /**
  * Strict ISO date validation — rejects calendar-normalised dates.
@@ -136,6 +145,7 @@ interface RuleBody {
   customerNamePattern: unknown;
   commissionRate: unknown;
   fixedAmount: unknown;
+  calculationBasis: unknown;
   reason: unknown;
 }
 
@@ -146,7 +156,7 @@ interface RuleBody {
  */
 function validateRuleBody(body: RuleBody): string | null {
   const { representativeId, formulaType, payableTrigger, effectiveFrom, effectiveTo,
-          customerNamePattern, commissionRate, fixedAmount } = body;
+          customerNamePattern, commissionRate, fixedAmount, calculationBasis } = body;
 
   if (!representativeId || !isValidUuid(representativeId)) {
     return "representativeId must be a valid UUID";
@@ -179,6 +189,20 @@ function validateRuleBody(body: RuleBody): string | null {
 
   const matrixErr = validateFormulaMatrix(formulaType as string, commissionRate, fixedAmount);
   if (matrixErr) return matrixErr;
+
+  // calculationBasis must match the formula when explicitly supplied.
+  if (calculationBasis != null && calculationBasis !== undefined) {
+    const ft = formulaType as string;
+    if (ft === "no_commission_house") {
+      return "no_commission_house must not have calculationBasis";
+    }
+    if (ft !== "manual") {
+      const expected = FORMULA_CALCULATION_BASIS[ft];
+      if (expected !== null && calculationBasis !== expected) {
+        return `calculationBasis '${String(calculationBasis)}' is incompatible with '${ft}' (expected '${expected}')`;
+      }
+    }
+  }
 
   return null;
 }
@@ -276,23 +300,29 @@ router.post("/:slug/rules/preview", requireAuth, async (req, res) => {
     customerNamePattern: body["customerNamePattern"] ?? null,
     commissionRate:      body["commissionRate"] ?? null,
     fixedAmount:         body["fixedAmount"] ?? null,
+    calculationBasis:    body["calculationBasis"] ?? null,
     reason:              null, // not required for preview
   });
   if (validationErr) return res.status(400).json({ ok: false, error: validationErr });
 
   const formulaType = String(body["formulaType"]);
 
-  // Rep type check for preview: no_commission_house requires internal_house rep
+  // Fetch the representative once; distinguish genuine DB errors from "not found".
+  // Bug fix (P2): previously, non-no_commission_house path skipped 400 when rep === null.
+  let rep;
+  try {
+    rep = await getCommissionRepresentativeById(String(body["representativeId"]));
+  } catch {
+    return res.status(500).json({ ok: false, error: "Failed to look up representative" });
+  }
+  if (!rep) return res.status(400).json({ ok: false, error: "Representative not found" });
+
   if (formulaType === "no_commission_house") {
-    const rep = await getCommissionRepresentativeById(String(body["representativeId"])).catch(() => null);
-    if (!rep) return res.status(400).json({ ok: false, error: "Representative not found" });
     if (rep.representativeType !== "internal_house") {
       return res.status(400).json({ ok: false, error: "no_commission_house formula can only be used with an internal_house representative" });
     }
   } else {
-    // Payable formulas must not be applied to house reps
-    const rep = await getCommissionRepresentativeById(String(body["representativeId"])).catch(() => null);
-    if (rep && rep.representativeType === "internal_house") {
+    if (rep.representativeType === "internal_house") {
       return res.status(400).json({ ok: false, error: "Payable formulas cannot be applied to an internal_house representative — use no_commission_house instead" });
     }
   }
@@ -342,6 +372,7 @@ router.post("/:slug/rules", requireAuth, requirePermission("control"), async (re
     customerNamePattern,
     commissionRate:      body["commissionRate"] ?? null,
     fixedAmount:         body["fixedAmount"] ?? null,
+    calculationBasis:    body["calculationBasis"] ?? null,
     reason:              null,
   });
   if (validationErr) return res.status(400).json({ ok: false, error: validationErr });
@@ -353,8 +384,14 @@ router.post("/:slug/rules", requireAuth, requirePermission("control"), async (re
 
   const formulaType = String(body["formulaType"]);
 
-  // Rep type check: no_commission_house requires internal_house; payable formulas require external_rep
-  const rep = await getCommissionRepresentativeById(String(body["representativeId"])).catch(() => null);
+  // Rep type check: no_commission_house requires internal_house; payable formulas require external_rep.
+  // Genuine DB errors → 500; representative not found → 400.
+  let rep;
+  try {
+    rep = await getCommissionRepresentativeById(String(body["representativeId"]));
+  } catch {
+    return res.status(500).json({ ok: false, error: "Failed to look up representative" });
+  }
   if (!rep) return res.status(400).json({ ok: false, error: "Representative not found" });
 
   if (formulaType === "no_commission_house") {

@@ -1,5 +1,5 @@
 /**
- * Commission module — route + engine tests (corrective pass 3).
+ * Commission module — route + engine tests (corrective pass 3 + 4).
  *
  * Points couverts:
  *   P1.  Unknown client → needs_review, never House
@@ -23,6 +23,12 @@
  *   P19. fixedAmount > 2dp rejected
  *   P20. Invalid calendar dates rejected (2026-02-31, 2026-13-01); leap year accepted (2028-02-29)
  *   P21. 23505 unique violation → 409, not 500
+ *   P22. Preview: absent rep → 400 for ALL formulaTypes (not just no_commission_house)
+ *   P23. Preview: genuine DB error → 500
+ *   P24. calculationBasis incompatible with formulaType → 400
+ *   P25. calculationBasis compatible → passes; null calculationBasis → passes
+ *   P26. DB layer: assertValidDate rejects normalised calendar dates
+ *   P27. Concurrent DB advisory lock: NOT verifiable without real PostgreSQL — documented
  */
 
 // ─── Mocks ────────────────────────────────────────────────────────────────────
@@ -814,3 +820,252 @@ describe("createCommissionRule — reason passed through (P16)", () => {
     );
   });
 });
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// P22: Preview — absent representative → 400 for ALL formulas (not just house)
+// ═══════════════════════════════════════════════════════════════════════════════
+
+describe("POST /rules/preview — absent rep → 400 regardless of formula (P22)", () => {
+  beforeEach(() => {
+    (getCommissionRepresentativeById as Mock).mockResolvedValue(null);
+  });
+
+  it("percentage_of_invoice + absent rep → 400", async () => {
+    const res = await request(makeApp()).post(`/commissions/${SLUG}/rules/preview`).send({
+      representativeId: REP_UUID,
+      formulaType:      "percentage_of_invoice",
+      commissionRate:   0.15,
+      payableTrigger:   "invoice_paid",
+    });
+    expect(res.status).toBe(400);
+    expect(res.body.error).toMatch(/not found/);
+  });
+
+  it("fixed_amount + absent rep → 400", async () => {
+    const res = await request(makeApp()).post(`/commissions/${SLUG}/rules/preview`).send({
+      representativeId: REP_UUID,
+      formulaType:      "fixed_amount",
+      fixedAmount:      "500.00",
+      payableTrigger:   "invoice_paid",
+    });
+    expect(res.status).toBe(400);
+    expect(res.body.error).toMatch(/not found/);
+  });
+
+  it("no_commission_house + absent rep → 400", async () => {
+    const res = await request(makeApp()).post(`/commissions/${SLUG}/rules/preview`).send({
+      representativeId: HOUSE_UUID,
+      formulaType:      "no_commission_house",
+      payableTrigger:   "invoice_paid",
+    });
+    expect(res.status).toBe(400);
+    expect(res.body.error).toMatch(/not found/);
+  });
+});
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// P23: Preview — genuine DB error → 500 (not 400)
+// ═══════════════════════════════════════════════════════════════════════════════
+
+describe("POST /rules/preview — DB error → 500 (P23)", () => {
+  it("getCommissionRepresentativeById throws → 500", async () => {
+    (getCommissionRepresentativeById as Mock).mockRejectedValue(new Error("connection reset"));
+    const res = await request(makeApp()).post(`/commissions/${SLUG}/rules/preview`).send({
+      representativeId: REP_UUID,
+      formulaType:      "percentage_of_invoice",
+      commissionRate:   0.15,
+      payableTrigger:   "invoice_paid",
+    });
+    expect(res.status).toBe(500);
+    expect(res.body.error).toMatch(/look up representative/);
+  });
+});
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// P24 + P25: calculationBasis validation
+// ═══════════════════════════════════════════════════════════════════════════════
+
+describe("POST /rules — calculationBasis validation (P24 + P25)", () => {
+  const base = {
+    representativeId: REP_UUID,
+    payableTrigger:   "invoice_paid",
+    effectiveFrom:    "2026-01-01",
+    reason:           "test",
+  };
+
+  it("percentage_of_invoice + wrong basis → 400", async () => {
+    const res = await request(makeApp()).post(`/commissions/${SLUG}/rules`).send({
+      ...base,
+      formulaType:       "percentage_of_invoice",
+      commissionRate:    0.15,
+      calculationBasis:  "gross_profit",     // wrong — should be invoice_amount
+    });
+    expect(res.status).toBe(400);
+    expect(res.body.error).toMatch(/calculationBasis/);
+    expect(res.body.error).toMatch(/invoice_amount/);
+  });
+
+  it("percentage_of_gross_profit + wrong basis → 400", async () => {
+    const res = await request(makeApp()).post(`/commissions/${SLUG}/rules`).send({
+      ...base,
+      formulaType:       "percentage_of_gross_profit",
+      commissionRate:    0.20,
+      calculationBasis:  "invoice_amount",   // wrong
+    });
+    expect(res.status).toBe(400);
+    expect(res.body.error).toMatch(/calculationBasis/);
+  });
+
+  it("no_commission_house + any calculationBasis → 400", async () => {
+    const res = await request(makeApp()).post(`/commissions/${SLUG}/rules`).send({
+      representativeId:  HOUSE_UUID,
+      formulaType:       "no_commission_house",
+      calculationBasis:  "invoice_amount",
+      payableTrigger:    "invoice_paid",
+      effectiveFrom:     "2026-01-01",
+      reason:            "test",
+    });
+    expect(res.status).toBe(400);
+    expect(res.body.error).toMatch(/calculationBasis/);
+  });
+
+  it("percentage_of_invoice + correct basis → 201", async () => {
+    const res = await request(makeApp()).post(`/commissions/${SLUG}/rules`).send({
+      ...base,
+      formulaType:       "percentage_of_invoice",
+      commissionRate:    0.15,
+      calculationBasis:  "invoice_amount",   // correct
+    });
+    expect(res.status).toBe(201);
+  });
+
+  it("percentage_of_invoice + no calculationBasis (auto-derived) → 201", async () => {
+    const res = await request(makeApp()).post(`/commissions/${SLUG}/rules`).send({
+      ...base,
+      formulaType:   "percentage_of_invoice",
+      commissionRate: 0.15,
+      // calculationBasis omitted — route derives it from FORMULA_BASIS
+    });
+    expect(res.status).toBe(201);
+  });
+
+  it("manual + any calculationBasis → 201 (flexible)", async () => {
+    const res = await request(makeApp()).post(`/commissions/${SLUG}/rules`).send({
+      ...base,
+      formulaType:       "manual",
+      calculationBasis:  "manual_amount",
+    });
+    expect(res.status).toBe(201);
+  });
+});
+
+// Preview route: same calculationBasis validation applies
+describe("POST /rules/preview — calculationBasis validation (P24 via preview)", () => {
+  it("percentage_of_invoice + wrong basis → 400 in preview", async () => {
+    const res = await request(makeApp()).post(`/commissions/${SLUG}/rules/preview`).send({
+      representativeId:  REP_UUID,
+      formulaType:       "percentage_of_invoice",
+      commissionRate:    0.15,
+      payableTrigger:    "invoice_paid",
+      calculationBasis:  "gross_profit",
+    });
+    expect(res.status).toBe(400);
+    expect(res.body.error).toMatch(/calculationBasis/);
+  });
+
+  it("percentage_of_invoice + correct basis → 200 in preview", async () => {
+    const res = await request(makeApp()).post(`/commissions/${SLUG}/rules/preview`).send({
+      representativeId:  REP_UUID,
+      formulaType:       "percentage_of_invoice",
+      commissionRate:    0.15,
+      payableTrigger:    "invoice_paid",
+      calculationBasis:  "invoice_amount",
+    });
+    expect(res.status).toBe(200);
+    expect(previewRuleApplication).toHaveBeenCalled();
+  });
+});
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// P26: DB-layer assertValidDate — strict calendar validation
+// ═══════════════════════════════════════════════════════════════════════════════
+
+describe("createCommissionRule (DB layer) — strict date validation (P26)", () => {
+  it("2026-02-31 throws (non-existent date)", async () => {
+    const { createCommissionRule: realCreate } =
+      await vi.importActual<typeof import("../db/commissions")>("../db/commissions");
+    await expect(realCreate({
+      entityId:         ENTITY_ID,
+      representativeId: REP_UUID,
+      formulaType:      "percentage_of_invoice",
+      commissionRate:   "0.150000",
+      payableTrigger:   "invoice_paid",
+      effectiveFrom:    "2026-02-31",
+    })).rejects.toThrow(/Invalid calendar date/);
+  });
+
+  it("2026-13-01 throws (invalid month)", async () => {
+    const { createCommissionRule: realCreate } =
+      await vi.importActual<typeof import("../db/commissions")>("../db/commissions");
+    await expect(realCreate({
+      entityId:         ENTITY_ID,
+      representativeId: REP_UUID,
+      formulaType:      "percentage_of_invoice",
+      commissionRate:   "0.150000",
+      payableTrigger:   "invoice_paid",
+      effectiveFrom:    "2026-13-01",
+    })).rejects.toThrow(/Invalid/);
+  });
+
+  it("fixed_amount with fixedAmount=null throws (DB layer invariant)", async () => {
+    const { createCommissionRule: realCreate } =
+      await vi.importActual<typeof import("../db/commissions")>("../db/commissions");
+    await expect(realCreate({
+      entityId:         ENTITY_ID,
+      representativeId: REP_UUID,
+      formulaType:      "fixed_amount",
+      fixedAmount:      null,
+      payableTrigger:   "invoice_paid",
+      effectiveFrom:    "2026-01-01",
+    })).rejects.toThrow(/fixed_amount requires fixedAmount/);
+  });
+
+  it("no_commission_house with commissionRate throws (DB layer invariant)", async () => {
+    const { createCommissionRule: realCreate } =
+      await vi.importActual<typeof import("../db/commissions")>("../db/commissions");
+    await expect(realCreate({
+      entityId:         ENTITY_ID,
+      representativeId: HOUSE_UUID,
+      formulaType:      "no_commission_house",
+      commissionRate:   "0.10",
+      payableTrigger:   "invoice_paid",
+      effectiveFrom:    "2026-01-01",
+    })).rejects.toThrow(/no_commission_house/);
+  });
+
+  it("calculationBasis incompatible at DB layer → throws", async () => {
+    const { createCommissionRule: realCreate } =
+      await vi.importActual<typeof import("../db/commissions")>("../db/commissions");
+    await expect(realCreate({
+      entityId:         ENTITY_ID,
+      representativeId: REP_UUID,
+      formulaType:      "percentage_of_invoice",
+      commissionRate:   "0.150000",
+      calculationBasis: "gross_profit",   // wrong
+      payableTrigger:   "invoice_paid",
+      effectiveFrom:    "2026-01-01",
+    })).rejects.toThrow(/calculationBasis/);
+  });
+});
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// P27: Concurrent advisory lock — NOT verifiable without real PostgreSQL
+// ═══════════════════════════════════════════════════════════════════════════════
+//
+// The advisory-lock protocol (pg_advisory_xact_lock) in upsertCommissionLine and
+// lockCommissionPeriod cannot be tested with Vitest mocks — a mock that returns
+// "skipped" proves nothing about the actual lock ordering or MVCC isolation.
+//
+// Status: NOT TESTED — PostgreSQL unavailable in this environment.
+// Recommended: run `commission_002_attribution_seed.sql` and a concurrent-ingestion
+// integration test against a real pg instance before promoting to production.

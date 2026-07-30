@@ -24,7 +24,9 @@
 --
 -- Double-execution test: running this file twice produces the same row count.
 -- Verify with: SELECT COUNT(*) FROM commission_attribution_rules;
--- Expected after first run: 30 rows. Second run: 30 rows (unchanged).
+-- Expected after first run: 31 rows. Second run: 31 rows (unchanged).
+-- Note: idempotence is theoretical — SQL not yet executed on a temp DB (PostgreSQL unavailable
+-- in this environment). Verify before applying to any real database.
 
 BEGIN;
 
