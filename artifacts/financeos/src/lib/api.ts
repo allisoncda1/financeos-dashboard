@@ -147,6 +147,31 @@ async function post<T>(path: string, body: unknown): Promise<T> {
   return json.data as T;
 }
 
+
+async function getEnvelope<T>(path: string): Promise<{ data: T; total?: number }> {
+  const res = await fetch(`${BASE}${path}`, { credentials: "include" });
+  if (res.status === 401) { handleUnauthorized(); throw new Error("Session expired"); }
+  if (!res.ok) throw new Error(`API ${path} -> ${res.status}`);
+  const json = await res.json();
+  if (!json.ok) throw new Error(json.error ?? "API error");
+  const result: { data: T; total?: number } = { data: json.data as T };
+  if (json.total !== undefined) result.total = json.total as number;
+  return result;
+}
+
+async function postEnvelope<T>(path: string, body: unknown): Promise<{ data: T }> {
+  const res = await fetch(`${BASE}${path}`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    credentials: "include",
+    body: JSON.stringify(body),
+  });
+  if (res.status === 401) { handleUnauthorized(); throw new Error("Session expired"); }
+  const json = await res.json().catch(() => ({ ok: false, error: `API ${path} -> ${res.status}` }));
+  if (!res.ok || !json.ok) throw new Error(json.error ?? `API ${path} -> ${res.status}`);
+  return { data: json.data as T };
+}
+
 export type DownloadedFile = { blob: Blob; filename: string };
 
 /**
@@ -288,7 +313,7 @@ export const api = {
   accountingCreditMemos:  (slug: string) => getSourced<AccountingCreditMemo[]>(`/accounting/${slug}/credit-memos`),
   accountingVendorCredits:(slug: string) => getSourced<AccountingVendorCredit[]>(`/accounting/${slug}/vendor-credits`),
 
-  // ── Commissions module ─────────────────────────────────────────────────────
+  // ── Commissions module ─────────────────────────────────────────────
   commissionLines: (slug: string, params?: {
     representativeId?: string; lineStatus?: string;
     periodYear?: number; periodMonth?: number; limit?: number; offset?: number;
@@ -301,21 +326,21 @@ export const api = {
     if (params?.limit)  qs.set("limit", String(params.limit));
     if (params?.offset) qs.set("offset", String(params.offset));
     const q = qs.toString();
-    return get<{ data: CommissionRunLine[]; total: number }>(`/commissions/${slug.toLowerCase()}/lines${q ? `?${q}` : ""}`);
+    return getEnvelope<CommissionRunLine[]>(`/commissions/${slug.toLowerCase()}/lines${q ? `?${q}` : ""}`);
   },
   commissionSummary: (slug: string) =>
-    get<{ data: CommissionRepSummary[] }>(`/commissions/${slug.toLowerCase()}/summary`),
+    getEnvelope<CommissionRepSummary[]>(`/commissions/${slug.toLowerCase()}/summary`),
   commissionRepresentatives: (slug: string) =>
-    get<{ data: CommissionRepresentative[] }>(`/commissions/${slug.toLowerCase()}/representatives`),
+    getEnvelope<CommissionRepresentative[]>(`/commissions/${slug.toLowerCase()}/representatives`),
   commissionRules: (slug: string) =>
-    get<{ data: CommissionRule[] }>(`/commissions/${slug.toLowerCase()}/rules`),
+    getEnvelope<CommissionRule[]>(`/commissions/${slug.toLowerCase()}/rules`),
   commissionRulePreview: (slug: string, body: CommissionRuleInput) =>
-    post<{ data: CommissionRulePreview }>(`/commissions/${slug.toLowerCase()}/rules/preview`, body),
+    postEnvelope<CommissionRulePreview>(`/commissions/${slug.toLowerCase()}/rules/preview`, body),
   createCommissionRule: (slug: string, body: CommissionRuleInput) =>
-    post<{ data: CommissionRule }>(`/commissions/${slug.toLowerCase()}/rules`, body),
+    postEnvelope<CommissionRule>(`/commissions/${slug.toLowerCase()}/rules`, body),
   ingestCommissions: (slug: string, body?: { fromDate?: string; toDate?: string }) =>
-    post<{ data: IngestResult }>(`/commissions/${slug.toLowerCase()}/ingest`, body ?? {}),
-  approveCommissionLine: (slug: string, lineId: string) =>
+    postEnvelope<IngestResult>(`/commissions/${slug.toLowerCase()}/ingest`, body ?? {}),
+    approveCommissionLine: (slug: string, lineId: string) =>
     post<{ ok: boolean }>(`/commissions/${slug.toLowerCase()}/lines/${lineId}/approve`, {}),
   lockCommissionPeriod: (slug: string, year: number, month: number) =>
     post<{ ok: boolean }>(`/commissions/${slug.toLowerCase()}/periods/lock`, { year, month }),
