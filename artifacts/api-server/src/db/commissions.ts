@@ -10,7 +10,7 @@
  *   - Approved lines flag source_changed if source fields differ on re-sync;
  *     approved_at/approved_by are cleared when a line re-enters needs_review.
  */
-import { opsDb } from "./connection";
+import { getCommissionOpsDb } from "./ops-connection";
 import { sql } from "drizzle-orm";
 
 // ─── Validation helpers ───────────────────────────────────────────────────────
@@ -205,7 +205,7 @@ async function _isPeriodLockedTx(
 // ─── Representatives ──────────────────────────────────────────────────────────
 
 export async function getCommissionRepresentatives(): Promise<CommissionRepresentative[]> {
-  const rows = await opsDb.execute(sql`
+  const rows = await getCommissionOpsDb().execute(sql`
     SELECT id, slug, display_name, representative_type, payout_eligible, notes
     FROM commission_representatives
     ORDER BY representative_type ASC, display_name ASC
@@ -215,7 +215,7 @@ export async function getCommissionRepresentatives(): Promise<CommissionRepresen
 
 export async function getCommissionRepresentativeById(id: string): Promise<CommissionRepresentative | null> {
   assertValidUuid(id, "representative id");
-  const rows = await opsDb.execute(sql`
+  const rows = await getCommissionOpsDb().execute(sql`
     SELECT id, slug, display_name, representative_type, payout_eligible, notes
     FROM commission_representatives
     WHERE id = ${id}::uuid
@@ -243,7 +243,7 @@ function mapRep(r: Record<string, unknown>): CommissionRepresentative {
 
 export async function getAttributionRulesForEntity(entityId: string): Promise<CommissionAttributionRule[]> {
   assertValidUuid(entityId, "entityId");
-  const rows = await opsDb.execute(sql`
+  const rows = await getCommissionOpsDb().execute(sql`
     SELECT r.id, r.entity_id, r.core_customer_id, r.customer_name_pattern,
            r.match_type, r.priority, r.representative_id,
            rep.slug AS representative_slug,
@@ -274,7 +274,7 @@ export async function getCommissionRules(entityId?: string): Promise<CommissionR
   if (entityId) assertValidUuid(entityId, "entityId");
 
   const rows = entityId
-    ? await opsDb.execute(sql`
+    ? await getCommissionOpsDb().execute(sql`
         SELECT r.id, r.entity_id, r.representative_id, r.core_customer_id,
                r.customer_name_pattern, r.formula_type, r.calculation_basis,
                r.commission_rate::text, r.fixed_amount::text, r.payable_trigger,
@@ -283,7 +283,7 @@ export async function getCommissionRules(entityId?: string): Promise<CommissionR
         WHERE r.entity_id = ${entityId}::uuid AND r.status = 'active'
         ORDER BY r.entity_id, r.representative_id, r.effective_from DESC
       `)
-    : await opsDb.execute(sql`
+    : await getCommissionOpsDb().execute(sql`
         SELECT r.id, r.entity_id, r.representative_id, r.core_customer_id,
                r.customer_name_pattern, r.formula_type, r.calculation_basis,
                r.commission_rate::text, r.fixed_amount::text, r.payable_trigger,
@@ -377,7 +377,7 @@ export async function createCommissionRule(rule: {
   // The unique index uq_commission_rule_scope_version remains as a final safety net.
   let result;
   try {
-    result = await opsDb.transaction(async (tx) => {
+    result = await getCommissionOpsDb().transaction(async (tx) => {
       // Advisory xact lock — automatically released at transaction end.
       // Key is a stable hash over entity+rep+customer scope.
       await tx.execute(sql`
@@ -514,7 +514,7 @@ export async function getCommissionLines(filters: {
       ${year != null && month != null ? sql`AND EXTRACT(YEAR FROM cl.invoice_date) = ${year} AND EXTRACT(MONTH FROM cl.invoice_date) = ${month}` : sql``}
   `;
 
-  const rows = await opsDb.execute(sql`
+  const rows = await getCommissionOpsDb().execute(sql`
     SELECT
       cl.id, cl.entity_id, cl.invoice_id, cl.invoice_qbo_id, cl.invoice_doc_number,
       cl.invoice_date::text, cl.customer_id, cl.customer_name,
@@ -534,7 +534,7 @@ export async function getCommissionLines(filters: {
     LIMIT ${limit} OFFSET ${offset}
   `);
 
-  const countRows = await opsDb.execute(sql`SELECT COUNT(*) AS total ${baseQuery}`);
+  const countRows = await getCommissionOpsDb().execute(sql`SELECT COUNT(*) AS total ${baseQuery}`);
   const total = Number((countRows.rows[0] as Record<string, unknown>).total ?? 0);
   return { lines: (rows.rows as Record<string, unknown>[]).map(mapRunLine), total };
 }
@@ -542,7 +542,7 @@ export async function getCommissionLines(filters: {
 export async function getCommissionLineSummary(entityId?: string) {
   if (entityId) assertValidUuid(entityId, "entityId");
 
-  const rows = await opsDb.execute(sql`
+  const rows = await getCommissionOpsDb().execute(sql`
     SELECT
       rep.slug AS rep_slug,
       rep.display_name AS rep_name,
@@ -607,7 +607,7 @@ export async function upsertCommissionLine(line: {
   sourceFingerprint: string;
   recalculatedBy?: string | null;
 }): Promise<UpsertAction> {
-  return await opsDb.transaction(async (tx) => {
+  return await getCommissionOpsDb().transaction(async (tx) => {
     // ── Step 1: Acquire source_fingerprint advisory lock FIRST ────────────────
     // This serializes all concurrent upserts for the same invoice, eliminating
     // the race where two upserts read divergent old-period state and disagree on
@@ -802,7 +802,7 @@ export async function approveCommissionLine(
 ): Promise<boolean> {
   assertValidUuid(lineId, "lineId");
   assertValidUuid(entityId, "entityId");
-  const result = await opsDb.execute(sql`
+  const result = await getCommissionOpsDb().execute(sql`
     UPDATE commission_run_lines
     SET line_status = 'approved', approved_at = now(), approved_by = ${approvedBy}, updated_at = now()
     WHERE id = ${lineId}::uuid
@@ -839,7 +839,7 @@ export async function lockCommissionPeriod(
   // Transaction with advisory lock ensures no concurrent lock attempt for the same period.
   // upsertCommissionLine checks commission_periods before inserting, so a new ingestion
   // that starts while we hold the lock will see the locked period and skip.
-  const result = await opsDb.transaction(async (tx) => {
+  const result = await getCommissionOpsDb().transaction(async (tx) => {
     await tx.execute(sql`
       SELECT pg_advisory_xact_lock(
         ('x' || md5(${entityId} || '|' || ${year}::text || '|' || ${month}::text))::bit(64)::bigint

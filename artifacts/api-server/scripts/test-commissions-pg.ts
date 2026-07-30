@@ -1,46 +1,39 @@
 #!/usr/bin/env tsx
 /**
- * Commission module — PostgreSQL integration test
+ * Commission module — CI-only PostgreSQL integration runner
  *
- * Calls production functions directly:
- *   createCommissionRule, upsertCommissionLine, lockCommissionPeriod
+ * PURPOSE
+ * -------
+ * Validates createCommissionRule, upsertCommissionLine, and lockCommissionPeriod
+ * against a real PostgreSQL instance. Intended exclusively for GitHub Actions —
+ * not for local developer use. No local database, no Docker on developer Mac,
+ * no Homebrew, no Postgres.app.
  *
- * Strategy: after environment guards, sets process.env.DATABASE_URL and
- * process.env.CORE_DATABASE_URL to TEST_DATABASE_URL, then dynamically imports
- * the production module. opsDb (backed by DATABASE_URL) therefore connects to the
- * throwaway test database. CORE_DATABASE_URL satisfies lib/db's startup check but
- * is never queried by commission functions.
+ * HOW IT WORKS IN CI
+ * ------------------
+ * The GitHub Actions workflow (commission-postgres-integration.yml) spins up a
+ * postgres:16 service container and exposes it at 127.0.0.1:5432 with a database
+ * named commission_test_ci. The workflow sets TEST_DATABASE_URL accordingly, then
+ * runs this script via: pnpm test:commissions:pg
  *
- * Requires:
- *   - TEST_DATABASE_URL pointing to a throwaway PostgreSQL instance
- *   - Database name must be "commission_test" or start with "commission_test_"
+ * DATABASE_URL is set to TEST_DATABASE_URL inside this script so that
+ * getCommissionOpsDb() (ops-connection.ts) connects to the ephemeral CI database.
+ * CORE_DATABASE_URL is never set and never needed — commission functions use only
+ * the operational database (DATABASE_URL) and do not query FinanceOS Neon Core.
  *
- * How to run:
+ * WHAT IS NOT USED
+ * ----------------
+ * - DATABASE_URL from the environment (the real ops database)
+ * - CORE_DATABASE_URL (Neon Core — never read by commission functions)
+ * - Any FinanceOS production connection string
+ * - Any QBO connection
  *
- *   docker run --rm -d \
- *     --name pg_commission_test \
- *     -e POSTGRES_PASSWORD=test \
- *     -e POSTGRES_DB=commission_test \
- *     -p 127.0.0.1:5441:5432 \
- *     postgres:16
- *
- *   export TEST_DATABASE_URL="postgresql://postgres:test@127.0.0.1:5441/commission_test"
- *
- *   until docker exec pg_commission_test pg_isready -U postgres -d commission_test; do
- *     sleep 1
- *   done
- *
- *   cd artifacts/api-server
- *   TEST_DATABASE_URL="$TEST_DATABASE_URL" npm run test:commissions:pg
- *
- *   docker stop pg_commission_test
- *
- * Note: this script has never been executed — PostgreSQL is unavailable in this
- * development environment. Run it against a real throwaway instance before merge.
+ * EXIT CODE
+ * ---------
+ * 0 — all tests passed.
+ * 1 — first failed test, missing env var, wrong database name, or unexpected error.
  */
 
-// Only static imports of modules that do NOT read DATABASE_URL or CORE_DATABASE_URL.
-// The production module is imported dynamically after env vars are set.
 import * as fs from "fs";
 import * as path from "path";
 import { fileURLToPath } from "url";
@@ -48,10 +41,22 @@ import pg from "pg";
 
 const { Pool, Client } = pg;
 
-// ─── URL utilities ──────────────────────────────────────────────────────────
+// ─── CI context guard ──────────────────────────────────────────────────────
+// Prevents accidental execution outside CI.
+
+const IS_CI = process.env.GITHUB_ACTIONS === "true" || process.env.CI === "true";
+if (!IS_CI) {
+  console.error("❌  This script runs only in CI (GITHUB_ACTIONS=true or CI=true).");
+  console.error("    PostgreSQL integration for the Commission module is gated");
+  console.error("    by GitHub Actions — see .github/workflows/commission-postgres-integration.yml.");
+  console.error("    No local database setup is supported or required.");
+  process.exit(1);
+}
+
+// ─── URL utilities ─────────────────────────────────────────────────────────
 
 interface NormalizedUrl {
-  host: string;   // 127.0.0.1 / hostname
+  host: string;
   port: number;
   database: string;
 }
@@ -60,9 +65,11 @@ function normalizeUrl(raw: string): NormalizedUrl | null {
   try {
     const u = new URL(raw);
     const host = (u.hostname === "localhost" ? "127.0.0.1" : u.hostname).toLowerCase();
-    const port = parseInt(u.port || "5432", 10);
-    const database = decodeURIComponent(u.pathname.replace(/^\//, ""));
-    return { host, port, database };
+    return {
+      host,
+      port:     parseInt(u.port || "5432", 10),
+      database: decodeURIComponent(u.pathname.replace(/^\//, "")),
+    };
   } catch {
     return null;
   }
@@ -83,13 +90,12 @@ function maskUrl(raw: string): string {
   }
 }
 
-// ─── Environment guards ─────────────────────────────────────────────────────
+// ─── Environment guards ────────────────────────────────────────────────────
 
 const TEST_URL = process.env.TEST_DATABASE_URL;
-
 if (!TEST_URL) {
   console.error("❌  TEST_DATABASE_URL is not set.");
-  console.error("    Set it to a throwaway PostgreSQL instance. Never use DATABASE_URL.");
+  console.error("    The GitHub Actions workflow sets this from the postgres service container.");
   process.exit(1);
 }
 
@@ -99,38 +105,39 @@ if (!testNorm) {
   process.exit(1);
 }
 
-if (!testNorm.database.startsWith("commission_test")) {
-  console.error(`❌  Database must be named "commission_test" or "commission_test_*".`);
+// Enforce a strict database name prefix to prevent targeting any real database.
+if (!testNorm.database.startsWith("commission_test_ci")) {
+  console.error(`❌  Database must be named "commission_test_ci" or "commission_test_ci_*".`);
   console.error(`    Got: "${testNorm.database}"`);
-  console.error("    This guard prevents accidentally targeting a real database.");
   process.exit(1);
 }
 
-for (const [varName, rawUrl] of [
+// Cross-check against any real database URLs present in the environment.
+// Normalizing host + port + database catches localhost vs 127.0.0.1 variants.
+for (const [name, raw] of [
   ["DATABASE_URL",      process.env.DATABASE_URL],
   ["CORE_DATABASE_URL", process.env.CORE_DATABASE_URL],
 ] as [string, string | undefined][]) {
-  if (!rawUrl) continue;
-  const norm = normalizeUrl(rawUrl);
+  if (!raw) continue;
+  const norm = normalizeUrl(raw);
   if (norm && sameDestination(testNorm, norm)) {
-    console.error(`❌  TEST_DATABASE_URL resolves to the same host/port/database as ${varName}.`);
-    console.error(`    Refusing — would write to the real database.`);
+    console.error(`❌  TEST_DATABASE_URL resolves to the same host/port/database as ${name}.`);
+    console.error("    Refusing — would write to a real FinanceOS database.");
     process.exit(1);
   }
 }
 
-// ─── Inject test database into the production module ───────────────────────
+// ─── Inject test database into commission ops connection ───────────────────
 //
-// lib/db/src/index.ts requires both DATABASE_URL and CORE_DATABASE_URL at import
-// time. CORE_DATABASE_URL is set to TEST_URL as a dummy — commission functions
-// only use opsDb (backed by DATABASE_URL) and never query via `db` (Core).
-//
-// These assignments must happen BEFORE the dynamic import below.
+// Sets DATABASE_URL to TEST_DATABASE_URL so that getCommissionOpsDb() in
+// ops-connection.ts connects to the ephemeral CI database.
+// CORE_DATABASE_URL is intentionally NOT set — commission functions do not need it.
+// This is the proof that the Commission module is decoupled from FinanceOS Core.
 
-process.env.DATABASE_URL      = TEST_URL;
-process.env.CORE_DATABASE_URL = TEST_URL;
+process.env.DATABASE_URL = TEST_URL;
+// CORE_DATABASE_URL is deliberately left unset.
 
-// ─── Paths ──────────────────────────────────────────────────────────────────
+// ─── Paths ─────────────────────────────────────────────────────────────────
 
 const __dirname  = path.dirname(fileURLToPath(import.meta.url));
 const MIGRATIONS = path.resolve(__dirname, "../src/db/migrations");
@@ -139,16 +146,15 @@ const SQL_002    = path.join(MIGRATIONS, "commission_002_attribution_seed.sql");
 
 for (const f of [SQL_001, SQL_002]) {
   if (!fs.existsSync(f)) {
-    console.error(`❌  File not found: ${f}`);
+    console.error(`❌  Migration not found: ${f}`);
     process.exit(1);
   }
 }
 
-// ─── Test harness ───────────────────────────────────────────────────────────
+// ─── Test harness ──────────────────────────────────────────────────────────
 
 let passed = 0;
-let failed = 0;
-const errors: string[] = [];
+let lastError = "";
 
 async function assert(description: string, fn: () => Promise<void>): Promise<void> {
   try {
@@ -159,63 +165,60 @@ async function assert(description: string, fn: () => Promise<void>): Promise<voi
     const msg = err instanceof Error ? err.message : String(err);
     console.error(`  ✗  ${description}`);
     console.error(`       ${msg}`);
-    failed++;
-    errors.push(`${description}: ${msg}`);
-    throw new Error("STOP"); // propagated to main() to exit on first failure
+    lastError = msg;
+    throw new Error("STOP");
   }
 }
 
 function assertEqual<T>(actual: T, expected: T, label: string): void {
-  if (actual !== expected) {
+  if (actual !== expected)
     throw new Error(`${label}: expected ${JSON.stringify(expected)}, got ${JSON.stringify(actual)}`);
-  }
 }
 
 function assertMatch(actual: string, re: RegExp, label: string): void {
-  if (!re.test(actual)) {
+  if (!re.test(actual))
     throw new Error(`${label}: "${actual}" does not match ${re}`);
-  }
 }
 
-async function withTimeout<T>(promise: Promise<T>, ms: number, label: string): Promise<T> {
+async function withTimeout<T>(p: Promise<T>, ms: number, label: string): Promise<T> {
   return Promise.race([
-    promise,
+    p,
     new Promise<never>((_, reject) =>
       setTimeout(() => reject(new Error(`Timeout after ${ms}ms: ${label}`)), ms)
     ),
   ]);
 }
 
-// ─── Constants ──────────────────────────────────────────────────────────────
+// ─── Fixed test constants ──────────────────────────────────────────────────
 
-// Fake entity UUIDs — commission_run_lines.entity_id has no FK constraint.
-const ENTITY_RULES = "cccccccc-0000-4000-a000-000000000001"; // createCommissionRule tests
-const ENTITY_LOCK  = "dddddddd-0000-4000-a000-000000000001"; // lockCommissionPeriod tests
+// commission_run_lines.entity_id has no FK — any UUID is valid.
+const ENTITY_RULES = "cccccccc-0000-4000-a000-000000000001";
+const ENTITY_LOCK  = "dddddddd-0000-4000-a000-000000000001";
+const INVOICE_ID   = "aaaaaaaa-0000-4000-a000-000000000001";
 
-// Fixed invoice UUID — commission_run_lines.invoice_id has no FK constraint.
-const INVOICE_ID = "aaaaaaaa-0000-4000-a000-000000000001";
+const FP_JAN       = "ci-fp-jan";
+const FP_DATE_MOVE = "ci-fp-date-move";
+const FP_NULL_OK   = "ci-fp-null-ok";
+const FP_NULL_LOCK = "ci-fp-null-locked";
+const FP_LOCKED    = "ci-fp-locked-period";
+const FP_ADV_LOCK  = "ci-fp-advisory-lock-test";
 
-// Source fingerprints (one per distinct upsert scenario).
-const FP_JAN       = "integration-fp-jan";
-const FP_DATE_MOVE = "integration-fp-date-move";
-const FP_NULL_OK   = "integration-fp-null-ok";
-const FP_NULL_LOCK = "integration-fp-null-locked";
-const FP_LOCKED    = "integration-fp-locked-period";
-const FP_LOCK_BLOK = "integration-fp-concurrent-lock";
-
-// ─── Main ───────────────────────────────────────────────────────────────────
+// ─── Main ──────────────────────────────────────────────────────────────────
 
 async function main(): Promise<void> {
-  console.log("Commission module — PostgreSQL integration test");
-  console.log(`  Database: ${maskUrl(TEST_URL!)}`);
-  console.log(`  Using production functions: createCommissionRule, upsertCommissionLine, lockCommissionPeriod`);
+  console.log("Commission PostgreSQL integration — CI runner");
+  console.log(`  Database : ${maskUrl(TEST_URL!)}`);
+  console.log(`  CI       : GITHUB_ACTIONS=${process.env.GITHUB_ACTIONS ?? "?"}`);
+  console.log(`  Functions: createCommissionRule · upsertCommissionLine · lockCommissionPeriod`);
+  console.log(`  CORE_DATABASE_URL: ${process.env.CORE_DATABASE_URL ? "SET (will be cross-checked)" : "NOT SET ✓ (commission functions do not need Core)"}`);
   console.log("");
 
-  // ── Direct pool for verification queries and setup ──────────────────────
+  // Verification pool (raw SQL — no drizzle, no @workspace/db dependency).
   const pool = new Pool({ connectionString: TEST_URL!, max: 5 });
 
-  // ── Dynamic import of production functions ──────────────────────────────
-  // Resolves AFTER DATABASE_URL and CORE_DATABASE_URL are set above.
+  // Dynamic import AFTER DATABASE_URL is set so getCommissionOpsDb() initialises
+  // against the CI ephemeral database. CORE_DATABASE_URL is not set, proving the
+  // module has no runtime dependency on FinanceOS Neon Core.
   const {
     createCommissionRule,
     upsertCommissionLine,
@@ -223,89 +226,84 @@ async function main(): Promise<void> {
   } = await import("../src/db/commissions.js");
 
   try {
-    // ── Verify we are connected to the correct database ──────────────────
+    // ── Verify connected database ─────────────────────────────────────────
 
     const dbCheck = await pool.query<{ current_database: string }>("SELECT current_database()");
     const currentDb = dbCheck.rows[0].current_database;
-    if (!currentDb.startsWith("commission_test")) {
-      console.error(`❌  Connected database is "${currentDb}" — not a commission_test* database. Refusing.`);
+    if (!currentDb.startsWith("commission_test_ci")) {
+      console.error(`❌  Connected to "${currentDb}" — not a commission_test_ci* database. Aborting.`);
       process.exit(1);
     }
-    console.log(`  Connected to: ${currentDb}`);
+    console.log(`  Verified: current_database() = "${currentDb}"`);
     console.log("");
 
-    // ── Full isolation: drop and recreate schema ─────────────────────────
-    // Ensures no state leaks from a previous test run.
+    // Full schema reset — ensures no state leaks across CI reruns on the same container.
     await pool.query("DROP SCHEMA IF EXISTS public CASCADE");
     await pool.query("CREATE SCHEMA public");
     await pool.query("GRANT ALL ON SCHEMA public TO CURRENT_USER");
 
-    // ── Section 1: Schema and seed ───────────────────────────────────────
+    // ── 1. Schema and seed ────────────────────────────────────────────────
     console.log("── 1. Schema and seed ─────────────────────────────────────────");
 
     await assert("commission_001_schema.sql applies without error", async () => {
-      const sql = fs.readFileSync(SQL_001, "utf8");
-      await pool.query(sql);
+      await pool.query(fs.readFileSync(SQL_001, "utf8"));
     });
 
-    await assert("commission_002_attribution_seed.sql applies without error (run 1)", async () => {
-      const sql = fs.readFileSync(SQL_002, "utf8");
-      await pool.query(sql);
+    await assert("commission_002_attribution_seed.sql applies (run 1)", async () => {
+      await pool.query(fs.readFileSync(SQL_002, "utf8"));
     });
 
     await assert("Seed produces exactly 31 attribution rules", async () => {
-      const res = await pool.query<{ count: string }>(
+      const r = await pool.query<{ count: string }>(
         "SELECT COUNT(*)::text AS count FROM commission_attribution_rules"
       );
-      assertEqual(res.rows[0].count, "31", "attribution rule count");
+      assertEqual(r.rows[0].count, "31", "attribution rule count");
     });
 
-    await assert("Seed is idempotent — second run still 31 rows (ON CONFLICT DO NOTHING)", async () => {
-      const sql = fs.readFileSync(SQL_002, "utf8");
-      await pool.query(sql);
-      const res = await pool.query<{ count: string }>(
+    await assert("Seed is idempotent — second run still 31 rows", async () => {
+      await pool.query(fs.readFileSync(SQL_002, "utf8"));
+      const r = await pool.query<{ count: string }>(
         "SELECT COUNT(*)::text AS count FROM commission_attribution_rules"
       );
-      assertEqual(res.rows[0].count, "31", "attribution rule count after second seed run");
+      assertEqual(r.rows[0].count, "31", "attribution rule count after second seed run");
     });
 
-    // ── Section 2: FK and constraint integrity ───────────────────────────
+    // ── 2. FK and constraint integrity ────────────────────────────────────
     console.log("");
     console.log("── 2. FK and constraint integrity ─────────────────────────────");
 
     await assert("No orphaned attribution rules (representative FK intact)", async () => {
-      const res = await pool.query<{ count: string }>(`
+      const r = await pool.query<{ count: string }>(`
         SELECT COUNT(*)::text AS count
         FROM commission_attribution_rules ar
         LEFT JOIN commission_representatives r ON r.id = ar.representative_id
         WHERE r.id IS NULL
       `);
-      assertEqual(res.rows[0].count, "0", "orphaned attribution rules");
+      assertEqual(r.rows[0].count, "0", "orphaned attribution rules");
     });
 
     await assert("All four seeded slugs present: house, jerod, jason, big_mouth", async () => {
-      const res = await pool.query<{ slug: string }>(
+      const r = await pool.query<{ slug: string }>(
         "SELECT slug FROM commission_representatives WHERE slug IN ('house','jerod','jason','big_mouth') ORDER BY slug"
       );
-      const slugs = res.rows.map(r => r.slug);
-      for (const expected of ["big_mouth", "house", "jason", "jerod"]) {
-        if (!slugs.includes(expected)) throw new Error(`Missing slug: ${expected}`);
+      for (const slug of ["big_mouth", "house", "jason", "jerod"]) {
+        if (!r.rows.find(row => row.slug === slug)) throw new Error(`Missing slug: ${slug}`);
       }
     });
 
-    await assert("commission_periods uses period_year and period_month columns", async () => {
-      const res = await pool.query<{ column_name: string }>(`
+    await assert("commission_periods uses period_year / period_month columns", async () => {
+      const r = await pool.query<{ column_name: string }>(`
         SELECT column_name FROM information_schema.columns
         WHERE table_name = 'commission_periods'
           AND column_name IN ('period_year', 'period_month')
         ORDER BY column_name
       `);
-      const cols = res.rows.map(r => r.column_name);
+      const cols = r.rows.map(row => row.column_name);
       if (!cols.includes("period_year"))  throw new Error("period_year column missing");
       if (!cols.includes("period_month")) throw new Error("period_month column missing");
     });
 
-    await assert("commission_periods rejects period_month = 13 (check constraint 23514)", async () => {
+    await assert("period_month = 13 rejected by check constraint (23514)", async () => {
       let threw = false;
       try {
         await pool.query(
@@ -315,9 +313,9 @@ async function main(): Promise<void> {
       } catch (e: unknown) {
         threw = true;
         const code = (e as { code?: string }).code;
-        if (code !== "23514") throw new Error(`Expected check_violation 23514, got ${code}`);
+        if (code !== "23514") throw new Error(`Expected 23514, got ${code}`);
       }
-      if (!threw) throw new Error("INSERT with period_month=13 should have thrown");
+      if (!threw) throw new Error("period_month=13 should have been rejected");
     });
 
     await assert("commission_periods unique constraint rejects duplicate (entity, year, month)", async () => {
@@ -334,27 +332,26 @@ async function main(): Promise<void> {
       } catch (e: unknown) {
         threw = true;
         const code = (e as { code?: string }).code;
-        if (code !== "23505") throw new Error(`Expected unique_violation 23505, got ${code}`);
+        if (code !== "23505") throw new Error(`Expected 23505, got ${code}`);
       }
-      if (!threw) throw new Error("Duplicate (entity, year, month) should have thrown");
-      // Clean up to avoid interference with lock tests.
+      if (!threw) throw new Error("Duplicate period should have thrown 23505");
       await pool.query(
         "DELETE FROM commission_periods WHERE entity_id = $1::uuid AND period_year = 2026 AND period_month = 1",
         [ENTITY_LOCK]
       );
     });
 
-    // ── Resolve seeded representative IDs ────────────────────────────────
+    // ── Resolve representative UUIDs from seed ────────────────────────────
     const repRes = await pool.query<{ slug: string; id: string }>(
       "SELECT slug, id::text FROM commission_representatives WHERE slug IN ('jerod','house') ORDER BY slug"
     );
     const repBySlug = Object.fromEntries(repRes.rows.map(r => [r.slug, r.id]));
     const JEROD_ID = repBySlug["jerod"];
     const HOUSE_ID = repBySlug["house"];
-    if (!JEROD_ID) throw new Error("Setup error: jerod representative not found after seed");
-    if (!HOUSE_ID) throw new Error("Setup error: house representative not found after seed");
+    if (!JEROD_ID) throw new Error("Setup: jerod not found after seed");
+    if (!HOUSE_ID) throw new Error("Setup: house not found after seed");
 
-    // ── Section 3: createCommissionRule (production function) ────────────
+    // ── 3. createCommissionRule — production function ─────────────────────
     console.log("");
     console.log("── 3. createCommissionRule ─────────────────────────────────────");
 
@@ -366,250 +363,169 @@ async function main(): Promise<void> {
       commissionRate:   "0.150000",
       payableTrigger:   "invoice_paid",
       effectiveFrom:    "2026-01-01",
-      reason:           "Integration test — single rule creation",
+      reason:           "CI integration test",
     };
 
     let firstRule: Awaited<ReturnType<typeof createCommissionRule>>;
-    await assert("Single call creates rule, returns CommissionRule with version 1", async () => {
+    await assert("Single call → rule version 1, status active", async () => {
       firstRule = await createCommissionRule({ ...baseRule, customerNamePattern: "SingleScope" });
-      assertEqual(firstRule.ruleVersion, 1,          "rule version");
-      assertEqual(firstRule.status,      "active",   "rule status");
-      assertEqual(firstRule.formulaType, "percentage_of_invoice", "formulaType");
+      assertEqual(firstRule.ruleVersion, 1,       "rule version");
+      assertEqual(firstRule.status,      "active", "rule status");
     });
 
     await assert("Audit entry created for the new rule", async () => {
-      const res = await pool.query<{ count: string }>(
+      const r = await pool.query<{ count: string }>(
         "SELECT COUNT(*)::text AS count FROM commission_rule_audit WHERE rule_id = $1::uuid",
         [firstRule.id]
       );
-      assertEqual(res.rows[0].count, "1", "audit entries for SingleScope rule");
+      assertEqual(r.rows[0].count, "1", "audit entry count");
     });
 
-    await assert("Two concurrent calls on same scope: advisory lock serializes → v1 superseded + v2 active", async () => {
-      // Both calls use the same opsDb pool (backed by TEST_URL).
-      // The advisory lock in createCommissionRule serializes them:
-      //   First:  inserts version 1 (active), supersedes nothing.
-      //   Second: sees version 1 active, supersedes it, inserts version 2 (active).
-      // Result: 2 rows, v1 superseded, v2 active, 2 audit entries.
-      const concurrentRule = {
-        ...baseRule,
-        customerNamePattern: "ConcurrentScope",
-        reason: "Integration test — concurrent rule creation",
-      };
-      const [r1, r2] = await withTimeout(
-        Promise.all([
-          createCommissionRule(concurrentRule),
-          createCommissionRule(concurrentRule),
-        ]),
+    await assert("Concurrent calls same scope: advisory lock serialises → v1 superseded, v2 active, 2 audit entries", async () => {
+      // Both calls use the same opsDb pool backed by TEST_DATABASE_URL.
+      // The pg_advisory_xact_lock in createCommissionRule ensures only one transaction
+      // runs MAX(version)+1 at a time: v1 is inserted first, then superseded when v2 is created.
+      const concurrent = { ...baseRule, customerNamePattern: "ConcurrentScope" };
+      await withTimeout(
+        Promise.all([createCommissionRule(concurrent), createCommissionRule(concurrent)]),
         10_000,
         "concurrent createCommissionRule"
       );
 
-      // Both should have returned successfully (advisory lock prevented 23505 race).
-      if (!r1 || !r2) throw new Error("One or both concurrent calls returned undefined");
-
       const rows = await pool.query<{ rule_version: number; status: string }>(`
-        SELECT rule_version, status
-        FROM commission_rules
-        WHERE entity_id = $1::uuid
-          AND representative_id = $2::uuid
-          AND COALESCE(customer_name_pattern, '') = 'ConcurrentScope'
+        SELECT rule_version, status FROM commission_rules
+        WHERE entity_id = $1::uuid AND representative_id = $2::uuid
+          AND COALESCE(customer_name_pattern,'') = 'ConcurrentScope'
         ORDER BY rule_version
       `, [ENTITY_RULES, JEROD_ID]);
 
-      assertEqual(rows.rows.length, 2, "total rows for ConcurrentScope");
-      assertEqual(rows.rows[0].rule_version, 1,           "first row version");
-      assertEqual(rows.rows[0].status,       "superseded", "first row status");
-      assertEqual(rows.rows[1].rule_version, 2,           "second row version");
-      assertEqual(rows.rows[1].status,       "active",    "second row status");
+      assertEqual(rows.rows.length,          2,           "total rows");
+      assertEqual(rows.rows[0].rule_version, 1,           "first version");
+      assertEqual(rows.rows[0].status,       "superseded", "first status");
+      assertEqual(rows.rows[1].rule_version, 2,           "second version");
+      assertEqual(rows.rows[1].status,       "active",    "second status");
 
-      const auditCount = await pool.query<{ count: string }>(`
+      const audit = await pool.query<{ count: string }>(`
         SELECT COUNT(*)::text AS count FROM commission_rule_audit
         WHERE rule_id IN (
           SELECT id FROM commission_rules
-          WHERE entity_id = $1::uuid
-            AND representative_id = $2::uuid
-            AND COALESCE(customer_name_pattern, '') = 'ConcurrentScope'
+          WHERE entity_id = $1::uuid AND representative_id = $2::uuid
+            AND COALESCE(customer_name_pattern,'') = 'ConcurrentScope'
         )
       `, [ENTITY_RULES, JEROD_ID]);
-      assertEqual(auditCount.rows[0].count, "2", "audit entries for ConcurrentScope");
+      assertEqual(audit.rows[0].count, "2", "audit entry count");
     });
 
-    // ── Section 4: upsertCommissionLine (production function) ────────────
+    // ── 4. upsertCommissionLine — production function ─────────────────────
     console.log("");
     console.log("── 4. upsertCommissionLine ─────────────────────────────────────");
 
     const baseLine = {
-      entityId:         ENTITY_RULES,
-      invoiceId:        INVOICE_ID,
-      invoiceQboId:     "QBO-INT",
-      lineStatus:       "attributed",
-      payoutEligible:   false,
+      entityId:       ENTITY_RULES,
+      invoiceId:      INVOICE_ID,
+      invoiceQboId:   "QBO-CI",
+      lineStatus:     "attributed",
+      payoutEligible: false,
     };
 
-    await assert("First ingest (January date) → 'created'", async () => {
-      const result = await upsertCommissionLine({
-        ...baseLine,
-        invoiceDate:       "2026-01-15",
-        sourceFingerprint: FP_JAN,
-      });
-      assertEqual(result, "created", "UpsertAction");
+    await assert("First ingest (January) → 'created'", async () => {
+      const r = await upsertCommissionLine({ ...baseLine, invoiceDate: "2026-01-15", sourceFingerprint: FP_JAN });
+      assertEqual(r, "created", "UpsertAction");
     });
 
-    await assert("Same fingerprint, second ingest (January date again) → 'updated'", async () => {
-      const result = await upsertCommissionLine({
-        ...baseLine,
-        invoiceDate:       "2026-01-15",
-        customerName:      "Acme Corp",   // changed field
-        sourceFingerprint: FP_JAN,
-      });
-      assertEqual(result, "updated", "UpsertAction");
+    await assert("Re-ingest same fingerprint (January) → 'updated'", async () => {
+      const r = await upsertCommissionLine({ ...baseLine, invoiceDate: "2026-01-15", customerName: "Acme", sourceFingerprint: FP_JAN });
+      assertEqual(r, "updated", "UpsertAction");
     });
 
-    await assert("Date move: same fingerprint, February date → 'updated', row reflects Feb date", async () => {
-      await upsertCommissionLine({
-        ...baseLine,
-        invoiceDate:       "2026-01-20",
-        sourceFingerprint: FP_DATE_MOVE,
-      });
-      const result = await upsertCommissionLine({
-        ...baseLine,
-        invoiceDate:       "2026-02-05",
-        sourceFingerprint: FP_DATE_MOVE,
-      });
-      assertEqual(result, "updated", "UpsertAction after date move");
-
+    await assert("January→February date move → 'updated', row reflects February date", async () => {
+      await upsertCommissionLine({ ...baseLine, invoiceDate: "2026-01-20", sourceFingerprint: FP_DATE_MOVE });
+      const r = await upsertCommissionLine({ ...baseLine, invoiceDate: "2026-02-05", sourceFingerprint: FP_DATE_MOVE });
+      assertEqual(r, "updated", "UpsertAction");
       const row = await pool.query<{ invoice_date: string }>(
-        "SELECT invoice_date::text FROM commission_run_lines WHERE source_fingerprint = $1",
-        [FP_DATE_MOVE]
+        "SELECT invoice_date::text FROM commission_run_lines WHERE source_fingerprint = $1", [FP_DATE_MOVE]
       );
-      assertEqual(row.rows.length, 1, "one row for FP_DATE_MOVE");
       assertMatch(row.rows[0].invoice_date, /^2026-02/, "invoice_date after move");
     });
 
     await assert("date→null on UNLOCKED period → 'updated', invoice_date becomes null", async () => {
-      // Insert with March 2026 date (period not locked).
-      await upsertCommissionLine({
-        ...baseLine,
-        invoiceDate:       "2026-03-10",
-        sourceFingerprint: FP_NULL_OK,
-      });
-      // Null-date re-ingest: March 2026 is not locked → allowed.
-      const result = await upsertCommissionLine({
-        ...baseLine,
-        invoiceDate:       null,
-        sourceFingerprint: FP_NULL_OK,
-      });
-      assertEqual(result, "updated", "UpsertAction date→null on unlocked period");
-
+      await upsertCommissionLine({ ...baseLine, invoiceDate: "2026-03-10", sourceFingerprint: FP_NULL_OK });
+      const r = await upsertCommissionLine({ ...baseLine, invoiceDate: null, sourceFingerprint: FP_NULL_OK });
+      assertEqual(r, "updated", "UpsertAction");
       const row = await pool.query<{ invoice_date: string | null }>(
-        "SELECT invoice_date FROM commission_run_lines WHERE source_fingerprint = $1",
-        [FP_NULL_OK]
+        "SELECT invoice_date FROM commission_run_lines WHERE source_fingerprint = $1", [FP_NULL_OK]
       );
-      assertEqual(row.rows[0].invoice_date, null, "invoice_date is null after null-date upsert");
+      assertEqual(row.rows[0].invoice_date, null, "invoice_date is null");
     });
 
     await assert("date→null on LOCKED period → 'skipped', date unchanged", async () => {
-      // Insert with April 2026 date.
-      await upsertCommissionLine({
-        ...baseLine,
-        invoiceDate:       "2026-04-12",
-        sourceFingerprint: FP_NULL_LOCK,
-      });
-      // Lock April 2026.
-      await pool.query(
-        `INSERT INTO commission_periods (entity_id, period_year, period_month, status, locked_by, locked_at)
-         VALUES ($1::uuid, 2026, 4, 'locked', 'integration-test', now())
-         ON CONFLICT (entity_id, period_year, period_month)
-         DO UPDATE SET status = 'locked', locked_at = now()`,
-        [ENTITY_RULES]
-      );
-      // Re-ingest with null date: old period (April 2026) is locked → must return 'skipped'.
-      const result = await upsertCommissionLine({
-        ...baseLine,
-        invoiceDate:       null,
-        sourceFingerprint: FP_NULL_LOCK,
-      });
-      assertEqual(result, "skipped", "UpsertAction date→null on locked period");
-
+      await upsertCommissionLine({ ...baseLine, invoiceDate: "2026-04-12", sourceFingerprint: FP_NULL_LOCK });
+      await pool.query(`
+        INSERT INTO commission_periods (entity_id, period_year, period_month, status, locked_by, locked_at)
+        VALUES ($1::uuid, 2026, 4, 'locked', 'ci-test', now())
+        ON CONFLICT (entity_id, period_year, period_month)
+        DO UPDATE SET status = 'locked', locked_at = now()
+      `, [ENTITY_RULES]);
+      const r = await upsertCommissionLine({ ...baseLine, invoiceDate: null, sourceFingerprint: FP_NULL_LOCK });
+      assertEqual(r, "skipped", "UpsertAction");
       const row = await pool.query<{ invoice_date: string }>(
-        "SELECT invoice_date::text FROM commission_run_lines WHERE source_fingerprint = $1",
-        [FP_NULL_LOCK]
+        "SELECT invoice_date::text FROM commission_run_lines WHERE source_fingerprint = $1", [FP_NULL_LOCK]
       );
-      assertMatch(row.rows[0].invoice_date, /^2026-04/, "date unchanged after skipped null-date upsert");
+      assertMatch(row.rows[0].invoice_date, /^2026-04/, "date unchanged");
     });
 
     await assert("New line into LOCKED period → 'skipped', no row created", async () => {
-      // Lock May 2026 for ENTITY_RULES.
-      await pool.query(
-        `INSERT INTO commission_periods (entity_id, period_year, period_month, status, locked_by, locked_at)
-         VALUES ($1::uuid, 2026, 5, 'locked', 'integration-test', now())
-         ON CONFLICT (entity_id, period_year, period_month)
-         DO UPDATE SET status = 'locked', locked_at = now()`,
-        [ENTITY_RULES]
-      );
-      const result = await upsertCommissionLine({
-        ...baseLine,
-        invoiceDate:       "2026-05-20",
-        sourceFingerprint: FP_LOCKED,
-      });
-      assertEqual(result, "skipped", "UpsertAction into locked period");
-
+      await pool.query(`
+        INSERT INTO commission_periods (entity_id, period_year, period_month, status, locked_by, locked_at)
+        VALUES ($1::uuid, 2026, 5, 'locked', 'ci-test', now())
+        ON CONFLICT (entity_id, period_year, period_month)
+        DO UPDATE SET status = 'locked', locked_at = now()
+      `, [ENTITY_RULES]);
+      const r = await upsertCommissionLine({ ...baseLine, invoiceDate: "2026-05-20", sourceFingerprint: FP_LOCKED });
+      assertEqual(r, "skipped", "UpsertAction");
       const row = await pool.query<{ count: string }>(
-        "SELECT COUNT(*)::text AS count FROM commission_run_lines WHERE source_fingerprint = $1",
-        [FP_LOCKED]
+        "SELECT COUNT(*)::text AS count FROM commission_run_lines WHERE source_fingerprint = $1", [FP_LOCKED]
       );
-      assertEqual(row.rows[0].count, "0", "no row created for skipped ingest into locked period");
+      assertEqual(row.rows[0].count, "0", "no row created");
     });
 
-    // ── Advisory lock: concurrent upsert blocked until lock released ─────
-    await assert("Concurrent upsert: external advisory lock blocks production function until released", async () => {
-      // An external client holds the source_fingerprint advisory lock.
-      // upsertCommissionLine must block on the same lock until the external client commits.
-      const externalClient = new Client({ connectionString: TEST_URL! });
-      await externalClient.connect();
-      await externalClient.query("BEGIN");
-      // Acquire the same advisory lock that upsertCommissionLine will try to take.
-      await externalClient.query(
+    await assert("Advisory lock: external client holds source_fingerprint lock → upsertCommissionLine blocks until released", async () => {
+      // An external pg.Client acquires the same advisory lock that upsertCommissionLine
+      // takes internally. The production function must block until we release it.
+      const ext = new Client({ connectionString: TEST_URL! });
+      await ext.connect();
+      await ext.query("BEGIN");
+      await ext.query(
         `SELECT pg_advisory_xact_lock(('x' || md5($1))::bit(64)::bigint)`,
-        [FP_LOCK_BLOK]
+        [FP_ADV_LOCK]
       );
 
-      // Start upsertCommissionLine — it will block inside its transaction on pg_advisory_xact_lock.
       const upsertPromise = withTimeout(
-        upsertCommissionLine({
-          ...baseLine,
-          invoiceDate:       "2026-07-01",
-          sourceFingerprint: FP_LOCK_BLOK,
-        }),
+        upsertCommissionLine({ ...baseLine, invoiceDate: "2026-07-01", sourceFingerprint: FP_ADV_LOCK }),
         8_000,
-        "upsertCommissionLine blocked by external advisory lock"
+        "upsertCommissionLine blocked by advisory lock"
       );
 
-      // Give upsertCommissionLine time to start and block (it should be waiting for the lock).
+      // Give the production function time to enter its transaction and block.
       await new Promise<void>(r => setTimeout(r, 400));
+      // Release the lock — upsertCommissionLine should now proceed.
+      await ext.query("COMMIT");
+      await ext.end();
 
-      // Release the external lock by committing.
-      await externalClient.query("COMMIT");
-      await externalClient.end();
-
-      // Now upsertCommissionLine should unblock and complete.
       const result = await upsertPromise;
-      assertEqual(result, "created", "UpsertAction after advisory lock released");
+      assertEqual(result, "created", "UpsertAction after lock released");
     });
 
-    // ── Section 5: lockCommissionPeriod (production function) ────────────
+    // ── 5. lockCommissionPeriod — production function ─────────────────────
     console.log("");
     console.log("── 5. lockCommissionPeriod ─────────────────────────────────────");
 
-    // Insert lines for the lock tests into ENTITY_LOCK.
-    // Using period 2026-02 (February) for these tests.
-    const lockPeriodYear  = 2026;
-    const lockPeriodMonth = 2;
+    const LOCK_YEAR  = 2026;
+    const LOCK_MONTH = 2;
 
-    await assert("Empty period → cannot lock (no commission lines found)", async () => {
-      const reason = await lockCommissionPeriod(ENTITY_LOCK, lockPeriodYear, lockPeriodMonth, "integration-test");
-      assertMatch(reason!, /no commission lines found/i, "lockCommissionPeriod reason for empty period");
+    await assert("Empty period → 'Cannot lock: no commission lines found'", async () => {
+      const r = await lockCommissionPeriod(ENTITY_LOCK, LOCK_YEAR, LOCK_MONTH, "ci-test");
+      assertMatch(r!, /no commission lines found/i, "lockCommissionPeriod reason");
     });
 
     await assert("Period with 'needs_review' line → cannot lock (unresolved status)", async () => {
@@ -617,17 +533,12 @@ async function main(): Promise<void> {
         INSERT INTO commission_run_lines
           (entity_id, invoice_id, invoice_qbo_id, invoice_date, line_status,
            payout_eligible, representative_id, source_fingerprint)
-        VALUES
-          ($1::uuid, $2::uuid, 'QBO-LOCK-NR', '2026-02-01'::date, 'needs_review',
-           true, $3::uuid, 'fp-lock-test-needs-review')
+        VALUES ($1::uuid, $2::uuid, 'QBO-NR', '2026-02-01'::date, 'needs_review',
+                true, $3::uuid, 'ci-fp-lock-needs-review')
       `, [ENTITY_LOCK, INVOICE_ID, JEROD_ID]);
-
-      const reason = await lockCommissionPeriod(ENTITY_LOCK, lockPeriodYear, lockPeriodMonth, "integration-test");
-      assertMatch(reason!, /unresolved status/i, "lockCommissionPeriod reason for needs_review");
-
-      await pool.query(
-        "DELETE FROM commission_run_lines WHERE source_fingerprint = 'fp-lock-test-needs-review'"
-      );
+      const r = await lockCommissionPeriod(ENTITY_LOCK, LOCK_YEAR, LOCK_MONTH, "ci-test");
+      assertMatch(r!, /unresolved status/i, "lockCommissionPeriod reason");
+      await pool.query("DELETE FROM commission_run_lines WHERE source_fingerprint = 'ci-fp-lock-needs-review'");
     });
 
     await assert("Period with 'calculated' line → cannot lock (unresolved status)", async () => {
@@ -635,105 +546,82 @@ async function main(): Promise<void> {
         INSERT INTO commission_run_lines
           (entity_id, invoice_id, invoice_qbo_id, invoice_date, line_status,
            payout_eligible, representative_id, source_fingerprint)
-        VALUES
-          ($1::uuid, $2::uuid, 'QBO-LOCK-CALC', '2026-02-05'::date, 'calculated',
-           true, $3::uuid, 'fp-lock-test-calculated')
+        VALUES ($1::uuid, $2::uuid, 'QBO-CALC', '2026-02-05'::date, 'calculated',
+                true, $3::uuid, 'ci-fp-lock-calculated')
       `, [ENTITY_LOCK, INVOICE_ID, JEROD_ID]);
-
-      const reason = await lockCommissionPeriod(ENTITY_LOCK, lockPeriodYear, lockPeriodMonth, "integration-test");
-      assertMatch(reason!, /unresolved status/i, "lockCommissionPeriod reason for calculated");
-
-      await pool.query(
-        "DELETE FROM commission_run_lines WHERE source_fingerprint = 'fp-lock-test-calculated'"
-      );
+      const r = await lockCommissionPeriod(ENTITY_LOCK, LOCK_YEAR, LOCK_MONTH, "ci-test");
+      assertMatch(r!, /unresolved status/i, "lockCommissionPeriod reason");
+      await pool.query("DELETE FROM commission_run_lines WHERE source_fingerprint = 'ci-fp-lock-calculated'");
     });
 
-    await assert("External 'approved' + house 'house_no_commission' → lock succeeds (returns null)", async () => {
-      // Insert one external rep line in 'approved' status.
+    await assert("approved external + house_no_commission → lock succeeds (returns null)", async () => {
       await pool.query(`
         INSERT INTO commission_run_lines
           (entity_id, invoice_id, invoice_qbo_id, invoice_date, line_status,
            payout_eligible, representative_id, source_fingerprint)
         VALUES
-          ($1::uuid, $2::uuid, 'QBO-LOCK-EXT', '2026-02-10'::date, 'approved',
-           true, $3::uuid, 'fp-lock-test-approved')
-      `, [ENTITY_LOCK, INVOICE_ID, JEROD_ID]);
-
-      // Insert one house line in 'house_no_commission' status.
-      await pool.query(`
-        INSERT INTO commission_run_lines
-          (entity_id, invoice_id, invoice_qbo_id, invoice_date, line_status,
-           payout_eligible, representative_id, source_fingerprint)
-        VALUES
-          ($1::uuid, $2::uuid, 'QBO-LOCK-HSE', '2026-02-15'::date, 'house_no_commission',
-           false, $3::uuid, 'fp-lock-test-house')
-      `, [ENTITY_LOCK, INVOICE_ID, HOUSE_ID]);
-
-      const reason = await lockCommissionPeriod(ENTITY_LOCK, lockPeriodYear, lockPeriodMonth, "integration-test");
-      assertEqual(reason, null, "lockCommissionPeriod return value (null = success)");
+          ($1::uuid, $2::uuid, 'QBO-EXT', '2026-02-10'::date, 'approved',
+           true,  $3::uuid, 'ci-fp-lock-approved'),
+          ($1::uuid, $2::uuid, 'QBO-HSE', '2026-02-15'::date, 'house_no_commission',
+           false, $4::uuid, 'ci-fp-lock-house')
+      `, [ENTITY_LOCK, INVOICE_ID, JEROD_ID, HOUSE_ID]);
+      const r = await lockCommissionPeriod(ENTITY_LOCK, LOCK_YEAR, LOCK_MONTH, "ci-test");
+      assertEqual(r, null, "lockCommissionPeriod return value");
     });
 
-    await assert("After lock: run lines become 'locked' status", async () => {
-      const res = await pool.query<{ line_status: string }>(`
-        SELECT DISTINCT line_status
-        FROM commission_run_lines
+    await assert("After lock: all lines in period have status 'locked'", async () => {
+      const r = await pool.query<{ line_status: string }>(`
+        SELECT DISTINCT line_status FROM commission_run_lines
         WHERE entity_id = $1::uuid
           AND EXTRACT(YEAR  FROM invoice_date) = $2
           AND EXTRACT(MONTH FROM invoice_date) = $3
-      `, [ENTITY_LOCK, lockPeriodYear, lockPeriodMonth]);
-      const statuses = res.rows.map(r => r.line_status);
-      if (!statuses.every(s => s === "locked")) {
-        throw new Error(`Expected all lines to be 'locked', got: ${statuses.join(", ")}`);
-      }
+      `, [ENTITY_LOCK, LOCK_YEAR, LOCK_MONTH]);
+      if (!r.rows.every(row => row.line_status === "locked"))
+        throw new Error(`Expected all 'locked', got: ${r.rows.map(row => row.line_status).join(", ")}`);
     });
 
-    await assert("After lock: commission_periods entry has status 'locked'", async () => {
-      const res = await pool.query<{ status: string }>(
+    await assert("After lock: commission_periods entry status = 'locked'", async () => {
+      const r = await pool.query<{ status: string }>(
         "SELECT status FROM commission_periods WHERE entity_id = $1::uuid AND period_year = $2 AND period_month = $3",
-        [ENTITY_LOCK, lockPeriodYear, lockPeriodMonth]
+        [ENTITY_LOCK, LOCK_YEAR, LOCK_MONTH]
       );
-      assertEqual(res.rows.length, 1, "commission_periods row exists");
-      assertEqual(res.rows[0].status, "locked", "commission_periods status");
+      assertEqual(r.rows.length, 1,        "commission_periods row exists");
+      assertEqual(r.rows[0].status, "locked", "commission_periods status");
     });
 
     await assert("After lock: upsertCommissionLine into locked period → 'skipped'", async () => {
-      const result = await upsertCommissionLine({
-        entityId:         ENTITY_LOCK,
-        invoiceId:        INVOICE_ID,
-        invoiceQboId:     "QBO-POST-LOCK",
-        invoiceDate:      "2026-02-20",
-        lineStatus:       "attributed",
-        payoutEligible:   false,
-        sourceFingerprint: "fp-lock-test-post-lock",
+      const r = await upsertCommissionLine({
+        entityId:          ENTITY_LOCK,
+        invoiceId:         INVOICE_ID,
+        invoiceQboId:      "QBO-POST-LOCK",
+        invoiceDate:       "2026-02-20",
+        lineStatus:        "attributed",
+        payoutEligible:    false,
+        sourceFingerprint: "ci-fp-post-lock",
       });
-      assertEqual(result, "skipped", "UpsertAction into locked period after lockCommissionPeriod");
+      assertEqual(r, "skipped", "UpsertAction");
     });
 
     // ── Done ─────────────────────────────────────────────────────────────
     console.log("");
     console.log(`✅  All ${passed} tests passed.`);
-    console.log("");
-    console.log("NOTE: This script was written but not executed — PostgreSQL is unavailable");
-    console.log("      in this development environment. Run it against a real throwaway instance");
-    console.log("      before promoting the PR to ready-for-review.");
+    console.log("    No local database, no Neon Core, no QBO connection was used.");
 
   } catch (err) {
     if (err instanceof Error && err.message !== "STOP") {
       console.error("\n❌  Unexpected error:", err.message);
     }
-    console.error(`\n❌  Test suite aborted. ${passed} passed, ${failed} failed.`);
-    if (errors.length) console.error("     Last error:", errors[errors.length - 1]);
+    console.error(`\n❌  Aborted after first failure. ${passed} passed.`);
+    if (lastError) console.error(`    Error: ${lastError}`);
     process.exit(1);
   } finally {
     await pool.end().catch(() => {/* ignore */});
-    // The opsDb pool (created by lib/db/src/index.ts on dynamic import) is closed
-    // by process.exit below. pg connections are file descriptors released by the OS.
   }
 
   process.exit(0);
 }
 
-main().catch((err) => {
-  console.error("\n❌  Fatal:", err instanceof Error ? err.message : String(err));
+main().catch(err => {
+  console.error("❌  Fatal:", err instanceof Error ? err.message : String(err));
   process.exit(1);
 });
