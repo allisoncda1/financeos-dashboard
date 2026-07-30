@@ -546,8 +546,10 @@ export type CommissionRule = {
   customerNamePattern: string | null;
   formulaType: string;
   calculationBasis: string | null;
-  commissionRate: number | null;
-  fixedAmount: number | null;
+  /** NUMERIC decimal string from PostgreSQL, e.g. "0.150000". Use parseFloat only for display. */
+  commissionRate: string | null;
+  /** NUMERIC decimal string, e.g. "500.00". Use parseFloat only for display. */
+  fixedAmount: string | null;
   payableTrigger: string;
   ruleVersion: number;
   status: string;
@@ -562,12 +564,16 @@ export type CommissionRuleInput = {
   customerNamePattern?: string | null;
   formulaType: string;
   calculationBasis?: string | null;
+  /** Decimal fraction, e.g. 0.15 = 15%. Sent as number; backend stores as NUMERIC string. */
   commissionRate?: number | null;
+  /** Dollar amount. Sent as number; backend stores as NUMERIC string. */
   fixedAmount?: number | null;
   payableTrigger: string;
   effectiveFrom?: string;
   effectiveTo?: string | null;
   notes?: string | null;
+  /** Required audit field — explains why this rule is being created or changed. */
+  reason: string;
 };
 
 export type CommissionRunLine = {
@@ -579,7 +585,8 @@ export type CommissionRunLine = {
   invoiceDate: string | null;
   customerId: string | null;
   customerName: string | null;
-  invoiceAmount: number | null;
+  /** NUMERIC string, e.g. "1495.00". Null = not available. */
+  invoiceAmount: string | null;
   invoiceStatus: string | null;
   representativeId: string | null;
   representativeSlug: string | null;
@@ -588,10 +595,14 @@ export type CommissionRunLine = {
   commissionRuleId: string | null;
   formulaType: string | null;
   calculationBasis: string | null;
-  commissionRate: number | null;
-  grossProfit: number | null;
-  expensesAmount: number | null;
-  commissionAmount: number | null;
+  /** NUMERIC string. Null = not calculated. */
+  commissionRate: string | null;
+  /** NUMERIC string. Null = not available from QBO. */
+  grossProfit: string | null;
+  /** NUMERIC string. */
+  expensesAmount: string | null;
+  /** NUMERIC string. Null = not calculable. "0" = House explicit zero. */
+  commissionAmount: string | null;
   lineStatus: string;
   payoutEligible: boolean;
   exclusionReason: string | null;
@@ -609,9 +620,10 @@ export type CommissionRepSummary = {
   repName: string | null;
   payoutEligible: boolean | null;
   lineCount: number;
-  totalInvoiceAmount: number | null;
-  totalGrossProfit: number | null;
-  totalCommission: number | null;
+  /** NUMERIC string aggregate. Use parseFloat for display only. */
+  totalInvoiceAmount: string | null;
+  totalGrossProfit: string | null;
+  totalCommission: string | null;
   needsConfig: number;
   needsReview: number;
   calculated: number;
@@ -625,14 +637,15 @@ export type CommissionRulePreview = {
     invoiceDocNumber: string | null;
     invoiceDate: string | null;
     customerName: string | null;
-    invoiceAmount: number | null;
+    /** NUMERIC string. */
+    invoiceAmount: string | null;
     currentStatus: string;
-    currentCommission: number | null;
-    projectedCommission: number | null;
+    currentCommission: string | null;
+    projectedCommission: string | null;
     projectedBasis: string | null;
     projectedStatus: string;
   }[];
   affectedCount: number;
-  projectedTotal: number | null;
+  projectedTotal: string | null;
 };
 

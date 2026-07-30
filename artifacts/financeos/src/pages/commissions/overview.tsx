@@ -59,9 +59,11 @@ function StatusBadge({ status }: { status: string }) {
   );
 }
 
-function fmt(v: number | null | undefined) {
+/** Parse NUMERIC string from API for display only — never for monetary calculations. */
+function fmt(v: string | number | null | undefined) {
   if (v == null) return "—";
-  return formatCurrency(v);
+  const n = typeof v === "string" ? parseFloat(v) : v;
+  return isNaN(n) ? "—" : formatCurrency(n);
 }
 
 function MiniKpi({ label, value, sub, tone = "blue" }: { label: string; value: string; sub?: string; tone?: "blue" | "emerald" | "amber" | "red" | "gray" }) {
@@ -103,9 +105,13 @@ export default function CommissionOverviewPage() {
 
   const externalReps = (summary ?? []).filter((s: CommissionRepSummary) => s.payoutEligible);
   const houseRow     = (summary ?? []).find((s: CommissionRepSummary) => !s.payoutEligible);
-  const totalCommission = externalReps.reduce((acc, s: CommissionRepSummary) => acc + (s.totalCommission ?? 0), 0);
-  const totalNeedsAction = (summary ?? []).reduce((acc, s: CommissionRepSummary) => acc + s.needsConfig + s.needsReview, 0);
-  const totalCalculated = (summary ?? []).reduce((acc, s: CommissionRepSummary) => acc + s.calculated + s.approved + s.locked, 0);
+  // totalCommission is a sum of NUMERIC strings from the API — parse for display only
+  const totalCommission = externalReps.reduce((acc: number, s: CommissionRepSummary) => {
+    const n = parseFloat(s.totalCommission ?? "0");
+    return acc + (isNaN(n) ? 0 : n);
+  }, 0);
+  const totalNeedsAction = (summary ?? []).reduce((acc: number, s: CommissionRepSummary) => acc + s.needsConfig + s.needsReview, 0);
+  const totalCalculated = (summary ?? []).reduce((acc: number, s: CommissionRepSummary) => acc + s.calculated + s.approved + s.locked, 0);
 
   return (
     <CommissionLayout title="Commission Overview" subtitle="Attribution, calculation and approval for all commission-eligible invoices">

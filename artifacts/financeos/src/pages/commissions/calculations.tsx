@@ -58,8 +58,11 @@ function Pill({ status }: { status: string }) {
   );
 }
 
-function fmt(v: number | null | undefined) {
-  return v == null ? "—" : formatCurrency(v);
+/** Parse NUMERIC string from API for display only — never for monetary calculations. */
+function fmt(v: string | number | null | undefined) {
+  if (v == null) return "—";
+  const n = typeof v === "string" ? parseFloat(v) : v;
+  return isNaN(n) ? "—" : formatCurrency(n);
 }
 
 export default function CommissionCalculationsPage() {

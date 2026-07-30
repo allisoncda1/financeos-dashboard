@@ -137,14 +137,30 @@ export async function getCommissionRepresentatives(): Promise<CommissionRepresen
     FROM commission_representatives
     ORDER BY representative_type ASC, display_name ASC
   `);
-  return (rows.rows as Record<string, unknown>[]).map((r) => ({
+  return (rows.rows as Record<string, unknown>[]).map(mapRep);
+}
+
+export async function getCommissionRepresentativeById(id: string): Promise<CommissionRepresentative | null> {
+  assertValidUuid(id, "representative id");
+  const rows = await opsDb.execute(sql`
+    SELECT id, slug, display_name, representative_type, payout_eligible, notes
+    FROM commission_representatives
+    WHERE id = ${id}::uuid
+    LIMIT 1
+  `);
+  if (rows.rows.length === 0) return null;
+  return mapRep(rows.rows[0] as Record<string, unknown>);
+}
+
+function mapRep(r: Record<string, unknown>): CommissionRepresentative {
+  return {
     id: r.id as string,
     slug: r.slug as string,
     displayName: r.display_name as string,
     representativeType: r.representative_type as "external_rep" | "internal_house",
     payoutEligible: r.payout_eligible as boolean,
     notes: r.notes as string | null,
-  }));
+  };
 }
 
 // ─── Attribution rules ────────────────────────────────────────────────────────
@@ -252,7 +268,25 @@ export async function createCommissionRule(rule: {
     throw new Error("no_commission_house formula must not have commissionRate or fixedAmount");
   }
 
-  const result = await opsDb.execute(sql`
+  // Wrap in a transaction with an advisory lock scoped to this rule's entity+rep+scope.
+  // This prevents concurrent MAX(version)+1 races without relying solely on the unique index.
+  // The unique index uq_commission_rule_scope_version remains as a final safety net.
+  let result;
+  try {
+    result = await opsDb.transaction(async (tx) => {
+      // Advisory xact lock — automatically released at transaction end.
+      // Key is a stable hash over entity+rep+customer scope.
+      await tx.execute(sql`
+        SELECT pg_advisory_xact_lock(
+          ('x' || md5(
+            ${rule.entityId} || '|' ||
+            ${rule.representativeId} || '|' ||
+            COALESCE(${rule.coreCustomerId ?? null}::text, '') || '|' ||
+            COALESCE(${rule.customerNamePattern ?? null}, '')
+          ))::bit(64)::bigint
+        )
+      `);
+      return tx.execute(sql`
     WITH
     next_ver AS (
       SELECT COALESCE(MAX(rule_version), 0) + 1 AS v
@@ -329,9 +363,17 @@ export async function createCommissionRule(rule: {
       FROM new_rule
     )
     SELECT * FROM new_rule
-  `);
+      `);
+    });
+  } catch (err) {
+    const pgCode = (err as { code?: string }).code;
+    if (pgCode === "23505") {
+      throw new Error("UNIQUE_VIOLATION: A concurrent version of this rule was already created. Please retry.");
+    }
+    throw err;
+  }
 
-  const r = result.rows[0] as Record<string, unknown>;
+  const r = (result as { rows: unknown[] }).rows[0] as Record<string, unknown>;
   return mapCommissionRule(r);
 }
 
@@ -461,6 +503,22 @@ export async function upsertCommissionLine(line: {
   sourceFingerprint: string;
   recalculatedBy?: string | null;
 }): Promise<UpsertAction> {
+  // Before inserting a new line, check if the invoice's period is already locked.
+  // This prevents ingestion from adding new lines into a locked period.
+  if (line.invoiceDate) {
+    const periodLockCheck = await opsDb.execute(sql`
+      SELECT EXISTS(
+        SELECT 1 FROM commission_periods
+        WHERE entity_id = ${line.entityId}::uuid
+          AND period_year  = EXTRACT(YEAR  FROM ${line.invoiceDate}::date)::int
+          AND period_month = EXTRACT(MONTH FROM ${line.invoiceDate}::date)::int
+          AND status = 'locked'
+      ) AS is_locked
+    `);
+    const isLocked = (periodLockCheck.rows[0] as Record<string, unknown>).is_locked as boolean;
+    if (isLocked) return "skipped";
+  }
+
   const existing = await opsDb.execute(sql`
     SELECT id, line_status,
            invoice_amount::text, invoice_status, customer_name,
@@ -627,8 +685,16 @@ export async function lockCommissionPeriod(
   assertValidUuid(entityId, "entityId");
   if (month < 1 || month > 12) throw new Error("Invalid month");
 
-  // Single atomic CTE — all reads use the same snapshot.
-  const result = await opsDb.execute(sql`
+  // Transaction with advisory lock ensures no concurrent lock attempt for the same period.
+  // upsertCommissionLine checks commission_periods before inserting, so a new ingestion
+  // that starts while we hold the lock will see the locked period and skip.
+  const result = await opsDb.transaction(async (tx) => {
+    await tx.execute(sql`
+      SELECT pg_advisory_xact_lock(
+        ('x' || md5(${entityId} || '|' || ${year}::text || '|' || ${month}::text))::bit(64)::bigint
+      )
+    `);
+    return tx.execute(sql`
     WITH
     _period_count AS (
       SELECT COUNT(*) AS cnt
@@ -684,9 +750,10 @@ export async function lockCommissionPeriod(
       DO UPDATE SET status = 'locked', locked_at = now(), locked_by = EXCLUDED.locked_by
     )
     SELECT period_count, blocking, problems, ok FROM _can_lock
-  `);
+    `);
+  });
 
-  const row = result.rows[0] as Record<string, unknown>;
+  const row = (result as { rows: unknown[] }).rows[0] as Record<string, unknown>;
   const ok          = row.ok          as boolean;
   const periodCount = Number(row.period_count ?? 0);
   const blocking    = Number(row.blocking     ?? 0);

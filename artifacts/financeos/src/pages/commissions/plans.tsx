@@ -2,13 +2,13 @@
  * Commission Rule Builder
  * Secure UI for configuring commission formulas.
  * Formula types are a closed enum — no free code execution.
- * All rules require explicit confirmation + preview before activation.
+ * All rules require explicit reason + preview before activation.
  */
 import { useState, useEffect, useRef } from "react";
 import { CommissionLayout } from "@/components/commission/CommissionLayout";
 import { useCommissionEntity } from "@/lib/commission-context";
 import { api } from "@/lib/api";
-import type { CommissionRepresentative, CommissionRule, CommissionRulePreview, CommissionRuleInput } from "@/lib/api";
+import type { CommissionRepresentative, CommissionRule, CommissionRulePreview } from "@/lib/api";
 import { formatCurrency } from "@/lib/format";
 
 function useData<T>(fetcher: () => Promise<{ data: T }>, deps: unknown[]) {
@@ -39,17 +39,23 @@ const FORMULA_TYPES = [
 const TRIGGERS = [
   { value: "invoice_issued",   label: "Invoice Issued" },
   { value: "invoice_paid",     label: "Invoice Paid" },
-  { value: "payment_received", label: "Payment Received" },
-  { value: "manual_approval",  label: "Manual Approval" },
 ];
 
-function fmt(v: number | null | undefined) {
-  return v == null ? "—" : formatCurrency(v);
+/** Parse NUMERIC string from API for display only. Never use for monetary calculations. */
+function fmtStr(v: string | number | null | undefined) {
+  if (v == null) return "—";
+  const n = typeof v === "string" ? parseFloat(v) : v;
+  return isNaN(n) ? "—" : formatCurrency(n);
+}
+
+/** Display commissionRate decimal string as percentage for the rule card. */
+function fmtRate(rate: string | null): string {
+  if (rate == null) return "—";
+  const n = parseFloat(rate);
+  return isNaN(n) ? "—" : `${(n * 100).toFixed(2)}%`;
 }
 
 function RuleCard({ rule, repName }: { rule: CommissionRule; repName: string }) {
-  const fmtRate = rule.commissionRate != null ? `${(rule.commissionRate * 100).toFixed(2)}%` : "—";
-  const fmtFixed = rule.fixedAmount != null ? fmt(rule.fixedAmount) : null;
   return (
     <div className="bg-white rounded-xl border border-gray-200 shadow-sm px-5 py-4 space-y-1">
       <div className="flex items-center justify-between">
@@ -61,7 +67,7 @@ function RuleCard({ rule, repName }: { rule: CommissionRule; repName: string }) 
       )}
       <div className="text-xs text-gray-500 grid grid-cols-2 gap-x-4">
         <span>Formula:</span><span className="font-medium text-gray-700">{FORMULA_TYPES.find(f => f.value === rule.formulaType)?.label ?? rule.formulaType}</span>
-        <span>Rate:</span><span className="font-medium text-gray-700">{fmtFixed ?? fmtRate}</span>
+        <span>Rate:</span><span className="font-medium text-gray-700">{rule.fixedAmount != null ? fmtStr(rule.fixedAmount) : fmtRate(rule.commissionRate)}</span>
         <span>Trigger:</span><span className="font-medium text-gray-700">{TRIGGERS.find(t => t.value === rule.payableTrigger)?.label ?? rule.payableTrigger}</span>
         <span>Effective:</span><span className="font-medium text-gray-700">{rule.effectiveFrom}{rule.effectiveTo ? ` → ${rule.effectiveTo}` : " (no end)"}</span>
       </div>
@@ -69,6 +75,35 @@ function RuleCard({ rule, repName }: { rule: CommissionRule; repName: string }) 
     </div>
   );
 }
+
+// ── Local form state (kept separate from CommissionRuleInput so rate can be stored as a number for UI math) ──
+interface FormState {
+  representativeId: string;
+  customerNamePattern: string | null;
+  formulaType: string;
+  calculationBasis: string | null;
+  commissionRate: number | null;  // stored as decimal fraction (0.15 = 15%)
+  fixedAmount: number | null;
+  payableTrigger: string;
+  effectiveFrom: string;
+  effectiveTo: string | null;
+  notes: string | null;
+  reason: string;  // required audit field — separate from notes
+}
+
+const INITIAL_FORM: FormState = {
+  representativeId: "",
+  customerNamePattern: null,
+  formulaType: "percentage_of_gross_profit",
+  calculationBasis: "gross_profit",
+  commissionRate: null,
+  fixedAmount: null,
+  payableTrigger: "invoice_paid",
+  effectiveFrom: new Date().toISOString().slice(0, 10),
+  effectiveTo: null,
+  notes: null,
+  reason: "",
+};
 
 export default function CommissionPlansPage() {
   const { activeSlug } = useCommissionEntity();
@@ -90,31 +125,24 @@ export default function CommissionPlansPage() {
   };
   useEffect(loadRules, [activeSlug]);
 
-  // ── Form state ──────────────────────────────────────────────────────────────
-  const [form, setForm] = useState<CommissionRuleInput>({
-    representativeId: "",
-    customerNamePattern: "",
-    formulaType: "percentage_of_gross_profit",
-    calculationBasis: "gross_profit",
-    commissionRate: null,
-    fixedAmount: null,
-    payableTrigger: "invoice_paid",
-    effectiveFrom: new Date().toISOString().slice(0, 10),
-    effectiveTo: null,
-    notes: "",
-  });
-
-  const [preview, setPreview]     = useState<CommissionRulePreview | null>(null);
+  const [form, setForm] = useState<FormState>(INITIAL_FORM);
+  const [preview, setPreview]       = useState<CommissionRulePreview | null>(null);
   const [previewing, setPreviewing] = useState(false);
-  const [saving, setSaving]       = useState(false);
-  const [confirmed, setConfirmed] = useState(false);
-  const [error, setError]         = useState<string | null>(null);
-  const [saved, setSaved]         = useState(false);
+  const [saving, setSaving]         = useState(false);
+  const [confirmed, setConfirmed]   = useState(false);
+  const [error, setError]           = useState<string | null>(null);
+  const [saved, setSaved]           = useState(false);
 
   const needsRate  = ["percentage_of_invoice","percentage_of_amount_paid","percentage_of_gross_profit"].includes(form.formulaType);
   const needsFixed = form.formulaType === "fixed_amount";
+  const isHouse    = form.formulaType === "no_commission_house";
 
-  function setField<K extends keyof CommissionRuleInput>(key: K, value: CommissionRuleInput[K]) {
+  // Show the house rep in the House formula dropdown only
+  const eligibleReps = isHouse
+    ? reps.filter(r => r.representativeType === "internal_house")
+    : reps.filter(r => r.representativeType === "external_rep");
+
+  function setField<K extends keyof FormState>(key: K, value: FormState[K]) {
     setForm((prev) => ({ ...prev, [key]: value }));
     setPreview(null);
     setConfirmed(false);
@@ -122,12 +150,49 @@ export default function CommissionPlansPage() {
     setError(null);
   }
 
+  // When formula type changes, reset rep and rate/amount fields
+  function setFormulaType(ft: string) {
+    setForm((prev) => ({
+      ...prev,
+      formulaType: ft,
+      representativeId: "",
+      commissionRate: null,
+      fixedAmount: null,
+      calculationBasis:
+        ft === "percentage_of_gross_profit" ? "gross_profit" :
+        ft === "percentage_of_invoice"      ? "invoice_amount" :
+        ft === "percentage_of_amount_paid"  ? "amount_paid" : null,
+    }));
+    setPreview(null);
+    setConfirmed(false);
+    setSaved(false);
+    setError(null);
+  }
+
+  function canPreview(): string | null {
+    if (!form.representativeId) return "Select a representative first.";
+    if (!form.reason.trim()) return "Reason is required before preview.";
+    if (needsRate && form.commissionRate == null) return "Enter a commission rate.";
+    if (needsFixed && form.fixedAmount == null) return "Enter a fixed amount.";
+    return null;
+  }
+
   async function handlePreview() {
-    if (!form.representativeId) { setError("Select a representative first."); return; }
+    const previewErr = canPreview();
+    if (previewErr) { setError(previewErr); return; }
     setPreviewing(true);
     setError(null);
     try {
-      const res = await api.commissionRulePreview(activeSlug, form) as unknown as { data: CommissionRulePreview };
+      const res = await api.commissionRulePreview(activeSlug, {
+        representativeId:   form.representativeId,
+        customerNamePattern: form.customerNamePattern,
+        formulaType:        form.formulaType,
+        calculationBasis:   form.calculationBasis,
+        commissionRate:     form.commissionRate,
+        fixedAmount:        form.fixedAmount,
+        payableTrigger:     form.payableTrigger,
+        reason:             form.reason,
+      }) as unknown as { data: CommissionRulePreview };
       setPreview(res.data);
     } catch (e) {
       setError(String(e));
@@ -138,17 +203,27 @@ export default function CommissionPlansPage() {
 
   async function handleSave() {
     if (!confirmed) { setError("Check the confirmation box before saving."); return; }
+    if (!form.reason.trim()) { setError("Reason is required."); return; }
     setSaving(true);
     setError(null);
     try {
       await api.createCommissionRule(activeSlug, {
-        ...form,
-        effectiveFrom: form.effectiveFrom ?? new Date().toISOString().slice(0, 10),
+        representativeId:    form.representativeId,
+        customerNamePattern: form.customerNamePattern,
+        formulaType:         form.formulaType,
+        calculationBasis:    form.calculationBasis,
+        commissionRate:      form.commissionRate,
+        fixedAmount:         form.fixedAmount,
+        payableTrigger:      form.payableTrigger,
+        effectiveFrom:       form.effectiveFrom ?? new Date().toISOString().slice(0, 10),
+        effectiveTo:         form.effectiveTo,
+        notes:               form.notes,
+        reason:              form.reason.trim(),
       });
       setSaved(true);
       setPreview(null);
       setConfirmed(false);
-      setForm((prev) => ({ ...prev, notes: "" }));
+      setForm(INITIAL_FORM);
       loadRules();
     } catch (e) {
       setError(String(e));
@@ -193,7 +268,24 @@ export default function CommissionPlansPage() {
         </p>
 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
-          {/* Representative */}
+          {/* Formula type — choose first; controls which reps are shown */}
+          <div className="space-y-1">
+            <label className="text-xs font-semibold text-gray-600 uppercase tracking-wide">Formula Type *</label>
+            <select
+              className="w-full text-sm border border-gray-200 rounded-lg px-3 py-2 bg-white focus:outline-none focus:ring-2 focus:ring-blue-300"
+              value={form.formulaType}
+              onChange={(e) => setFormulaType((e.target as HTMLSelectElement).value)}
+            >
+              {FORMULA_TYPES.map((f) => <option key={f.value} value={f.value}>{f.label}</option>)}
+            </select>
+            {isHouse && (
+              <p className="text-[11px] text-gray-500 bg-gray-50 rounded px-2 py-1">
+                House formulas apply only to the internal House representative.
+              </p>
+            )}
+          </div>
+
+          {/* Representative — filtered by formula type */}
           <div className="space-y-1">
             <label className="text-xs font-semibold text-gray-600 uppercase tracking-wide">Representative *</label>
             {repsLoading ? <p className="text-sm text-gray-400">Loading…</p> : (
@@ -203,7 +295,7 @@ export default function CommissionPlansPage() {
                 onChange={(e) => setField("representativeId", (e.target as HTMLSelectElement).value)}
               >
                 <option value="">— Select —</option>
-                {reps.filter(r => r.representativeType === "external_rep").map((r) => (
+                {eligibleReps.map((r) => (
                   <option key={r.id} value={r.id}>{r.displayName}</option>
                 ))}
               </select>
@@ -217,33 +309,21 @@ export default function CommissionPlansPage() {
             </label>
             <input
               type="text"
-              placeholder="e.g. Metro Honda  or  James CDJR%"
+              placeholder="e.g. Metro Honda  or  Foray%"
               className="w-full text-sm border border-gray-200 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-300"
               value={form.customerNamePattern ?? ""}
               onInput={(e) => setField("customerNamePattern", (e.target as HTMLInputElement).value || null)}
             />
-            <p className="text-[11px] text-gray-400">Supports SQL-style wildcards: % matches any sequence, _ matches one character.</p>
+            <p className="text-[11px] text-gray-400">Supports SQL wildcards: % = any sequence, _ = one character. Bare % is rejected.</p>
           </div>
 
-          {/* Formula type */}
-          <div className="space-y-1">
-            <label className="text-xs font-semibold text-gray-600 uppercase tracking-wide">Formula Type *</label>
-            <select
-              className="w-full text-sm border border-gray-200 rounded-lg px-3 py-2 bg-white focus:outline-none focus:ring-2 focus:ring-blue-300"
-              value={form.formulaType}
-              onChange={(e) => setField("formulaType", (e.target as HTMLSelectElement).value)}
-            >
-              {FORMULA_TYPES.map((f) => <option key={f.value} value={f.value}>{f.label}</option>)}
-            </select>
-          </div>
-
-          {/* Rate or fixed */}
+          {/* Rate */}
           {needsRate && (
             <div className="space-y-1">
               <label className="text-xs font-semibold text-gray-600 uppercase tracking-wide">Commission Rate (%)</label>
               <input
                 type="number"
-                min="0" max="100" step="0.01"
+                min="0" max="1000" step="0.01"
                 placeholder="e.g. 20"
                 className="w-full text-sm border border-gray-200 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-300"
                 value={form.commissionRate != null ? form.commissionRate * 100 : ""}
@@ -252,9 +332,11 @@ export default function CommissionPlansPage() {
                   setField("commissionRate", isNaN(pct) ? null : pct / 100);
                 }}
               />
-              <p className="text-[11px] text-gray-400">Enter as percentage, e.g. 20 = 20%</p>
+              <p className="text-[11px] text-gray-400">Enter as percentage, e.g. 20 = 20% (max 1000%)</p>
             </div>
           )}
+
+          {/* Fixed amount */}
           {needsFixed && (
             <div className="space-y-1">
               <label className="text-xs font-semibold text-gray-600 uppercase tracking-wide">Fixed Amount ($)</label>
@@ -269,20 +351,23 @@ export default function CommissionPlansPage() {
                   setField("fixedAmount", isNaN(v) ? null : v);
                 }}
               />
+              <p className="text-[11px] text-gray-400">Max 2 decimal places (e.g. 500.00)</p>
             </div>
           )}
 
           {/* Payable trigger */}
-          <div className="space-y-1">
-            <label className="text-xs font-semibold text-gray-600 uppercase tracking-wide">Payable Trigger *</label>
-            <select
-              className="w-full text-sm border border-gray-200 rounded-lg px-3 py-2 bg-white focus:outline-none focus:ring-2 focus:ring-blue-300"
-              value={form.payableTrigger}
-              onChange={(e) => setField("payableTrigger", (e.target as HTMLSelectElement).value)}
-            >
-              {TRIGGERS.map((t) => <option key={t.value} value={t.value}>{t.label}</option>)}
-            </select>
-          </div>
+          {!isHouse && (
+            <div className="space-y-1">
+              <label className="text-xs font-semibold text-gray-600 uppercase tracking-wide">Payable Trigger *</label>
+              <select
+                className="w-full text-sm border border-gray-200 rounded-lg px-3 py-2 bg-white focus:outline-none focus:ring-2 focus:ring-blue-300"
+                value={form.payableTrigger}
+                onChange={(e) => setField("payableTrigger", (e.target as HTMLSelectElement).value)}
+              >
+                {TRIGGERS.map((t) => <option key={t.value} value={t.value}>{t.label}</option>)}
+              </select>
+            </div>
+          )}
 
           {/* Effective from */}
           <div className="space-y-1">
@@ -297,7 +382,9 @@ export default function CommissionPlansPage() {
 
           {/* Effective to */}
           <div className="space-y-1">
-            <label className="text-xs font-semibold text-gray-600 uppercase tracking-wide">Effective To <span className="text-gray-400 font-normal">(leave blank = no expiry)</span></label>
+            <label className="text-xs font-semibold text-gray-600 uppercase tracking-wide">
+              Effective To <span className="text-gray-400 font-normal">(leave blank = no expiry)</span>
+            </label>
             <input
               type="date"
               className="w-full text-sm border border-gray-200 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-300"
@@ -306,12 +393,31 @@ export default function CommissionPlansPage() {
             />
           </div>
 
-          {/* Notes */}
+          {/* Reason (required — audit field, distinct from notes) */}
           <div className="space-y-1 md:col-span-2">
-            <label className="text-xs font-semibold text-gray-600 uppercase tracking-wide">Notes / Reason</label>
+            <label className="text-xs font-semibold text-gray-600 uppercase tracking-wide">
+              Reason <span className="text-red-500">*</span>{" "}
+              <span className="text-gray-400 font-normal text-[11px]">(required — recorded in audit log)</span>
+            </label>
             <input
               type="text"
-              placeholder="e.g. Agreed rate per contract Apr 2026"
+              placeholder="e.g. Agreed rate per contract signed Apr 2026"
+              className={`w-full text-sm border rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-300 ${
+                form.reason.trim() === "" ? "border-amber-300 bg-amber-50" : "border-gray-200"
+              }`}
+              value={form.reason}
+              onInput={(e) => setField("reason", (e.target as HTMLInputElement).value)}
+            />
+          </div>
+
+          {/* Notes (optional — internal comments, not shown in audit) */}
+          <div className="space-y-1 md:col-span-2">
+            <label className="text-xs font-semibold text-gray-600 uppercase tracking-wide">
+              Notes <span className="text-gray-400 font-normal">(optional)</span>
+            </label>
+            <input
+              type="text"
+              placeholder="Internal notes (not part of audit reason)"
               className="w-full text-sm border border-gray-200 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-300"
               value={form.notes ?? ""}
               onInput={(e) => setField("notes", (e.target as HTMLInputElement).value || null)}
@@ -323,11 +429,15 @@ export default function CommissionPlansPage() {
         <div className="flex items-center gap-3">
           <button
             onClick={handlePreview}
-            disabled={previewing || !form.representativeId}
+            disabled={previewing || !form.representativeId || !form.reason.trim()}
             className="text-sm bg-gray-800 hover:bg-gray-900 text-white font-semibold px-5 py-2 rounded-lg transition-colors disabled:opacity-50"
+            title={!form.reason.trim() ? "Reason is required before preview" : undefined}
           >
             {previewing ? "Calculating preview…" : "Preview Impact"}
           </button>
+          {!form.reason.trim() && (
+            <p className="text-xs text-amber-600">Enter a reason to enable preview and activation.</p>
+          )}
           {error && <p className="text-sm text-red-600">{error}</p>}
         </div>
 
@@ -341,7 +451,7 @@ export default function CommissionPlansPage() {
               </div>
               <div>
                 <p className="text-xs text-blue-600 font-semibold uppercase tracking-wide">Projected total</p>
-                <p className="text-2xl font-bold text-blue-900">{preview.projectedTotal != null ? fmt(preview.projectedTotal) : "—"}</p>
+                <p className="text-2xl font-bold text-blue-900">{fmtStr(preview.projectedTotal)}</p>
               </div>
             </div>
             {preview.lines.length > 0 && (
@@ -362,9 +472,9 @@ export default function CommissionPlansPage() {
                       <tr key={i} className="border-b border-blue-100">
                         <td className="py-1 pr-3 text-gray-800 max-w-[150px] truncate">{l.customerName ?? "—"}</td>
                         <td className="py-1 pr-3 text-gray-500">{l.invoiceDate ?? "—"}</td>
-                        <td className="py-1 pr-3 text-right text-gray-700">{fmt(l.invoiceAmount)}</td>
-                        <td className="py-1 pr-3 text-right text-gray-500">{fmt(l.currentCommission)}</td>
-                        <td className="py-1 pr-3 text-right font-semibold text-blue-800">{fmt(l.projectedCommission)}</td>
+                        <td className="py-1 pr-3 text-right text-gray-700">{fmtStr(l.invoiceAmount)}</td>
+                        <td className="py-1 pr-3 text-right text-gray-500">{fmtStr(l.currentCommission)}</td>
+                        <td className="py-1 pr-3 text-right font-semibold text-blue-800">{fmtStr(l.projectedCommission)}</td>
                         <td className="py-1 text-xs text-gray-500">{l.projectedStatus}</td>
                       </tr>
                     ))}
@@ -389,14 +499,14 @@ export default function CommissionPlansPage() {
               </label>
               <button
                 onClick={handleSave}
-                disabled={saving || !confirmed}
+                disabled={saving || !confirmed || !form.reason.trim()}
                 className="ml-auto text-sm bg-emerald-600 hover:bg-emerald-700 text-white font-semibold px-5 py-2 rounded-lg transition-colors disabled:opacity-50"
               >
                 {saving ? "Saving…" : "Activate Rule"}
               </button>
             </div>
             {saved && (
-              <p className="text-sm text-emerald-700 font-semibold">Rule saved successfully. Lines will be recalculated on next sync.</p>
+              <p className="text-sm text-emerald-700 font-semibold">Rule saved. Lines will be recalculated on next sync.</p>
             )}
           </div>
         )}

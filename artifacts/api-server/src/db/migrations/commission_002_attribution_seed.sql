@@ -58,29 +58,42 @@ SELECT 'b86bb66e-df81-4d32-8629-3012635ba16a', 'Big Mouth Advertising', 'custome
 FROM commission_representatives WHERE slug = 'jason'
 ON CONFLICT DO NOTHING;
 
--- Big Mouth: James CDJR Cedar Lake (May 2026+)
-INSERT INTO commission_attribution_rules
-  (entity_id, customer_name_pattern, match_type, priority, representative_id, effective_from, notes)
-SELECT 'b86bb66e-df81-4d32-8629-3012635ba16a', 'James%Chrysler%Cedar Lake', 'customer_name_pattern', 10,
-       id, '2026-05-01', 'Confirmed: Big Mouth on James CDJR Cedar Lake (CarDealer.ai, May 2026+)'
-FROM commission_representatives WHERE slug = 'big_mouth'
-ON CONFLICT DO NOTHING;
-
--- Big Mouth: James CDJR Hampshire (May 2026+)
-INSERT INTO commission_attribution_rules
-  (entity_id, customer_name_pattern, match_type, priority, representative_id, effective_from, notes)
-SELECT 'b86bb66e-df81-4d32-8629-3012635ba16a', 'James%Chrysler%Hampshire', 'customer_name_pattern', 10,
-       id, '2026-05-01', 'Confirmed: Big Mouth on James CDJR Hampshire (CarDealer.ai, May 2026+)'
-FROM commission_representatives WHERE slug = 'big_mouth'
-ON CONFLICT DO NOTHING;
+-- NOTE: James CDJR Cedar Lake and James CDJR Hampshire removed from active seed.
+-- These appeared only in May 2026 (single sighting for Big Mouth / CarDealer.ai).
+-- They require explicit business confirmation before being activated as attribution rules.
+-- Add via the Rule Builder UI once confirmed.
 
 -- ── House rules (CarDealer AI — confirmed recurring house accounts) ───
 
--- Mike Terry group (multiple entities: Chevrolet, GMC, Ford, Hyundai — use prefix pattern)
+-- Mike Terry Chevrolet (explicit alias — avoids broad prefix pattern)
 INSERT INTO commission_attribution_rules
   (entity_id, customer_name_pattern, match_type, priority, representative_id, effective_from, notes)
-SELECT 'b86bb66e-df81-4d32-8629-3012635ba16a', 'Mike Terry%', 'customer_name_pattern', 5,
-       id, '2025-11-01', 'House: Mike Terry group (Chevrolet, GMC, Ford, Hyundai, Silsbee) — no commission'
+SELECT 'b86bb66e-df81-4d32-8629-3012635ba16a', 'Mike Terry Chevrolet', 'customer_name_pattern', 5,
+       id, '2025-11-01', 'House: Mike Terry Chevrolet (CarDealer.ai) — no commission'
+FROM commission_representatives WHERE slug = 'house'
+ON CONFLICT DO NOTHING;
+
+-- Mike Terry Chevy GMC
+INSERT INTO commission_attribution_rules
+  (entity_id, customer_name_pattern, match_type, priority, representative_id, effective_from, notes)
+SELECT 'b86bb66e-df81-4d32-8629-3012635ba16a', 'Mike Terry Chevy GMC', 'customer_name_pattern', 5,
+       id, '2025-11-01', 'House: Mike Terry Chevy GMC (CarDealer.ai) — no commission'
+FROM commission_representatives WHERE slug = 'house'
+ON CONFLICT DO NOTHING;
+
+-- Mike Terry Ford
+INSERT INTO commission_attribution_rules
+  (entity_id, customer_name_pattern, match_type, priority, representative_id, effective_from, notes)
+SELECT 'b86bb66e-df81-4d32-8629-3012635ba16a', 'Mike Terry Ford', 'customer_name_pattern', 5,
+       id, '2025-11-01', 'House: Mike Terry Ford (CarDealer.ai) — no commission'
+FROM commission_representatives WHERE slug = 'house'
+ON CONFLICT DO NOTHING;
+
+-- Mike Terry Hyundai of Silsbee
+INSERT INTO commission_attribution_rules
+  (entity_id, customer_name_pattern, match_type, priority, representative_id, effective_from, notes)
+SELECT 'b86bb66e-df81-4d32-8629-3012635ba16a', 'Mike Terry Hyundai of Silsbee', 'customer_name_pattern', 5,
+       id, '2025-11-01', 'House: Mike Terry Hyundai of Silsbee (CarDealer.ai) — no commission'
 FROM commission_representatives WHERE slug = 'house'
 ON CONFLICT DO NOTHING;
 
