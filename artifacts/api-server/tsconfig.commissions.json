@@ -3,9 +3,10 @@
   "compilerOptions": {
     "noEmit": true,
     "rootDir": ".",
-    "types": ["node"]
+    "types": ["node", "express-session"]
   },
   "include": [
+    "src/auth/types.ts",
     "src/db/ops-connection.ts",
     "src/db/commissions.ts",
     "src/services/commissionEngine.ts",

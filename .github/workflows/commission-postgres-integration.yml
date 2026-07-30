@@ -11,6 +11,8 @@ on:
       - "artifacts/api-server/src/__tests__/commissions.route.test.ts"
       - "artifacts/api-server/scripts/test-commissions-pg.ts"
       - "artifacts/api-server/tsconfig.commissions.json"
+      - "artifacts/api-server/package.json"
+      - "pnpm-lock.yaml"
       - ".github/workflows/commission-postgres-integration.yml"
   workflow_dispatch:
 
