@@ -15,6 +15,12 @@
  *   - Source fingerprint prevents double-import.
  *   - Locked lines are never recalculated.
  *   - House is attributed only via explicit client rules — no entity_default fallback.
+ *
+ * Known limitations:
+ *   - customerId is always null during ingestion: QBO invoices do not carry a canonical
+ *     customer UUID without a separate customer join. Attribution relies on customer_name
+ *     pattern matching only. Exact customer_id attribution requires a customer join that
+ *     is not yet implemented. Ambiguous name matches remain in needs_review.
  */
 import crypto from "crypto";
 import { db } from "../db/connection";
@@ -30,30 +36,84 @@ import {
   type CommissionRepresentative,
 } from "../db/commissions";
 
-// ─── Decimal arithmetic ───────────────────────────────────────────────────────
-// Commission amounts are stored and handled as NUMERIC strings throughout.
-// mulMoney uses integer arithmetic to avoid floating-point drift.
+// ─── Decimal arithmetic — BigInt-based, no floating-point ────────────────────
+//
+// All commission amounts are NUMERIC strings throughout.
+// Intermediate calculations use BigInt scaled to 10^8 decimal places.
 // Rounding policy: half-away-from-zero to 2 decimal places.
-// Preserves negative amounts.
+// Negative amounts are preserved.
+//
+// Accepted input format: /^-?\d{1,15}(\.\d{1,8})?$/
+//   - No scientific notation (1e5, 1.5E+6)
+//   - No NaN, Infinity
+//   - Max 15 integer digits, max 8 decimal digits
+//   - Negative sign prefix supported
 
-export function mulMoney(amountStr: string, rateStr: string): string {
-  const a = parseFloat(amountStr);
-  const r = parseFloat(rateStr);
-  if (!isFinite(a) || !isFinite(r)) {
-    throw new Error(`mulMoney: non-finite inputs: amount=${amountStr} rate=${rateStr}`);
+const MONEY_RE = /^-?\d{1,15}(\.\d{1,8})?$/;
+const SCALE = 100_000_000n; // 10^8
+
+/** Parse a monetary string to an integer scaled by 10^8. Throws on invalid input. */
+function parseToScaled(s: string): bigint {
+  const t = s.trim();
+  if (!MONEY_RE.test(t)) {
+    throw new Error(`Invalid monetary value: "${t}" — expected decimal string, no scientific notation`);
   }
-  // Integer arithmetic: multiply × 10^8 to shift past decimal drift, then round
-  const sign = a * r < 0 ? -1 : 1;
-  const raw  = Math.abs(a) * Math.abs(r);
-  const cents = Math.round(raw * 100); // e.g. 149500 for 1495 * 0.10 * 100
-  const result = sign * cents / 100;
-  return result.toFixed(2);
+  const negative = t.startsWith("-");
+  const abs = negative ? t.slice(1) : t;
+  const [intPart, fracPart = ""] = abs.split(".");
+  // Pad fractional part to exactly 8 digits
+  const frac8 = (fracPart + "00000000").slice(0, 8);
+  const scaled = BigInt(intPart) * SCALE + BigInt(frac8);
+  return negative ? -scaled : scaled;
 }
 
+/** Format a BigInt cent value (10^2 scale) as a 2dp string. */
+function centsToString(cents: bigint): string {
+  const sign = cents < 0n ? -1n : 1n;
+  const abs = cents < 0n ? -cents : cents;
+  const dollars = abs / 100n;
+  const rem = abs % 100n;
+  return `${sign < 0n ? "-" : ""}${dollars}.${String(rem).padStart(2, "0")}`;
+}
+
+/**
+ * mulMoney — multiply two monetary strings, round half-away-from-zero to 2dp.
+ * Uses BigInt to avoid floating-point drift.
+ *
+ * Examples:
+ *   mulMoney("1495.00", "0.150000") === "224.25"
+ *   mulMoney("-500.00", "0.100000") === "-50.00"
+ *   mulMoney("1.00",    "0.005000") === "0.01"  (half-cent rounds away from zero)
+ */
+export function mulMoney(amountStr: string, rateStr: string): string {
+  const a = parseToScaled(amountStr); // scaled by 10^8
+  const r = parseToScaled(rateStr);   // scaled by 10^8
+  // Product is scaled by 10^16. We want result in cents (10^2),
+  // so we divide by 10^14 with half-away-from-zero rounding.
+  const product = a * r; // 10^16 scale
+  const DIVISOR = 100_000_000_000_000n; // 10^14
+  const HALF    =  50_000_000_000_000n; // 5 × 10^13  (half of DIVISOR)
+  const sign    = product < 0n ? -1n : 1n;
+  const absP    = product < 0n ? -product : product;
+  const cents   = (absP + HALF) / DIVISOR;
+  return centsToString(sign * cents);
+}
+
+/**
+ * addMoney — add two 2dp monetary strings.
+ * Inputs are expected to be 2dp outputs of mulMoney or "0".
+ * Division by 10^6 is exact for 2dp inputs (no rounding needed).
+ */
 export function addMoney(a: string, b: string): string {
-  const sum = parseFloat(a) + parseFloat(b);
-  if (!isFinite(sum)) throw new Error(`addMoney: non-finite: ${a} + ${b}`);
-  return sum.toFixed(2);
+  const aS = parseToScaled(a); // 10^8 scale
+  const bS = parseToScaled(b); // 10^8 scale
+  const sum = aS + bS;          // 10^8 scale
+  // Convert to cents: divide by 10^6 (exact for 2dp inputs where last 6 digits are 0)
+  const CENTS_DIVISOR = 1_000_000n; // 10^6
+  const sign = sum < 0n ? -1n : 1n;
+  const abs  = sum < 0n ? -sum : sum;
+  const cents = abs / CENTS_DIVISOR;
+  return centsToString(sign * cents);
 }
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -104,9 +164,10 @@ const SUPPORTED_PAYABLE_TRIGGERS = new Set(["invoice_issued", "invoice_paid"]);
  *   invoice_paid    → calculate only if invoiceStatus==='Paid'
  *                     Overdue → awaiting_payment (overdue_not_paid)
  *                     anything else → awaiting_payment (not_yet_paid)
- *   payment_received / manual_approval → unsupported operationally → needs_review
+ *   payment_received / manual_approval → unsupported → needs_review/unsupported_trigger
  *
  * amount_paid is NEVER approximated from invoice_amount.
+ * fixed_amount is returned as-is from the DB string (NUMERIC(12,2) → always 2dp).
  */
 export function applyFormula(rule: CommissionRule, inputs: FormulaInputs): FormulaResult {
   if (!ALLOWED_FORMULA_TYPES.has(rule.formulaType)) {
@@ -118,7 +179,7 @@ export function applyFormula(rule: CommissionRule, inputs: FormulaInputs): Formu
     return { commissionAmount: "0", calculationBasis: null, lineStatus: "house_no_commission", exclusionReason: "internal_house_account" };
   }
 
-  // Unsupported triggers — can't calculate without payment data
+  // Unsupported triggers — can't calculate without authoritative payment data
   if (!SUPPORTED_PAYABLE_TRIGGERS.has(rule.payableTrigger)) {
     return { commissionAmount: null, calculationBasis: null, lineStatus: "needs_review", exclusionReason: "unsupported_trigger" };
   }
@@ -143,7 +204,7 @@ export function applyFormula(rule: CommissionRule, inputs: FormulaInputs): Formu
     return { commissionAmount: null, calculationBasis: "manual_amount", lineStatus: "needs_review", exclusionReason: "manual_entry_required" };
   }
 
-  // percentage_of_gross_profit — null GP must not fall back
+  // percentage_of_gross_profit — null GP must not fall back to invoice_amount
   if (rule.formulaType === "percentage_of_gross_profit") {
     if (inputs.grossProfit === null) {
       return { commissionAmount: null, calculationBasis: "gross_profit", lineStatus: "needs_review", exclusionReason: "missing_gross_profit" };
@@ -154,13 +215,19 @@ export function applyFormula(rule: CommissionRule, inputs: FormulaInputs): Formu
     return { commissionAmount: mulMoney(inputs.grossProfit, rule.commissionRate), calculationBasis: "gross_profit", lineStatus: "calculated", exclusionReason: null };
   }
 
-  // fixed_amount
+  // fixed_amount — stored as NUMERIC(12,2) string from DB; validate then return
   if (rule.formulaType === "fixed_amount") {
     if (rule.fixedAmount == null) {
       return { commissionAmount: null, calculationBasis: "fixed_amount", lineStatus: "needs_configuration", exclusionReason: "missing_commission_formula" };
     }
-    // fixed_amount preserves sign as stored; negative fixedAmount → negative commission
-    return { commissionAmount: parseFloat(rule.fixedAmount).toFixed(2), calculationBasis: "fixed_amount", lineStatus: "calculated", exclusionReason: null };
+    // Validate and normalize via BigInt path (no parseFloat)
+    const scaled = parseToScaled(rule.fixedAmount);
+    const CENTS_DIVISOR = 1_000_000n;
+    const sign = scaled < 0n ? -1n : 1n;
+    const abs = scaled < 0n ? -scaled : scaled;
+    const cents = abs / CENTS_DIVISOR;
+    const normalized = centsToString(sign * cents);
+    return { commissionAmount: normalized, calculationBasis: "fixed_amount", lineStatus: "calculated", exclusionReason: null };
   }
 
   // percentage_of_invoice
@@ -182,6 +249,7 @@ export function applyFormula(rule: CommissionRule, inputs: FormulaInputs): Formu
 // Rules are filtered by invoiceDate (effective_from/effective_to).
 // A future rule never affects a historical invoice.
 // An expired rule never affects a later invoice.
+// customerNamePattern '%' (global wildcard) is rejected in rule creation.
 
 export function attributeInvoice(
   customerName: string | null,
@@ -195,7 +263,7 @@ export function attributeInvoice(
       (r.effectiveTo === null || r.effectiveTo >= invoiceDate);
   });
 
-  // Priority already sorted ascending by DB query
+  // Priority already sorted ascending by DB query (lower number = higher priority)
   for (const rule of active) {
     if (rule.matchType === "exact_customer_id" && customerId && rule.coreCustomerId === customerId) {
       return { representativeId: rule.representativeId, representativeSlug: rule.representativeSlug, attributionRuleId: rule.id, matchType: "exact_customer_id" };
@@ -209,7 +277,7 @@ export function attributeInvoice(
       }
     }
   }
-  // No match and no fallback — unattributed
+  // No match and no fallback — unattributed; caller sets needs_review
   return null;
 }
 
@@ -265,7 +333,6 @@ export async function ingestEntityInvoices(
 ): Promise<IngestResult> {
   const result: IngestResult = { entityId, processed: 0, created: 0, updated: 0, sourceChanged: 0, skipped: 0, errors: [] };
 
-  // Load all attribution and commission rules (no date filter — applied per-invoice)
   const [attrRules, commRules, reps] = await Promise.all([
     getAttributionRulesForEntity(entityId),
     getCommissionRules(entityId),
@@ -273,7 +340,6 @@ export async function ingestEntityInvoices(
   ]);
   const repById = new Map<string, CommissionRepresentative>(reps.map((r) => [r.id, r]));
 
-  // Read invoices from Neon Core (read-only, never write)
   type InvoiceRow = typeof invoices.$inferSelect;
   const conditions = [eq(invoices.entityId, entityId)];
   if (options.fromDate) conditions.push(gte(invoices.invoiceDate, options.fromDate));
@@ -283,13 +349,16 @@ export async function ingestEntityInvoices(
   for (const inv of invoiceRows) {
     result.processed++;
     try {
-      const fingerprint    = buildFingerprint(entityId, inv.qboId ?? inv.id);
-      const invoiceAmount  = inv.amount != null ? String(parseFloat(String(inv.amount)).toFixed(2)) : null;
-      const invoiceStatus  = inv.status ?? null;
-      const customerName   = inv.customerName ?? null;
-      const customerId: string | null = null; // deferred — requires customer join
-      // invoice_date required for date-based rule resolution
-      const invoiceDate    = inv.invoiceDate ?? null;
+      const fingerprint   = buildFingerprint(entityId, inv.qboId ?? inv.id);
+      // Invoice amount: stored as NUMERIC string, normalized via BigInt path (no parseFloat)
+      const rawAmount     = inv.amount != null ? String(inv.amount) : null;
+      const invoiceAmount = rawAmount != null ? normalizeMoneyString(rawAmount) : null;
+      const invoiceStatus = inv.status ?? null;
+      const customerName  = inv.customerName ?? null;
+      // customerId: always null — QBO invoices lack canonical customer UUID without a join.
+      // Limitation documented; ambiguous name matches → needs_review.
+      const customerId: string | null = null;
+      const invoiceDate   = inv.invoiceDate ?? null;
 
       let lineStatus: string;
       let commissionAmount: string | null = null;
@@ -304,7 +373,6 @@ export async function ingestEntityInvoices(
       let representativeId: string | null  = null;
 
       if (!invoiceDate) {
-        // Cannot resolve date-based rules without an invoice date
         lineStatus      = "needs_review";
         exclusionReason = "missing_invoice_date";
       } else {
@@ -320,7 +388,6 @@ export async function ingestEntityInvoices(
           attributionMatch  = attribution.matchType;
 
           if (rep?.representativeType === "internal_house") {
-            // House — explicit zero, confirmed business rule, not a fallback
             lineStatus       = "house_no_commission";
             commissionAmount = "0";
             payoutEligible   = false;
@@ -382,16 +449,27 @@ export async function ingestEntityInvoices(
         recalculatedBy:     options.reingesterBy ?? null,
       });
 
-      if (action === "created")        result.created++;
-      else if (action === "updated")   result.updated++;
+      if (action === "created")            result.created++;
+      else if (action === "updated")       result.updated++;
       else if (action === "source_changed") result.sourceChanged++;
-      else                             result.skipped++;
+      else                                 result.skipped++;
     } catch (err) {
       result.errors.push({ invoiceId: inv.id, error: String(err) });
     }
   }
 
   return result;
+}
+
+/** Normalize a raw DB amount string to a valid 2dp monetary string without parseFloat. */
+function normalizeMoneyString(s: string): string {
+  const scaled = parseToScaled(String(s).trim());
+  const CENTS_DIVISOR = 1_000_000n;
+  const HALF = 500_000n;
+  const sign = scaled < 0n ? -1n : 1n;
+  const abs = scaled < 0n ? -scaled : scaled;
+  const cents = (abs + HALF) / CENTS_DIVISOR;
+  return centsToString(sign * cents);
 }
 
 // ─── Preview for Rule Builder ─────────────────────────────────────────────────

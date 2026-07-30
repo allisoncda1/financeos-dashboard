@@ -44,6 +44,16 @@ CREATE TABLE IF NOT EXISTS commission_customer_aliases (
 --    match_type: exact_customer_id | customer_name_pattern
 --    entity_default is intentionally NOT supported.
 --    House must be attributed via an explicit client rule only.
+--
+--    Uniqueness design:
+--      exact_customer_id rules: one rep per (entity, core_customer_id).
+--        A customer ID cannot be split across two active reps.
+--      customer_name_pattern rules: one rep per (entity, pattern).
+--        A pattern cannot be split across two active reps.
+--      representative_id is NOT in the key — if a customer moves from one
+--        rep to another, create a new rule with effectiveTo on the old one.
+--      Partial indexes rather than NULLS NOT DISTINCT table constraints
+--        so that multiple different patterns per entity per rep are allowed.
 -- ─────────────────────────────────────────────────────────────
 CREATE TABLE IF NOT EXISTS commission_attribution_rules (
   id                UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -59,17 +69,20 @@ CREATE TABLE IF NOT EXISTS commission_attribution_rules (
   created_by        TEXT,
   notes             TEXT,
   created_at        TIMESTAMPTZ NOT NULL DEFAULT now(),
-  updated_at        TIMESTAMPTZ NOT NULL DEFAULT now(),
-  -- Unique constraint per (entity, rep, scope) handling NULL values:
-  --   exact_customer_id rules: unique per entity+customer
-  --   customer_name_pattern rules: unique per entity+rep+pattern
-  CONSTRAINT uq_attr_exact_customer
-    UNIQUE NULLS NOT DISTINCT (entity_id, core_customer_id, representative_id)
-    DEFERRABLE INITIALLY DEFERRED,
-  CONSTRAINT uq_attr_name_pattern
-    UNIQUE NULLS NOT DISTINCT (entity_id, customer_name_pattern, representative_id)
-    DEFERRABLE INITIALLY DEFERRED
+  updated_at        TIMESTAMPTZ NOT NULL DEFAULT now()
 );
+
+-- Partial unique indexes: one rep per entity per customer scope.
+-- exact_customer_id: unique per (entity, core_customer_id) — prevents split attribution
+CREATE UNIQUE INDEX IF NOT EXISTS uq_attr_exact_customer
+  ON commission_attribution_rules (entity_id, core_customer_id)
+  WHERE match_type = 'exact_customer_id' AND core_customer_id IS NOT NULL;
+
+-- customer_name_pattern: unique per (entity, pattern) — prevents split attribution
+CREATE UNIQUE INDEX IF NOT EXISTS uq_attr_name_pattern
+  ON commission_attribution_rules (entity_id, customer_name_pattern)
+  WHERE match_type = 'customer_name_pattern' AND customer_name_pattern IS NOT NULL;
+
 CREATE INDEX IF NOT EXISTS idx_commission_attr_entity ON commission_attribution_rules(entity_id);
 CREATE INDEX IF NOT EXISTS idx_commission_attr_rep    ON commission_attribution_rules(representative_id);
 
@@ -112,8 +125,20 @@ CREATE TABLE IF NOT EXISTS commission_rules (
   created_at        TIMESTAMPTZ NOT NULL DEFAULT now(),
   updated_at        TIMESTAMPTZ NOT NULL DEFAULT now()
 );
+
 CREATE INDEX IF NOT EXISTS idx_commission_rules_entity_rep ON commission_rules(entity_id, representative_id);
 CREATE INDEX IF NOT EXISTS idx_commission_rules_status     ON commission_rules(status);
+
+-- Prevents concurrent MAX(version)+1 from producing duplicate versions for the same scope.
+-- Scope = entity + rep + customer scope (NULL normalized to empty string for indexing).
+CREATE UNIQUE INDEX IF NOT EXISTS uq_commission_rule_scope_version
+  ON commission_rules (
+    entity_id,
+    representative_id,
+    rule_version,
+    COALESCE(core_customer_id::text, '00000000-0000-0000-0000-000000000000'),
+    COALESCE(customer_name_pattern, '')
+  );
 
 -- ─────────────────────────────────────────────────────────────
 -- 5. Commission run lines

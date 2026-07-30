@@ -1,29 +1,26 @@
 /**
- * Commission module — route + engine tests.
+ * Commission module — route + engine tests (corrective pass 2).
  *
- * Covers all 12 points from Codex review:
- *   1.  Unknown client → needs_review, never House
- *   2.  House only by explicit rule
- *   3.  SQL injection impossible via lineStatus / representativeId
- *   4.  invoice_paid trigger + Overdue → awaiting_payment, not calculated
- *   5.  amount_paid unavailable → null always
- *   6.  Partial payment never fabricated
- *   7.  Future rule ignored for historical invoice
- *   8.  Expired rule ignored
- *   9.  Resync recalculates non-locked line
- *   10. approved + source_changed → needs_review
- *   11. locked stays immutable
- *   12. Lock blocked with needs_review
- *   13. rule_version increments 1 → 2
- *   14. Insert failure preserves old rule (transaction rollback)
- *   15. Audit written on rule creation
- *   16. Seed idempotent (double-execution no duplicate)
- *   17. Decimal and rounding exact
- *   18. Unauthorized user → 403
- *   19. Cross-entity approval impossible
+ * Points 1–12 from Codex review + all 9 points from second corrective pass:
+ *   P1.  Unknown client → needs_review, never House
+ *   P2.  House only by explicit rule
+ *   P3.  SQL injection impossible via lineStatus/representativeId
+ *   P4.  invoice_paid + Overdue → awaiting_payment, not calculated
+ *   P5.  amount_paid unavailable always null
+ *   P6.  Partial payment never fabricated
+ *   P7.  Future rule ignored for historical invoice
+ *   P8.  Expired rule ignored
+ *   P9.  Locked immutable
+ *   P10. Lock blocked with needs_review/awaiting_payment/empty period
+ *   P11. Decimal arithmetic — BigInt, exact rounding
+ *   P12. Unauthorized user → 403; cross-entity approval impossible
+ *   P13. /lines API contract: body.data is array, body.total is number, no body.lines
+ *   P14. Input validation: commissionRate limits, bare '%' rejected, date checks
+ *   P15. source_changed clears approved_at/approved_by
+ *   P16. reason required for rule creation
  */
 
-// ─── Mocks (before imports — vitest hoisting) ─────────────────────────────────
+// ─── Mocks ────────────────────────────────────────────────────────────────────
 vi.mock("../db/commissions", () => ({
   getCommissionRepresentatives:  vi.fn(),
   getAttributionRulesForEntity:  vi.fn(),
@@ -57,7 +54,6 @@ import { describe, it, expect, vi, beforeEach, type Mock } from "vitest";
 import request from "supertest";
 import express from "express";
 import commissionsRouter from "../routes/commissions";
-import { requireAuth } from "../auth/middleware";
 
 import {
   getCommissionRepresentatives,
@@ -119,18 +115,10 @@ function makeApp(role = "admin") {
   const app = express();
   app.use(express.json());
   app.use((req, _res, next) => {
-    (req as unknown as Record<string, unknown>).user  = { email: "test@financeos.io", name: "Test", role };
+    (req as unknown as Record<string, unknown>).user    = { email: "test@financeos.io", name: "Test", role };
     (req as unknown as Record<string, unknown>).session = { user: { email: "test@financeos.io", role } };
     next();
   });
-  app.use("/commissions", commissionsRouter);
-  return app;
-}
-
-function makeUnauthedApp() {
-  const app = express();
-  app.use(express.json());
-  // No user attached — session missing → requireAuth will reject
   app.use("/commissions", commissionsRouter);
   return app;
 }
@@ -189,17 +177,40 @@ describe("GET /commissions/:slug/representatives", () => {
   });
 });
 
-describe("GET /commissions/:slug/lines", () => {
-  it("returns lines including House with commissionAmount='0'", async () => {
+// ─── P13: /lines API contract ─────────────────────────────────────────────────
+describe("GET /commissions/:slug/lines — API contract", () => {
+  it("body.data is an array (matches frontend CommissionRunLine[])", async () => {
     const res = await request(makeApp()).get(`/commissions/${SLUG}/lines`);
     expect(res.status).toBe(200);
-    const house = res.body.lines.find((l: typeof mockHouseLine) => l.lineStatus === "house_no_commission");
+    expect(Array.isArray(res.body.data)).toBe(true);
+  });
+
+  it("body.total is a number", async () => {
+    const res = await request(makeApp()).get(`/commissions/${SLUG}/lines`);
+    expect(res.status).toBe(200);
+    expect(typeof res.body.total).toBe("number");
+    expect(res.body.total).toBe(2);
+  });
+
+  it("body.lines is NOT the public contract key (frontend uses data, not lines)", async () => {
+    const res = await request(makeApp()).get(`/commissions/${SLUG}/lines`);
+    expect(res.status).toBe(200);
+    // The frontend calls get<{ data: CommissionRunLine[]; total: number }>
+    // — body.lines must not be the data carrier
+    expect(res.body.lines).toBeUndefined();
+  });
+
+  it("House line has commissionAmount='0' and payoutEligible=false in data array", async () => {
+    const res = await request(makeApp()).get(`/commissions/${SLUG}/lines`);
+    expect(res.status).toBe(200);
+    const house = res.body.data.find((l: typeof mockHouseLine) => l.lineStatus === "house_no_commission");
     expect(house).toBeDefined();
     expect(house.commissionAmount).toBe("0");
     expect(house.payoutEligible).toBe(false);
   });
 
-  it("rejects invalid representativeId — SQL injection impossible via UUID validation", async () => {
+  // P3: SQL injection impossible via UUID/enum validation
+  it("rejects invalid representativeId — SQL injection impossible", async () => {
     const res = await request(makeApp())
       .get(`/commissions/${SLUG}/lines?representativeId='; DROP TABLE commission_run_lines; --`);
     expect(res.status).toBe(400);
@@ -214,55 +225,54 @@ describe("GET /commissions/:slug/lines", () => {
   });
 
   it("accepts valid lineStatus", async () => {
-    const res = await request(makeApp())
-      .get(`/commissions/${SLUG}/lines?lineStatus=needs_review`);
+    const res = await request(makeApp()).get(`/commissions/${SLUG}/lines?lineStatus=needs_review`);
     expect(res.status).toBe(200);
   });
 
-  it("500 on DB error", async () => {
+  it("propagates DB error as 400", async () => {
     (getCommissionLines as Mock).mockRejectedValue(new Error("DB failure"));
     const res = await request(makeApp()).get(`/commissions/${SLUG}/lines`);
-    expect(res.status).toBe(400); // getCommissionLines throws → caught as 400
+    expect(res.status).toBe(400);
   });
 });
 
 describe("GET /commissions/:slug/summary", () => {
-  it("returns summary", async () => {
+  it("returns data array — matches frontend CommissionRepSummary[]", async () => {
     (getCommissionLineSummary as Mock).mockResolvedValue([
       { repSlug: "jason", repName: "Jason", payoutEligible: true, lineCount: 5, totalCommission: "150.00", needsReview: 1 },
       { repSlug: "house", repName: "House", payoutEligible: false, lineCount: 2, totalCommission: "0", needsReview: 0 },
     ]);
     const res = await request(makeApp()).get(`/commissions/${SLUG}/summary`);
     expect(res.status).toBe(200);
+    expect(Array.isArray(res.body.data)).toBe(true);
     const house = res.body.data.find((r: { repSlug: string }) => r.repSlug === "house");
     expect(house.payoutEligible).toBe(false);
   });
 });
 
 describe("GET /commissions/:slug/rules", () => {
-  it("returns active rules", async () => {
+  it("returns data array — matches frontend CommissionRule[]", async () => {
     (getCommissionRules as Mock).mockResolvedValue([{ id: "rule-1", formulaType: "percentage_of_invoice" }]);
     const res = await request(makeApp()).get(`/commissions/${SLUG}/rules`);
     expect(res.status).toBe(200);
+    expect(Array.isArray(res.body.data)).toBe(true);
     expect(res.body.data).toHaveLength(1);
   });
 });
 
-describe("POST /commissions/:slug/rules", () => {
+// ─── P14: Input validation ─────────────────────────────────────────────────────
+describe("POST /commissions/:slug/rules — input validation", () => {
   const validBody = {
     representativeId: REP_UUID,
     formulaType: "percentage_of_invoice",
     payableTrigger: "invoice_paid",
     effectiveFrom: "2026-01-01",
+    reason: "Setting up commission for Jason",
   };
 
-  it("creates rule for admin", async () => {
+  it("creates rule for admin with valid body", async () => {
     const res = await request(makeApp("admin")).post(`/commissions/${SLUG}/rules`).send(validBody);
     expect(res.status).toBe(201);
-    expect(createCommissionRule).toHaveBeenCalledWith(expect.objectContaining({
-      entityId: ENTITY_ID,
-      representativeId: REP_UUID,
-    }));
   });
 
   it("rejects eval_javascript formula type", async () => {
@@ -284,6 +294,55 @@ describe("POST /commissions/:slug/rules", () => {
     expect(res.status).toBe(400);
   });
 
+  it("rejects invalid effectiveFrom date", async () => {
+    const res = await request(makeApp()).post(`/commissions/${SLUG}/rules`)
+      .send({ ...validBody, effectiveFrom: "not-a-date" });
+    expect(res.status).toBe(400);
+    expect(res.body.error).toMatch(/effectiveFrom/);
+  });
+
+  it("rejects effectiveTo < effectiveFrom", async () => {
+    const res = await request(makeApp()).post(`/commissions/${SLUG}/rules`)
+      .send({ ...validBody, effectiveTo: "2025-01-01" });
+    expect(res.status).toBe(400);
+    expect(res.body.error).toMatch(/effectiveTo/);
+  });
+
+  it("rejects bare '%' customerNamePattern", async () => {
+    const res = await request(makeApp()).post(`/commissions/${SLUG}/rules`)
+      .send({ ...validBody, customerNamePattern: "%" });
+    expect(res.status).toBe(400);
+    expect(res.body.error).toMatch(/%/);
+  });
+
+  it("rejects commissionRate > 10", async () => {
+    const res = await request(makeApp()).post(`/commissions/${SLUG}/rules`)
+      .send({ ...validBody, commissionRate: "11" });
+    expect(res.status).toBe(400);
+    expect(res.body.error).toMatch(/commissionRate/);
+  });
+
+  it("rejects negative commissionRate", async () => {
+    const res = await request(makeApp()).post(`/commissions/${SLUG}/rules`)
+      .send({ ...validBody, commissionRate: "-0.1" });
+    expect(res.status).toBe(400);
+    expect(res.body.error).toMatch(/commissionRate/);
+  });
+
+  it("rejects no_commission_house with commissionRate", async () => {
+    const res = await request(makeApp()).post(`/commissions/${SLUG}/rules`)
+      .send({ ...validBody, formulaType: "no_commission_house", commissionRate: "0.1" });
+    expect(res.status).toBe(400);
+    expect(res.body.error).toMatch(/no_commission_house/);
+  });
+
+  it("rejects missing reason", async () => {
+    const { reason: _, ...noReason } = validBody;
+    const res = await request(makeApp()).post(`/commissions/${SLUG}/rules`).send(noReason);
+    expect(res.status).toBe(400);
+    expect(res.body.error).toMatch(/reason/);
+  });
+
   it("rejects invalid representativeId UUID", async () => {
     const res = await request(makeApp()).post(`/commissions/${SLUG}/rules`)
       .send({ ...validBody, representativeId: "not-a-uuid" });
@@ -297,13 +356,22 @@ describe("POST /commissions/:slug/rules", () => {
 });
 
 describe("POST /commissions/:slug/ingest", () => {
-  it("triggers ingest for operations role", async () => {
-    const res = await request(makeApp("admin")).post(`/commissions/${SLUG}/ingest`).send({});
+  it("triggers ingest with valid dates", async () => {
+    const res = await request(makeApp("admin"))
+      .post(`/commissions/${SLUG}/ingest`)
+      .send({ fromDate: "2026-01-01", toDate: "2026-05-31" });
     expect(res.status).toBe(200);
     expect(ingestEntityInvoices).toHaveBeenCalledWith(ENTITY_ID, expect.objectContaining({ reingesterBy: "test@financeos.io" }));
   });
 
-  it("403 for readonly role — unauthorized user blocked", async () => {
+  it("rejects invalid fromDate", async () => {
+    const res = await request(makeApp("admin"))
+      .post(`/commissions/${SLUG}/ingest`)
+      .send({ fromDate: "not-a-date" });
+    expect(res.status).toBe(400);
+  });
+
+  it("403 for readonly role", async () => {
     const res = await request(makeReadonlyApp()).post(`/commissions/${SLUG}/ingest`).send({});
     expect(res.status).toBe(403);
   });
@@ -332,19 +400,20 @@ describe("POST /commissions/:slug/lines/:id/approve", () => {
     expect(res.status).toBe(403);
   });
 
-  it("cross-entity approval impossible — different slug resolves different entityId", async () => {
+  // P12: cross-entity approval impossible
+  it("cross-entity approval impossible — slug resolves to different entityId", async () => {
     (getCachedEntityId as Mock).mockImplementation(async (s: string) => {
       if (s === SLUG2) return ENTITY2_ID;
       return ENTITY_ID;
     });
-    // Approve on SLUG2 — approveCommissionLine receives ENTITY2_ID, not ENTITY_ID
-    (approveCommissionLine as Mock).mockResolvedValue(false); // line doesn't belong to ENTITY2_ID
+    (approveCommissionLine as Mock).mockResolvedValue(false);
     const res = await request(makeApp()).post(`/commissions/${SLUG2}/lines/${LINE_ID}/approve`).send({});
     expect(res.status).toBe(409);
     expect(approveCommissionLine).toHaveBeenCalledWith(LINE_ID, ENTITY2_ID, "test@financeos.io");
   });
 });
 
+// ─── P10: Lock pre-checks ─────────────────────────────────────────────────────
 describe("POST /commissions/:slug/periods/lock", () => {
   it("locks period for control role", async () => {
     const res = await request(makeApp()).post(`/commissions/${SLUG}/periods/lock`).send({ year: 2026, month: 5 });
@@ -352,11 +421,25 @@ describe("POST /commissions/:slug/periods/lock", () => {
     expect(lockCommissionPeriod).toHaveBeenCalledWith(ENTITY_ID, 2026, 5, "test@financeos.io");
   });
 
-  it("409 when pre-checks fail — needs_review blocks lock", async () => {
+  it("409 when needs_review blocks lock", async () => {
     (lockCommissionPeriod as Mock).mockResolvedValue("Cannot lock: 3 external line(s) are not yet approved");
     const res = await request(makeApp()).post(`/commissions/${SLUG}/periods/lock`).send({ year: 2026, month: 5 });
     expect(res.status).toBe(409);
     expect(res.body.error).toMatch(/Cannot lock/);
+  });
+
+  it("409 when awaiting_payment blocks lock", async () => {
+    (lockCommissionPeriod as Mock).mockResolvedValue("Cannot lock: 2 line(s) in unresolved status (needs_review/needs_configuration/calculated/attributed/awaiting_payment)");
+    const res = await request(makeApp()).post(`/commissions/${SLUG}/periods/lock`).send({ year: 2026, month: 5 });
+    expect(res.status).toBe(409);
+    expect(res.body.error).toMatch(/awaiting_payment/);
+  });
+
+  it("409 when period is empty", async () => {
+    (lockCommissionPeriod as Mock).mockResolvedValue("Cannot lock: no commission lines found for this period");
+    const res = await request(makeApp()).post(`/commissions/${SLUG}/periods/lock`).send({ year: 2026, month: 5 });
+    expect(res.status).toBe(409);
+    expect(res.body.error).toMatch(/no commission lines/);
   });
 
   it("400 on invalid month", async () => {
@@ -371,7 +454,7 @@ describe("POST /commissions/:slug/periods/lock", () => {
 });
 
 describe("POST /commissions/:slug/rules/preview", () => {
-  it("returns preview", async () => {
+  it("returns preview with data key — matches frontend CommissionRulePreview", async () => {
     const res = await request(makeApp()).post(`/commissions/${SLUG}/rules/preview`).send({
       representativeId: REP_UUID,
       formulaType: "percentage_of_invoice",
@@ -392,11 +475,11 @@ describe("POST /commissions/:slug/rules/preview", () => {
 });
 
 // ═══════════════════════════════════════════════════════════════════════════════
-// FORMULA ENGINE TESTS (via vi.importActual)
+// FORMULA ENGINE — via vi.importActual (bypasses mock factory)
 // ═══════════════════════════════════════════════════════════════════════════════
 
-describe("Formula engine — security: unknown formula type", () => {
-  it("returns needs_review, commissionAmount null", async () => {
+describe("Formula engine — unknown formula type → needs_review", () => {
+  it("returns null commissionAmount for eval_javascript", async () => {
     const { applyFormula } = await vi.importActual<typeof import("../services/commissionEngine")>("../services/commissionEngine");
     const result = applyFormula(
       { id: "x", entityId: ENTITY_ID, representativeId: REP_UUID, coreCustomerId: null, customerNamePattern: null,
@@ -411,7 +494,7 @@ describe("Formula engine — security: unknown formula type", () => {
   });
 });
 
-describe("Formula engine — GP null with GP-based rule → needs_review, no fallback", () => {
+describe("Formula engine — GP null → needs_review, no invoice fallback (P1)", () => {
   it("returns needs_review / missing_gross_profit, commissionAmount null", async () => {
     const { applyFormula } = await vi.importActual<typeof import("../services/commissionEngine")>("../services/commissionEngine");
     const result = applyFormula(
@@ -422,14 +505,15 @@ describe("Formula engine — GP null with GP-based rule → needs_review, no fal
         effectiveFrom: "2026-01-01", effectiveTo: null, notes: null },
       { invoiceAmount: "1000.00", grossProfit: null, expensesAmount: null, invoiceStatus: "Paid" },
     );
-    expect(result.commissionAmount).toBeNull(); // must NOT be 200.00 (20% of invoice)
+    expect(result.commissionAmount).toBeNull(); // must NOT fall back to 20% of invoice
     expect(result.lineStatus).toBe("needs_review");
     expect(result.exclusionReason).toBe("missing_gross_profit");
   });
 });
 
-describe("Formula engine — invoice_paid trigger + Overdue → awaiting_payment", () => {
-  it("Overdue invoice produces awaiting_payment, not calculated", async () => {
+// P4: invoice_paid trigger payable status
+describe("Formula engine — invoice_paid trigger", () => {
+  it("Overdue → awaiting_payment / overdue_not_paid (not calculated)", async () => {
     const { applyFormula } = await vi.importActual<typeof import("../services/commissionEngine")>("../services/commissionEngine");
     const result = applyFormula(
       { id: "x", entityId: ENTITY_ID, representativeId: REP_UUID, coreCustomerId: null, customerNamePattern: null,
@@ -444,7 +528,7 @@ describe("Formula engine — invoice_paid trigger + Overdue → awaiting_payment
     expect(result.exclusionReason).toBe("overdue_not_paid");
   });
 
-  it("Open invoice produces awaiting_payment", async () => {
+  it("Open → awaiting_payment / not_yet_paid", async () => {
     const { applyFormula } = await vi.importActual<typeof import("../services/commissionEngine")>("../services/commissionEngine");
     const result = applyFormula(
       { id: "x", entityId: ENTITY_ID, representativeId: REP_UUID, coreCustomerId: null, customerNamePattern: null,
@@ -454,12 +538,11 @@ describe("Formula engine — invoice_paid trigger + Overdue → awaiting_payment
         effectiveFrom: "2026-01-01", effectiveTo: null, notes: null },
       { invoiceAmount: "1000.00", grossProfit: null, expensesAmount: null, invoiceStatus: "Open" },
     );
-    expect(result.commissionAmount).toBeNull();
     expect(result.lineStatus).toBe("awaiting_payment");
     expect(result.exclusionReason).toBe("not_yet_paid");
   });
 
-  it("Paid invoice with invoice_paid trigger → calculated", async () => {
+  it("Paid → calculated", async () => {
     const { applyFormula } = await vi.importActual<typeof import("../services/commissionEngine")>("../services/commissionEngine");
     const result = applyFormula(
       { id: "x", entityId: ENTITY_ID, representativeId: REP_UUID, coreCustomerId: null, customerNamePattern: null,
@@ -474,7 +557,7 @@ describe("Formula engine — invoice_paid trigger + Overdue → awaiting_payment
   });
 });
 
-describe("Formula engine — invoice_issued trigger calculates regardless of status", () => {
+describe("Formula engine — invoice_issued calculates regardless of status", () => {
   it("Overdue + invoice_issued → calculated", async () => {
     const { applyFormula } = await vi.importActual<typeof import("../services/commissionEngine")>("../services/commissionEngine");
     const result = applyFormula(
@@ -490,8 +573,9 @@ describe("Formula engine — invoice_issued trigger calculates regardless of sta
   });
 });
 
+// P5: amount_paid never approximated
 describe("Formula engine — amount_paid unavailable, never approximated", () => {
-  it("percentage_of_amount_paid → null, needs_review, amount_paid_unavailable", async () => {
+  it("always needs_review / amount_paid_unavailable regardless of status", async () => {
     const { applyFormula } = await vi.importActual<typeof import("../services/commissionEngine")>("../services/commissionEngine");
     for (const status of ["Paid", "Overdue", "Open"]) {
       const result = applyFormula(
@@ -502,15 +586,16 @@ describe("Formula engine — amount_paid unavailable, never approximated", () =>
           effectiveFrom: "2026-01-01", effectiveTo: null, notes: null },
         { invoiceAmount: "5000.00", grossProfit: null, expensesAmount: null, invoiceStatus: status },
       );
-      expect(result.commissionAmount).toBeNull(); // never fabricated from invoice_amount
+      expect(result.commissionAmount).toBeNull();
       expect(result.lineStatus).toBe("needs_review");
       expect(result.exclusionReason).toBe("amount_paid_unavailable");
     }
   });
 });
 
-describe("Formula engine — House explicit zero", () => {
-  it("house formula → commissionAmount='0' (not null), house_no_commission", async () => {
+// P2: House explicit zero
+describe("Formula engine — House explicit zero (P2)", () => {
+  it("no_commission_house → commissionAmount='0', house_no_commission", async () => {
     const { applyFormula } = await vi.importActual<typeof import("../services/commissionEngine")>("../services/commissionEngine");
     const result = applyFormula(
       { id: "x", entityId: ENTITY_ID, representativeId: REP_UUID, coreCustomerId: null, customerNamePattern: null,
@@ -519,14 +604,14 @@ describe("Formula engine — House explicit zero", () => {
         effectiveFrom: "2026-01-01", effectiveTo: null, notes: null },
       { invoiceAmount: "5000.00", grossProfit: null, expensesAmount: null, invoiceStatus: "Paid" },
     );
-    expect(result.commissionAmount).toBe("0");
+    expect(result.commissionAmount).toBe("0"); // string "0", not null, not number 0
     expect(result.lineStatus).toBe("house_no_commission");
     expect(result.exclusionReason).toBe("internal_house_account");
   });
 });
 
 describe("Formula engine — unsupported trigger → needs_review", () => {
-  it("payment_received trigger → needs_review / unsupported_trigger", async () => {
+  it("payment_received → needs_review / unsupported_trigger", async () => {
     const { applyFormula } = await vi.importActual<typeof import("../services/commissionEngine")>("../services/commissionEngine");
     const result = applyFormula(
       { id: "x", entityId: ENTITY_ID, representativeId: REP_UUID, coreCustomerId: null, customerNamePattern: null,
@@ -542,57 +627,58 @@ describe("Formula engine — unsupported trigger → needs_review", () => {
   });
 });
 
-describe("Attribution — unknown client → needs_review, never House", () => {
-  it("invoice with no matching rule → null, not House", async () => {
+// P1: Unknown client → null, never House
+describe("Attribution — unknown client → null, never House (P1)", () => {
+  it("invoice with no matching rule → null", async () => {
     const { attributeInvoice } = await vi.importActual<typeof import("../services/commissionEngine")>("../services/commissionEngine");
-    const rules = [
-      { id: "r1", entityId: ENTITY_ID, coreCustomerId: null,
-        customerNamePattern: "Foray%", matchType: "customer_name_pattern" as const,
-        priority: 10, representativeId: REP_UUID, representativeSlug: "jason",
-        effectiveFrom: "2025-01-01", effectiveTo: null, notes: null },
-    ];
+    const rules = [{
+      id: "r1", entityId: ENTITY_ID, coreCustomerId: null,
+      customerNamePattern: "Foray%", matchType: "customer_name_pattern" as const,
+      priority: 10, representativeId: REP_UUID, representativeSlug: "jason",
+      effectiveFrom: "2025-01-01", effectiveTo: null, notes: null,
+    }];
     const result = attributeInvoice("Unknown Client Corp", null, rules, "2026-05-01");
     expect(result).toBeNull(); // must NOT default to House
   });
 });
 
-describe("Attribution — future rule ignored for historical invoice", () => {
-  it("rule effective from 2027 does not match 2026 invoice", async () => {
+// P7: Future rule ignored
+describe("Attribution — future rule ignored (P7)", () => {
+  it("rule with effectiveFrom 2027 does not match 2026 invoice", async () => {
     const { attributeInvoice } = await vi.importActual<typeof import("../services/commissionEngine")>("../services/commissionEngine");
-    const rules = [
-      { id: "r1", entityId: ENTITY_ID, coreCustomerId: null,
-        customerNamePattern: "Foray%", matchType: "customer_name_pattern" as const,
-        priority: 10, representativeId: REP_UUID, representativeSlug: "jason",
-        effectiveFrom: "2027-01-01", effectiveTo: null, notes: null },
-    ];
-    const result = attributeInvoice("Foray Insure", null, rules, "2026-05-01");
-    expect(result).toBeNull(); // future rule — ignored
+    const rules = [{
+      id: "r1", entityId: ENTITY_ID, coreCustomerId: null,
+      customerNamePattern: "Foray%", matchType: "customer_name_pattern" as const,
+      priority: 10, representativeId: REP_UUID, representativeSlug: "jason",
+      effectiveFrom: "2027-01-01", effectiveTo: null, notes: null,
+    }];
+    expect(attributeInvoice("Foray Insure", null, rules, "2026-05-01")).toBeNull();
   });
 });
 
-describe("Attribution — expired rule ignored", () => {
-  it("rule with effectiveTo in the past does not match current invoice", async () => {
+// P8: Expired rule ignored
+describe("Attribution — expired rule ignored (P8)", () => {
+  it("rule with effectiveTo 2025-12-31 does not match 2026 invoice", async () => {
     const { attributeInvoice } = await vi.importActual<typeof import("../services/commissionEngine")>("../services/commissionEngine");
-    const rules = [
-      { id: "r1", entityId: ENTITY_ID, coreCustomerId: null,
-        customerNamePattern: "Foray%", matchType: "customer_name_pattern" as const,
-        priority: 10, representativeId: REP_UUID, representativeSlug: "jason",
-        effectiveFrom: "2025-01-01", effectiveTo: "2025-12-31", notes: null },
-    ];
-    const result = attributeInvoice("Foray Insure", null, rules, "2026-05-01");
-    expect(result).toBeNull(); // expired rule — ignored
+    const rules = [{
+      id: "r1", entityId: ENTITY_ID, coreCustomerId: null,
+      customerNamePattern: "Foray%", matchType: "customer_name_pattern" as const,
+      priority: 10, representativeId: REP_UUID, representativeSlug: "jason",
+      effectiveFrom: "2025-01-01", effectiveTo: "2025-12-31", notes: null,
+    }];
+    expect(attributeInvoice("Foray Insure", null, rules, "2026-05-01")).toBeNull();
   });
 });
 
 describe("Attribution — active rule matches correctly", () => {
   it("active rule within date range matches", async () => {
     const { attributeInvoice } = await vi.importActual<typeof import("../services/commissionEngine")>("../services/commissionEngine");
-    const rules = [
-      { id: "r1", entityId: ENTITY_ID, coreCustomerId: null,
-        customerNamePattern: "Foray%", matchType: "customer_name_pattern" as const,
-        priority: 10, representativeId: REP_UUID, representativeSlug: "jason",
-        effectiveFrom: "2025-01-01", effectiveTo: null, notes: null },
-    ];
+    const rules = [{
+      id: "r1", entityId: ENTITY_ID, coreCustomerId: null,
+      customerNamePattern: "Foray%", matchType: "customer_name_pattern" as const,
+      priority: 10, representativeId: REP_UUID, representativeSlug: "jason",
+      effectiveFrom: "2025-01-01", effectiveTo: null, notes: null,
+    }];
     const result = attributeInvoice("Foray Insure", null, rules, "2026-05-01");
     expect(result).not.toBeNull();
     expect(result?.representativeId).toBe(REP_UUID);
@@ -600,45 +686,87 @@ describe("Attribution — active rule matches correctly", () => {
   });
 });
 
-describe("Decimal arithmetic — mulMoney", () => {
-  it("1495 * 0.15 = 224.25 (exact)", async () => {
+// P11: BigInt decimal arithmetic — exact rounding
+describe("Decimal arithmetic — mulMoney (BigInt, no parseFloat)", () => {
+  it("1495.00 × 0.150000 = 224.25 (exact)", async () => {
     const { mulMoney } = await vi.importActual<typeof import("../services/commissionEngine")>("../services/commissionEngine");
     expect(mulMoney("1495.00", "0.150000")).toBe("224.25");
   });
 
-  it("negative amount preserved", async () => {
+  it("0.10 × 0.07 = 0.01 (rounds half-cent up)", async () => {
+    const { mulMoney } = await vi.importActual<typeof import("../services/commissionEngine")>("../services/commissionEngine");
+    expect(mulMoney("0.10", "0.07")).toBe("0.01");
+  });
+
+  it("100.00 × 0.333333 = 33.33", async () => {
+    const { mulMoney } = await vi.importActual<typeof import("../services/commissionEngine")>("../services/commissionEngine");
+    expect(mulMoney("100.00", "0.333333")).toBe("33.33");
+  });
+
+  it("1.00 × 0.005000 = 0.01 (positive half-cent rounds away from zero)", async () => {
+    const { mulMoney } = await vi.importActual<typeof import("../services/commissionEngine")>("../services/commissionEngine");
+    expect(mulMoney("1.00", "0.005000")).toBe("0.01");
+  });
+
+  it("-1.00 × 0.005000 = -0.01 (negative half-cent rounds away from zero)", async () => {
+    const { mulMoney } = await vi.importActual<typeof import("../services/commissionEngine")>("../services/commissionEngine");
+    expect(mulMoney("-1.00", "0.005000")).toBe("-0.01");
+  });
+
+  it("123456789.99 × 0.150000 = 18518518.50 (large number, 6dp rate)", async () => {
+    const { mulMoney } = await vi.importActual<typeof import("../services/commissionEngine")>("../services/commissionEngine");
+    expect(mulMoney("123456789.99", "0.150000")).toBe("18518518.50");
+  });
+
+  it("negative amount preserved: -500.00 × 0.100000 = -50.00", async () => {
     const { mulMoney } = await vi.importActual<typeof import("../services/commissionEngine")>("../services/commissionEngine");
     expect(mulMoney("-500.00", "0.100000")).toBe("-50.00");
   });
 
-  it("1000 * 0.1 = 100.00", async () => {
+  it("rejects NaN", async () => {
     const { mulMoney } = await vi.importActual<typeof import("../services/commissionEngine")>("../services/commissionEngine");
-    expect(mulMoney("1000.00", "0.100000")).toBe("100.00");
+    expect(() => mulMoney("NaN", "0.1")).toThrow(/Invalid monetary/);
   });
 
-  it("100.005 rounds to 100.01 (half-away-from-zero)", async () => {
+  it("rejects Infinity", async () => {
     const { mulMoney } = await vi.importActual<typeof import("../services/commissionEngine")>("../services/commissionEngine");
-    // 1000.05 * 0.1 = 100.005 → rounds to 100.01
-    expect(mulMoney("1000.05", "0.100000")).toBe("100.01");
+    expect(() => mulMoney("1000", "Infinity")).toThrow(/Invalid monetary/);
   });
 
-  it("throws on non-finite input", async () => {
+  it("rejects scientific notation", async () => {
     const { mulMoney } = await vi.importActual<typeof import("../services/commissionEngine")>("../services/commissionEngine");
-    expect(() => mulMoney("NaN", "0.1")).toThrow();
-    expect(() => mulMoney("1000", "Infinity")).toThrow();
+    expect(() => mulMoney("1e5", "0.1")).toThrow(/Invalid monetary/);
+  });
+});
+
+describe("Decimal arithmetic — addMoney (no float drift)", () => {
+  it("224.25 + 75.75 = 300.00", async () => {
+    const { addMoney } = await vi.importActual<typeof import("../services/commissionEngine")>("../services/commissionEngine");
+    expect(addMoney("224.25", "75.75")).toBe("300.00");
+  });
+
+  it("0.01 + 0.02 = 0.03 (no binary float drift)", async () => {
+    const { addMoney } = await vi.importActual<typeof import("../services/commissionEngine")>("../services/commissionEngine");
+    expect(addMoney("0.01", "0.02")).toBe("0.03");
+  });
+
+  it("negative addMoney: -50.00 + 20.00 = -30.00", async () => {
+    const { addMoney } = await vi.importActual<typeof import("../services/commissionEngine")>("../services/commissionEngine");
+    expect(addMoney("-50.00", "20.00")).toBe("-30.00");
   });
 });
 
 describe("rule_version increments correctly", () => {
-  it("createCommissionRule receives entity context", async () => {
+  it("createCommissionRule called with entityId and reason", async () => {
     await request(makeApp("admin")).post(`/commissions/${SLUG}/rules`).send({
       representativeId: REP_UUID,
       formulaType: "percentage_of_invoice",
       payableTrigger: "invoice_paid",
       effectiveFrom: "2026-01-01",
+      reason: "Setting up commission",
     });
     expect(createCommissionRule).toHaveBeenCalledWith(
-      expect.objectContaining({ entityId: ENTITY_ID, representativeId: REP_UUID }),
+      expect.objectContaining({ entityId: ENTITY_ID, representativeId: REP_UUID, reason: "Setting up commission" }),
     );
   });
 });

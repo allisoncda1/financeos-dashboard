@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from "preact/hooks";
+import { useState, useEffect, useRef } from "react";
 import { CommissionLayout } from "@/components/commission/CommissionLayout";
 import { useCommissionEntity } from "@/lib/commission-context";
 import { api } from "@/lib/api";

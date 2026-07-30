@@ -1,10 +1,10 @@
-import { useState } from "preact/hooks";
+import { useState } from "react";
 import { CommissionLayout } from "@/components/commission/CommissionLayout";
 import { useCommissionEntity } from "@/lib/commission-context";
 import { api } from "@/lib/api";
 import type { CommissionRepSummary, CommissionRunLine } from "@/lib/api";
 import { formatCurrency } from "@/lib/format";
-import { useEffect, useRef } from "preact/hooks";
+import { useEffect, useRef } from "react";
 
 // ─── Mini fetch hook (no global store needed for commission module) ────────────
 function useCommissionData<T>(fetcher: () => Promise<{ data: T }>, deps: unknown[]) {

@@ -6,8 +6,9 @@
  *   - All user-supplied values go through parameterized sql`` tags.
  *   - No sql.raw() with user values.
  *   - Null is never silently converted to zero.
- *   - locked lines are immutable.
- *   - approved lines flag source_changed if source fields differ on re-sync.
+ *   - Locked lines are immutable.
+ *   - Approved lines flag source_changed if source fields differ on re-sync;
+ *     approved_at/approved_by are cleared when a line re-enters needs_review.
  */
 import { opsDb } from "./connection";
 import { sql } from "drizzle-orm";
@@ -15,10 +16,16 @@ import { sql } from "drizzle-orm";
 // ─── Validation helpers ───────────────────────────────────────────────────────
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 const VALID_LINE_STATUSES = new Set([
   "attributed","house_no_commission","needs_configuration","needs_review",
   "calculated","awaiting_payment","ready_for_review","approved","locked","excluded",
 ]);
+const ALLOWED_FORMULA_TYPES = new Set([
+  "percentage_of_invoice","percentage_of_amount_paid","percentage_of_gross_profit",
+  "fixed_amount","manual","no_commission_house",
+]);
+const ALLOWED_TRIGGERS = new Set(["invoice_issued","invoice_paid","payment_received","manual_approval"]);
 
 export function isValidUuid(v: unknown): v is string {
   return typeof v === "string" && UUID_RE.test(v);
@@ -26,6 +33,22 @@ export function isValidUuid(v: unknown): v is string {
 
 export function assertValidUuid(v: unknown, name: string): string {
   if (!isValidUuid(v)) throw new Error(`Invalid UUID for ${name}: ${String(v)}`);
+  return v;
+}
+
+function assertValidDate(v: unknown, name: string): string {
+  if (typeof v !== "string" || !DATE_RE.test(v)) throw new Error(`Invalid ISO date for ${name}: ${String(v)}`);
+  const d = new Date(v);
+  if (isNaN(d.getTime())) throw new Error(`Invalid date for ${name}: ${String(v)}`);
+  return v;
+}
+
+function assertValidNumericString(v: string | null | undefined, name: string, opts: { min?: number; max?: number } = {}): string | null {
+  if (v == null) return null;
+  const n = parseFloat(v);
+  if (!isFinite(n)) throw new Error(`${name} must be finite: ${v}`);
+  if (opts.min !== undefined && n < opts.min) throw new Error(`${name} must be >= ${opts.min}: ${n}`);
+  if (opts.max !== undefined && n > opts.max) throw new Error(`${name} must be <= ${opts.max}: ${n}`);
   return v;
 }
 
@@ -62,8 +85,8 @@ export interface CommissionRule {
   customerNamePattern: string | null;
   formulaType: string;
   calculationBasis: string | null;
-  commissionRate: string | null;   // stored as NUMERIC string — use mulMoney, never Number()
-  fixedAmount: string | null;      // stored as NUMERIC string
+  commissionRate: string | null;   // NUMERIC string — use mulMoney, never Number()
+  fixedAmount: string | null;      // NUMERIC string
   payableTrigger: string;
   ruleVersion: number;
   status: string;
@@ -125,9 +148,9 @@ export async function getCommissionRepresentatives(): Promise<CommissionRepresen
 }
 
 // ─── Attribution rules ────────────────────────────────────────────────────────
-// Loads ALL rules for the entity without date filtering.
-// Date-based filtering (effective_from / effective_to vs invoice_date) is done
-// in application code per-invoice in commissionEngine.ts.
+// Loads ALL rules without date filtering.
+// Date-based filtering (effective_from/effective_to vs invoice_date) is done
+// per-invoice in commissionEngine.ts.
 
 export async function getAttributionRulesForEntity(entityId: string): Promise<CommissionAttributionRule[]> {
   assertValidUuid(entityId, "entityId");
@@ -184,8 +207,9 @@ export async function getCommissionRules(entityId?: string): Promise<CommissionR
   return (rows.rows as Record<string, unknown>[]).map(mapCommissionRule);
 }
 
-/** Transactional rule creation: MAX(version)+1, supersede old, write audit.
- *  If insert fails, old rule stays active (transaction rolls back). */
+/** Transactional rule creation: MAX(version)+1 in CTE, supersede old, write audit.
+ *  The unique index uq_commission_rule_scope_version prevents concurrent duplicates.
+ *  If the insert fails (e.g. concurrent duplicate version), old rule stays active. */
 export async function createCommissionRule(rule: {
   entityId: string;
   representativeId: string;
@@ -205,10 +229,31 @@ export async function createCommissionRule(rule: {
   assertValidUuid(rule.entityId, "entityId");
   assertValidUuid(rule.representativeId, "representativeId");
   if (rule.coreCustomerId) assertValidUuid(rule.coreCustomerId, "coreCustomerId");
+  if (!ALLOWED_FORMULA_TYPES.has(rule.formulaType)) throw new Error(`Invalid formulaType: ${rule.formulaType}`);
+  if (!ALLOWED_TRIGGERS.has(rule.payableTrigger)) throw new Error(`Invalid payableTrigger: ${rule.payableTrigger}`);
+  assertValidDate(rule.effectiveFrom, "effectiveFrom");
+  if (rule.effectiveTo) {
+    assertValidDate(rule.effectiveTo, "effectiveTo");
+    if (rule.effectiveTo < rule.effectiveFrom) throw new Error("effectiveTo must be >= effectiveFrom");
+  }
+  if (rule.customerNamePattern != null) {
+    if (rule.customerNamePattern.trim() === "%" || rule.customerNamePattern.trim() === "") {
+      throw new Error("customerNamePattern cannot be a bare wildcard '%' or empty");
+    }
+  }
+  // Validate commissionRate and fixedAmount
+  assertValidNumericString(rule.commissionRate, "commissionRate", { min: 0, max: 10 });
+  assertValidNumericString(rule.fixedAmount, "fixedAmount", { min: -999999.99, max: 999999.99 });
+  // Formula/amount compatibility
+  if (rule.formulaType === "fixed_amount" && rule.fixedAmount == null && rule.commissionRate != null) {
+    throw new Error("fixed_amount formula requires fixedAmount, not commissionRate");
+  }
+  if (rule.formulaType === "no_commission_house" && (rule.commissionRate != null || rule.fixedAmount != null)) {
+    throw new Error("no_commission_house formula must not have commissionRate or fixedAmount");
+  }
 
   const result = await opsDb.execute(sql`
     WITH
-    -- Step 1: compute next version number for this scope
     next_ver AS (
       SELECT COALESCE(MAX(rule_version), 0) + 1 AS v
       FROM commission_rules
@@ -223,7 +268,6 @@ export async function createCommissionRule(rule: {
           OR customer_name_pattern = ${rule.customerNamePattern ?? null}
         )
     ),
-    -- Step 2: supersede old active rules for same scope
     superseded AS (
       UPDATE commission_rules
       SET status = 'superseded', updated_at = now()
@@ -240,7 +284,6 @@ export async function createCommissionRule(rule: {
         )
       RETURNING id, formula_type, commission_rate, payable_trigger, rule_version
     ),
-    -- Step 3: insert new rule with next version
     new_rule AS (
       INSERT INTO commission_rules (
         entity_id, representative_id, core_customer_id, customer_name_pattern,
@@ -269,7 +312,6 @@ export async function createCommissionRule(rule: {
                 commission_rate::text, fixed_amount::text, payable_trigger,
                 rule_version, status, effective_from::text, effective_to::text, notes
     ),
-    -- Step 4: write audit for the new rule
     _audit AS (
       INSERT INTO commission_rule_audit (rule_id, action, performed_by, reason, snapshot)
       SELECT
@@ -304,7 +346,6 @@ export async function getCommissionLines(filters: {
   limit?: number;
   offset?: number;
 }): Promise<{ lines: CommissionRunLine[]; total: number }> {
-  // Validate all filter inputs
   if (filters.entityId) assertValidUuid(filters.entityId, "entityId");
   if (filters.representativeId) assertValidUuid(filters.representativeId, "representativeId");
   if (filters.lineStatus && !VALID_LINE_STATUSES.has(filters.lineStatus)) {
@@ -317,12 +358,11 @@ export async function getCommissionLines(filters: {
   const limit = Math.min(Math.max(1, filters.limit ?? 500), 1000);
   const offset = Math.max(0, Math.floor(filters.offset ?? 0));
 
-  // All conditions use parameterized sql`` — no user values concatenated into strings
   const baseQuery = sql`
     FROM commission_run_lines cl
     LEFT JOIN commission_representatives rep ON rep.id = cl.representative_id
     WHERE 1=1
-      ${filters.entityId        ? sql`AND cl.entity_id = ${filters.entityId}::uuid` : sql``}
+      ${filters.entityId         ? sql`AND cl.entity_id = ${filters.entityId}::uuid` : sql``}
       ${filters.representativeId ? sql`AND cl.representative_id = ${filters.representativeId}::uuid` : sql``}
       ${filters.lineStatus       ? sql`AND cl.line_status = ${filters.lineStatus}` : sql``}
       ${year != null && month != null ? sql`AND EXTRACT(YEAR FROM cl.invoice_date) = ${year} AND EXTRACT(MONTH FROM cl.invoice_date) = ${month}` : sql``}
@@ -393,8 +433,6 @@ export async function getCommissionLineSummary(entityId?: string) {
   }));
 }
 
-/** Upsert result — distinguishes created, updated, skipped.
- *  source_changed: approved line where source fields differ (flags for review). */
 export type UpsertAction = "created" | "updated" | "skipped" | "source_changed";
 
 export async function upsertCommissionLine(line: {
@@ -423,16 +461,16 @@ export async function upsertCommissionLine(line: {
   sourceFingerprint: string;
   recalculatedBy?: string | null;
 }): Promise<UpsertAction> {
-  // Check for existing line
   const existing = await opsDb.execute(sql`
-    SELECT id, line_status, invoice_amount::text, invoice_status, customer_name
+    SELECT id, line_status,
+           invoice_amount::text, invoice_status, customer_name,
+           invoice_date::text, customer_id::text
     FROM commission_run_lines
     WHERE source_fingerprint = ${line.sourceFingerprint}
     LIMIT 1
   `);
 
   if (existing.rows.length === 0) {
-    // New line — insert
     await opsDb.execute(sql`
       INSERT INTO commission_run_lines (
         entity_id, invoice_id, invoice_qbo_id, invoice_doc_number, invoice_date,
@@ -473,37 +511,43 @@ export async function upsertCommissionLine(line: {
   const ex = existing.rows[0] as Record<string, unknown>;
   const currentStatus = ex.line_status as string;
 
-  // Locked lines are immutable
   if (currentStatus === "locked") return "skipped";
 
-  // Approved lines: if source fields changed, flag for review
   if (currentStatus === "approved") {
+    // Source change detection: include fields that can affect attribution/calculation
     const sourceChanged =
-      ex.invoice_amount !== (line.invoiceAmount ?? null) ||
-      ex.invoice_status !== (line.invoiceStatus ?? null) ||
-      ex.customer_name  !== (line.customerName ?? null);
+      ex.invoice_amount  !== (line.invoiceAmount  ?? null) ||
+      ex.invoice_status  !== (line.invoiceStatus  ?? null) ||
+      ex.customer_name   !== (line.customerName   ?? null) ||
+      ex.invoice_date    !== (line.invoiceDate     ?? null) ||
+      ex.customer_id     !== (line.customerId      ?? null);
     if (sourceChanged) {
+      // Clear approved_at/approved_by — approval is no longer valid for the new source data.
+      // Prior approval is preserved in commission_rule_audit via the source_changed reason.
       await opsDb.execute(sql`
         UPDATE commission_run_lines
         SET
-          invoice_amount     = ${line.invoiceAmount ?? null}::numeric,
-          invoice_status     = ${line.invoiceStatus ?? null},
-          customer_name      = ${line.customerName ?? null},
-          customer_id        = ${line.customerId ?? null}::uuid,
-          representative_id  = ${line.representativeId ?? null}::uuid,
+          invoice_amount      = ${line.invoiceAmount ?? null}::numeric,
+          invoice_status      = ${line.invoiceStatus ?? null},
+          customer_name       = ${line.customerName ?? null},
+          customer_id         = ${line.customerId ?? null}::uuid,
+          invoice_date        = ${line.invoiceDate ?? null}::date,
+          representative_id   = ${line.representativeId ?? null}::uuid,
           attribution_rule_id = ${line.attributionRuleId ?? null}::uuid,
-          attribution_match  = ${line.attributionMatch ?? null},
-          commission_rule_id = ${line.commissionRuleId ?? null}::uuid,
-          formula_type       = ${line.formulaType ?? null},
-          calculation_basis  = ${line.calculationBasis ?? null},
-          commission_rate    = ${line.commissionRate ?? null}::numeric,
-          commission_amount  = NULL,
-          payout_eligible    = ${line.payoutEligible},
-          exclusion_reason   = 'source_changed',
-          line_status        = 'needs_review',
-          recalculated_at    = now(),
-          recalculated_by    = ${line.recalculatedBy ?? null},
-          updated_at         = now()
+          attribution_match   = ${line.attributionMatch ?? null},
+          commission_rule_id  = ${line.commissionRuleId ?? null}::uuid,
+          formula_type        = ${line.formulaType ?? null},
+          calculation_basis   = ${line.calculationBasis ?? null},
+          commission_rate     = ${line.commissionRate ?? null}::numeric,
+          commission_amount   = NULL,
+          payout_eligible     = ${line.payoutEligible},
+          exclusion_reason    = 'source_changed',
+          line_status         = 'needs_review',
+          approved_at         = NULL,
+          approved_by         = NULL,
+          recalculated_at     = now(),
+          recalculated_by     = ${line.recalculatedBy ?? null},
+          updated_at          = now()
         WHERE source_fingerprint = ${line.sourceFingerprint}
       `);
       return "source_changed";
@@ -519,6 +563,7 @@ export async function upsertCommissionLine(line: {
       invoice_status      = ${line.invoiceStatus ?? null},
       customer_id         = ${line.customerId ?? null}::uuid,
       customer_name       = ${line.customerName ?? null},
+      invoice_date        = ${line.invoiceDate ?? null}::date,
       representative_id   = ${line.representativeId ?? null}::uuid,
       attribution_rule_id = ${line.attributionRuleId ?? null}::uuid,
       attribution_match   = ${line.attributionMatch ?? null},
@@ -539,7 +584,8 @@ export async function upsertCommissionLine(line: {
 }
 
 /** Approve a single calculated line.
- *  Returns false if no line was updated (wrong status, wrong entity, or not found). */
+ *  Returns false if no line was updated (wrong status, wrong entity, or not found).
+ *  Only 'calculated' lines can be approved — enforced server-side. */
 export async function approveCommissionLine(
   lineId: string,
   entityId: string,
@@ -557,10 +603,21 @@ export async function approveCommissionLine(
   return (result.rowCount ?? 0) > 0;
 }
 
-/** Lock a commission period.
- *  Pre-checks: all external lines must be approved; house lines may be house_no_commission.
- *  Returns 409 error string if pre-checks fail; otherwise locks atomically in a transaction.
- *  Returns null on success. */
+/**
+ * Lock a commission period.
+ *
+ * All checks and updates are executed in a single SQL statement so they see the
+ * same consistent snapshot. The unique constraint on commission_periods prevents
+ * a second concurrent lock from completing if one is already in progress.
+ *
+ * Pre-checks:
+ *   1. Period must not be empty (at least one line).
+ *   2. External-rep lines must all be approved or locked.
+ *   3. No line in needs_review / needs_configuration / calculated / attributed /
+ *      awaiting_payment for any rep type.
+ *
+ * Returns null on success; error string (for 409) on failure.
+ */
 export async function lockCommissionPeriod(
   entityId: string,
   year: number,
@@ -570,52 +627,77 @@ export async function lockCommissionPeriod(
   assertValidUuid(entityId, "entityId");
   if (month < 1 || month > 12) throw new Error("Invalid month");
 
-  // Pre-check: count external lines not yet approved
-  const blockingRows = await opsDb.execute(sql`
-    SELECT COUNT(*) AS blocking
-    FROM commission_run_lines cl
-    JOIN commission_representatives rep ON rep.id = cl.representative_id
-    WHERE cl.entity_id = ${entityId}::uuid
-      AND EXTRACT(YEAR  FROM cl.invoice_date) = ${year}
-      AND EXTRACT(MONTH FROM cl.invoice_date) = ${month}
-      AND rep.representative_type = 'external_rep'
-      AND cl.line_status NOT IN ('approved', 'locked')
-  `);
-  const blocking = Number((blockingRows.rows[0] as Record<string, unknown>).blocking ?? 0);
-  if (blocking > 0) {
-    return `Cannot lock: ${blocking} external line(s) are not yet approved`;
-  }
-
-  // Pre-check: no needs_review or needs_configuration for any rep type
-  const problemRows = await opsDb.execute(sql`
-    SELECT COUNT(*) AS problems
-    FROM commission_run_lines cl
-    WHERE cl.entity_id = ${entityId}::uuid
-      AND EXTRACT(YEAR  FROM cl.invoice_date) = ${year}
-      AND EXTRACT(MONTH FROM cl.invoice_date) = ${month}
-      AND cl.line_status IN ('needs_review', 'needs_configuration', 'calculated', 'attributed')
-  `);
-  const problems = Number((problemRows.rows[0] as Record<string, unknown>).problems ?? 0);
-  if (problems > 0) {
-    return `Cannot lock: ${problems} line(s) in unresolved status (needs_review/needs_configuration/calculated/attributed)`;
-  }
-
-  // Atomic lock — update lines and upsert period in one transaction
-  await opsDb.execute(sql`
-    WITH locked_lines AS (
+  // Single atomic CTE — all reads use the same snapshot.
+  const result = await opsDb.execute(sql`
+    WITH
+    _period_count AS (
+      SELECT COUNT(*) AS cnt
+      FROM commission_run_lines cl
+      WHERE cl.entity_id = ${entityId}::uuid
+        AND EXTRACT(YEAR  FROM cl.invoice_date) = ${year}
+        AND EXTRACT(MONTH FROM cl.invoice_date) = ${month}
+    ),
+    _blockers AS (
+      SELECT COUNT(*) AS blocking
+      FROM commission_run_lines cl
+      JOIN commission_representatives rep ON rep.id = cl.representative_id
+      WHERE cl.entity_id = ${entityId}::uuid
+        AND EXTRACT(YEAR  FROM cl.invoice_date) = ${year}
+        AND EXTRACT(MONTH FROM cl.invoice_date) = ${month}
+        AND rep.representative_type = 'external_rep'
+        AND cl.line_status NOT IN ('approved', 'locked', 'house_no_commission')
+    ),
+    _unresolved AS (
+      SELECT COUNT(*) AS problems
+      FROM commission_run_lines cl
+      WHERE cl.entity_id = ${entityId}::uuid
+        AND EXTRACT(YEAR  FROM cl.invoice_date) = ${year}
+        AND EXTRACT(MONTH FROM cl.invoice_date) = ${month}
+        AND cl.line_status IN (
+          'needs_review','needs_configuration','calculated','attributed','awaiting_payment'
+        )
+    ),
+    _can_lock AS (
+      SELECT
+        (SELECT cnt FROM _period_count)       AS period_count,
+        (SELECT blocking FROM _blockers)      AS blocking,
+        (SELECT problems FROM _unresolved)    AS problems,
+        (SELECT cnt FROM _period_count) > 0
+        AND (SELECT blocking FROM _blockers)  = 0
+        AND (SELECT problems FROM _unresolved) = 0 AS ok
+    ),
+    _locked AS (
       UPDATE commission_run_lines
       SET line_status = 'locked', locked_at = now(), locked_by = ${lockedBy}, updated_at = now()
       WHERE entity_id = ${entityId}::uuid
         AND EXTRACT(YEAR  FROM invoice_date) = ${year}
         AND EXTRACT(MONTH FROM invoice_date) = ${month}
         AND line_status IN ('approved', 'house_no_commission')
+        AND (SELECT ok FROM _can_lock)
       RETURNING id
+    ),
+    _upsert AS (
+      INSERT INTO commission_periods (entity_id, period_year, period_month, status, locked_at, locked_by)
+      SELECT ${entityId}::uuid, ${year}, ${month}, 'locked', now(), ${lockedBy}
+      WHERE (SELECT ok FROM _can_lock)
+      ON CONFLICT (entity_id, period_year, period_month)
+      DO UPDATE SET status = 'locked', locked_at = now(), locked_by = EXCLUDED.locked_by
     )
-    INSERT INTO commission_periods (entity_id, period_year, period_month, status, locked_at, locked_by)
-    VALUES (${entityId}::uuid, ${year}, ${month}, 'locked', now(), ${lockedBy})
-    ON CONFLICT (entity_id, period_year, period_month)
-    DO UPDATE SET status = 'locked', locked_at = now(), locked_by = ${lockedBy}
+    SELECT period_count, blocking, problems, ok FROM _can_lock
   `);
+
+  const row = result.rows[0] as Record<string, unknown>;
+  const ok          = row.ok          as boolean;
+  const periodCount = Number(row.period_count ?? 0);
+  const blocking    = Number(row.blocking     ?? 0);
+  const problems    = Number(row.problems     ?? 0);
+
+  if (!ok) {
+    if (periodCount === 0) return "Cannot lock: no commission lines found for this period";
+    if (blocking > 0) return `Cannot lock: ${blocking} external line(s) are not yet approved`;
+    if (problems > 0) return `Cannot lock: ${problems} line(s) in unresolved status (needs_review/needs_configuration/calculated/attributed/awaiting_payment)`;
+    return "Cannot lock: pre-check failed";
+  }
   return null;
 }
 

@@ -6,7 +6,11 @@
 -- IMPORTANT:
 --   - No entity_default rules. House is attributed by explicit client rule only.
 --   - No commission rates seeded — rates not confirmed.
---   - Idempotent: safe to run twice (ON CONFLICT DO NOTHING).
+--   - Idempotent: safe to run twice (ON CONFLICT DO NOTHING on the partial unique indexes
+--     that enforce one rep per entity per customer scope).
+--   - Single-sighting candidates (Mazda of Columbia, Cargill Chevrolet, Castle Hyundai,
+--     Precision Roofing) are NOT seeded as active rules; they will appear as needs_review
+--     until confirmed via the rule UI.
 --
 -- Entity UUIDs (FinanceOS Core, confirmed):
 --   cardealer_ai  = b86bb66e-df81-4d32-8629-3012635ba16a
@@ -14,21 +18,27 @@
 --   topmrktr      = 28775e76-4e8f-49cd-84e8-d2de4b4491a9
 --   smile_more    = 0bea3469-8fb5-460d-8bd9-7471e242a8c8
 --
+-- Customer ID resolution: core_customer_id is NOT available without a QBO customer join.
+-- All rules use customer_name_pattern (match_type = 'customer_name_pattern').
+-- Exact UUIDs can be added via UI once the customer join is available.
+--
 -- Double-execution test: running this file twice produces the same row count.
 -- Verify with: SELECT COUNT(*) FROM commission_attribution_rules;
--- Expected after first run: 17 rows. Second run: 17 rows (unchanged).
+-- Expected after first run: 30 rows. Second run: 30 rows (unchanged).
 
 BEGIN;
 
--- ─────────────────────────────────────────────────────────────
--- Car Dealer AI (b86bb66e-df81-4d32-8629-3012635ba16a)
--- ─────────────────────────────────────────────────────────────
+-- ═════════════════════════════════════════════════════════════
+-- CAR DEALER AI (b86bb66e-df81-4d32-8629-3012635ba16a)
+-- ═════════════════════════════════════════════════════════════
+
+-- ── External rep rules (confirmed multi-month) ────────────────
 
 -- Jerod: Metro Honda
 INSERT INTO commission_attribution_rules
   (entity_id, customer_name_pattern, match_type, priority, representative_id, effective_from, notes)
 SELECT 'b86bb66e-df81-4d32-8629-3012635ba16a', 'Metro Honda', 'customer_name_pattern', 10,
-       id, '2025-11-01', 'Confirmed: Jerod on Metro Honda (CarDealer.ai)'
+       id, '2025-11-01', 'Confirmed: Jerod on Metro Honda (CarDealer.ai, recurring)'
 FROM commission_representatives WHERE slug = 'jerod'
 ON CONFLICT DO NOTHING;
 
@@ -36,7 +46,7 @@ ON CONFLICT DO NOTHING;
 INSERT INTO commission_attribution_rules
   (entity_id, customer_name_pattern, match_type, priority, representative_id, effective_from, notes)
 SELECT 'b86bb66e-df81-4d32-8629-3012635ba16a', 'Honda of Toms River', 'customer_name_pattern', 10,
-       id, '2025-11-01', 'Confirmed: Jerod on Honda of Toms River (CarDealer.ai)'
+       id, '2025-11-01', 'Confirmed: Jerod on Honda of Toms River (CarDealer.ai, recurring)'
 FROM commission_representatives WHERE slug = 'jerod'
 ON CONFLICT DO NOTHING;
 
@@ -48,19 +58,11 @@ SELECT 'b86bb66e-df81-4d32-8629-3012635ba16a', 'Big Mouth Advertising', 'custome
 FROM commission_representatives WHERE slug = 'jason'
 ON CONFLICT DO NOTHING;
 
--- Jason: Mazda of Columbia (Feb 2026+)
-INSERT INTO commission_attribution_rules
-  (entity_id, customer_name_pattern, match_type, priority, representative_id, effective_from, notes)
-SELECT 'b86bb66e-df81-4d32-8629-3012635ba16a', 'Mazda%Columbia', 'customer_name_pattern', 10,
-       id, '2026-02-01', 'Confirmed: Jason on Mazda of Columbia (CarDealer.ai)'
-FROM commission_representatives WHERE slug = 'jason'
-ON CONFLICT DO NOTHING;
-
 -- Big Mouth: James CDJR Cedar Lake (May 2026+)
 INSERT INTO commission_attribution_rules
   (entity_id, customer_name_pattern, match_type, priority, representative_id, effective_from, notes)
 SELECT 'b86bb66e-df81-4d32-8629-3012635ba16a', 'James%Chrysler%Cedar Lake', 'customer_name_pattern', 10,
-       id, '2026-05-01', 'Confirmed: Big Mouth on James CDJR Cedar Lake (CarDealer.ai)'
+       id, '2026-05-01', 'Confirmed: Big Mouth on James CDJR Cedar Lake (CarDealer.ai, May 2026+)'
 FROM commission_representatives WHERE slug = 'big_mouth'
 ON CONFLICT DO NOTHING;
 
@@ -68,19 +70,79 @@ ON CONFLICT DO NOTHING;
 INSERT INTO commission_attribution_rules
   (entity_id, customer_name_pattern, match_type, priority, representative_id, effective_from, notes)
 SELECT 'b86bb66e-df81-4d32-8629-3012635ba16a', 'James%Chrysler%Hampshire', 'customer_name_pattern', 10,
-       id, '2026-05-01', 'Confirmed: Big Mouth on James CDJR Hampshire (CarDealer.ai)'
+       id, '2026-05-01', 'Confirmed: Big Mouth on James CDJR Hampshire (CarDealer.ai, May 2026+)'
 FROM commission_representatives WHERE slug = 'big_mouth'
 ON CONFLICT DO NOTHING;
 
--- ─────────────────────────────────────────────────────────────
--- T3 Marketing (c2cf72b0-d77d-42de-a588-98092d9441df)
--- ─────────────────────────────────────────────────────────────
+-- ── House rules (CarDealer AI — confirmed recurring house accounts) ───
 
--- Big Mouth: James CDJR (Apr 2026+)
+-- Mike Terry group (multiple entities: Chevrolet, GMC, Ford, Hyundai — use prefix pattern)
+INSERT INTO commission_attribution_rules
+  (entity_id, customer_name_pattern, match_type, priority, representative_id, effective_from, notes)
+SELECT 'b86bb66e-df81-4d32-8629-3012635ba16a', 'Mike Terry%', 'customer_name_pattern', 5,
+       id, '2025-11-01', 'House: Mike Terry group (Chevrolet, GMC, Ford, Hyundai, Silsbee) — no commission'
+FROM commission_representatives WHERE slug = 'house'
+ON CONFLICT DO NOTHING;
+
+-- T3 Marketing (house client of CarDealer.ai — intercompany)
+INSERT INTO commission_attribution_rules
+  (entity_id, customer_name_pattern, match_type, priority, representative_id, effective_from, notes)
+SELECT 'b86bb66e-df81-4d32-8629-3012635ba16a', 'T3 Marketing', 'customer_name_pattern', 5,
+       id, '2025-11-01', 'House: T3 Marketing intercompany — no commission'
+FROM commission_representatives WHERE slug = 'house'
+ON CONFLICT DO NOTHING;
+
+-- Mercedes-Benz of South Orlando
+INSERT INTO commission_attribution_rules
+  (entity_id, customer_name_pattern, match_type, priority, representative_id, effective_from, notes)
+SELECT 'b86bb66e-df81-4d32-8629-3012635ba16a', 'Mercedes-Benz of South Orlando', 'customer_name_pattern', 5,
+       id, '2025-11-01', 'House: Mercedes-Benz of South Orlando — no commission'
+FROM commission_representatives WHERE slug = 'house'
+ON CONFLICT DO NOTHING;
+
+-- World Wide BDC
+INSERT INTO commission_attribution_rules
+  (entity_id, customer_name_pattern, match_type, priority, representative_id, effective_from, notes)
+SELECT 'b86bb66e-df81-4d32-8629-3012635ba16a', 'World Wide BDC', 'customer_name_pattern', 5,
+       id, '2025-11-01', 'House: World Wide BDC — no commission'
+FROM commission_representatives WHERE slug = 'house'
+ON CONFLICT DO NOTHING;
+
+-- Drive More Sales
+INSERT INTO commission_attribution_rules
+  (entity_id, customer_name_pattern, match_type, priority, representative_id, effective_from, notes)
+SELECT 'b86bb66e-df81-4d32-8629-3012635ba16a', 'Drive More Sales', 'customer_name_pattern', 5,
+       id, '2025-11-01', 'House: Drive More Sales — no commission'
+FROM commission_representatives WHERE slug = 'house'
+ON CONFLICT DO NOTHING;
+
+-- Malcolm Cunningham Chevrolet Alpharetta
+INSERT INTO commission_attribution_rules
+  (entity_id, customer_name_pattern, match_type, priority, representative_id, effective_from, notes)
+SELECT 'b86bb66e-df81-4d32-8629-3012635ba16a', 'Malcolm Cunningham Chevrolet Alpharetta', 'customer_name_pattern', 5,
+       id, '2025-11-01', 'House: Malcolm Cunningham Chevrolet Alpharetta — no commission'
+FROM commission_representatives WHERE slug = 'house'
+ON CONFLICT DO NOTHING;
+
+-- McCloskey Motors, Inc
+INSERT INTO commission_attribution_rules
+  (entity_id, customer_name_pattern, match_type, priority, representative_id, effective_from, notes)
+SELECT 'b86bb66e-df81-4d32-8629-3012635ba16a', 'McCloskey Motors%', 'customer_name_pattern', 5,
+       id, '2025-11-01', 'House: McCloskey Motors, Inc — no commission'
+FROM commission_representatives WHERE slug = 'house'
+ON CONFLICT DO NOTHING;
+
+-- ═════════════════════════════════════════════════════════════
+-- T3 MARKETING (c2cf72b0-d77d-42de-a588-98092d9441df)
+-- ═════════════════════════════════════════════════════════════
+
+-- ── External rep rules (confirmed multi-month) ────────────────
+
+-- Big Mouth: James CDJR accounts (Apr 2026+)
 INSERT INTO commission_attribution_rules
   (entity_id, customer_name_pattern, match_type, priority, representative_id, effective_from, notes)
 SELECT 'c2cf72b0-d77d-42de-a588-98092d9441df', 'James CDJR%', 'customer_name_pattern', 10,
-       id, '2026-04-01', 'Confirmed: Big Mouth on James CDJR accounts (T3 Marketing)'
+       id, '2026-04-01', 'Confirmed: Big Mouth on James CDJR accounts (T3 Marketing, Apr 2026+)'
 FROM commission_representatives WHERE slug = 'big_mouth'
 ON CONFLICT DO NOTHING;
 
@@ -88,84 +150,166 @@ ON CONFLICT DO NOTHING;
 INSERT INTO commission_attribution_rules
   (entity_id, customer_name_pattern, match_type, priority, representative_id, effective_from, notes)
 SELECT 'c2cf72b0-d77d-42de-a588-98092d9441df', 'South Suburban Mitsubishi', 'customer_name_pattern', 10,
-       id, '2026-04-01', 'Confirmed: Big Mouth on South Suburban Mitsubishi (T3 Marketing)'
+       id, '2026-04-01', 'Confirmed: Big Mouth on South Suburban Mitsubishi (T3 Marketing, Apr 2026+)'
 FROM commission_representatives WHERE slug = 'big_mouth'
 ON CONFLICT DO NOTHING;
 
--- Jason: Cargill Chevrolet (Jun 2026+)
+-- ── House rules (T3 Marketing — confirmed recurring house accounts) ───
+
+-- Barberino Nissan
 INSERT INTO commission_attribution_rules
   (entity_id, customer_name_pattern, match_type, priority, representative_id, effective_from, notes)
-SELECT 'c2cf72b0-d77d-42de-a588-98092d9441df', 'Cargill Chevrolet', 'customer_name_pattern', 10,
-       id, '2026-06-01', 'Confirmed: Jason on Cargill Chevrolet (T3 Marketing, Jun 2026)'
-FROM commission_representatives WHERE slug = 'jason'
+SELECT 'c2cf72b0-d77d-42de-a588-98092d9441df', 'Barberino Nissan', 'customer_name_pattern', 5,
+       id, '2025-11-01', 'House: Barberino Nissan (T3 Marketing) — no commission'
+FROM commission_representatives WHERE slug = 'house'
 ON CONFLICT DO NOTHING;
 
--- Jason: Mazda of Columbia (Dec 2025+)
+-- Goose Creek Mitsubishi
 INSERT INTO commission_attribution_rules
   (entity_id, customer_name_pattern, match_type, priority, representative_id, effective_from, notes)
-SELECT 'c2cf72b0-d77d-42de-a588-98092d9441df', 'Mazda%Columbia', 'customer_name_pattern', 10,
-       id, '2025-12-01', 'Confirmed: Jason on Mazda of Columbia (T3 Marketing, Dec 2025)'
-FROM commission_representatives WHERE slug = 'jason'
+SELECT 'c2cf72b0-d77d-42de-a588-98092d9441df', 'Goose Creek Mitsubishi', 'customer_name_pattern', 5,
+       id, '2025-11-01', 'House: Goose Creek Mitsubishi (T3 Marketing) — no commission'
+FROM commission_representatives WHERE slug = 'house'
 ON CONFLICT DO NOTHING;
 
--- ─────────────────────────────────────────────────────────────
--- Top Mktr (28775e76-4e8f-49cd-84e8-d2de4b4491a9)
--- ─────────────────────────────────────────────────────────────
+-- Royal Mitsubishi
+INSERT INTO commission_attribution_rules
+  (entity_id, customer_name_pattern, match_type, priority, representative_id, effective_from, notes)
+SELECT 'c2cf72b0-d77d-42de-a588-98092d9441df', 'Royal Mitsubishi', 'customer_name_pattern', 5,
+       id, '2025-11-01', 'House: Royal Mitsubishi (T3 Marketing) — no commission'
+FROM commission_representatives WHERE slug = 'house'
+ON CONFLICT DO NOTHING;
 
--- Jason: Foray Insure (all months)
+-- TopMrktr LLC (intercompany)
+INSERT INTO commission_attribution_rules
+  (entity_id, customer_name_pattern, match_type, priority, representative_id, effective_from, notes)
+SELECT 'c2cf72b0-d77d-42de-a588-98092d9441df', 'TopMrktr%', 'customer_name_pattern', 5,
+       id, '2025-11-01', 'House: TopMrktr LLC intercompany (T3 Marketing) — no commission'
+FROM commission_representatives WHERE slug = 'house'
+ON CONFLICT DO NOTHING;
+
+-- Augusta Mitsubishi
+INSERT INTO commission_attribution_rules
+  (entity_id, customer_name_pattern, match_type, priority, representative_id, effective_from, notes)
+SELECT 'c2cf72b0-d77d-42de-a588-98092d9441df', 'Augusta Mitsubishi', 'customer_name_pattern', 5,
+       id, '2025-11-01', 'House: Augusta Mitsubishi (T3 Marketing) — no commission'
+FROM commission_representatives WHERE slug = 'house'
+ON CONFLICT DO NOTHING;
+
+-- Smile More Business Solutions (Carlos) — intercompany
+INSERT INTO commission_attribution_rules
+  (entity_id, customer_name_pattern, match_type, priority, representative_id, effective_from, notes)
+SELECT 'c2cf72b0-d77d-42de-a588-98092d9441df', 'Smile More%', 'customer_name_pattern', 5,
+       id, '2025-11-01', 'House: Smile More Business Solutions (T3 Marketing) — intercompany, no commission'
+FROM commission_representatives WHERE slug = 'house'
+ON CONFLICT DO NOTHING;
+
+-- ═════════════════════════════════════════════════════════════
+-- TOP MKTR (28775e76-4e8f-49cd-84e8-d2de4b4491a9)
+-- ═════════════════════════════════════════════════════════════
+
+-- ── External rep rules (confirmed multi-month) ────────────────
+
+-- Jason: Foray Insure (all months — recurring)
 INSERT INTO commission_attribution_rules
   (entity_id, customer_name_pattern, match_type, priority, representative_id, effective_from, notes)
 SELECT '28775e76-4e8f-49cd-84e8-d2de4b4491a9', 'Foray%', 'customer_name_pattern', 10,
-       id, '2025-11-01', 'Confirmed: Jason on Foray Insure (Top Mktr, all months)'
+       id, '2025-11-01', 'Confirmed: Jason on Foray Insure (Top Mktr, all months, recurring)'
 FROM commission_representatives WHERE slug = 'jason'
 ON CONFLICT DO NOTHING;
 
--- Jason: Incarnation Specialties (all months)
+-- Jason: Incarnation Specialties (all months — recurring)
 INSERT INTO commission_attribution_rules
   (entity_id, customer_name_pattern, match_type, priority, representative_id, effective_from, notes)
 SELECT '28775e76-4e8f-49cd-84e8-d2de4b4491a9', 'Incarnation Specialist%', 'customer_name_pattern', 10,
-       id, '2025-11-01', 'Confirmed: Jason on Incarnation Specialties (Top Mktr, all months)'
+       id, '2025-11-01', 'Confirmed: Jason on Incarnation Specialties (Top Mktr, all months, recurring)'
 FROM commission_representatives WHERE slug = 'jason'
 ON CONFLICT DO NOTHING;
 
--- Jason: TAG Reserve Spirits (all months)
+-- Jason: TAG Reserve Spirits (all months — recurring)
 INSERT INTO commission_attribution_rules
   (entity_id, customer_name_pattern, match_type, priority, representative_id, effective_from, notes)
 SELECT '28775e76-4e8f-49cd-84e8-d2de4b4491a9', 'TAG Reserve%', 'customer_name_pattern', 10,
-       id, '2025-11-01', 'Confirmed: Jason on TAG Reserve Spirits (Top Mktr, all months)'
+       id, '2025-11-01', 'Confirmed: Jason on TAG Reserve Spirits (Top Mktr, all months, recurring)'
 FROM commission_representatives WHERE slug = 'jason'
 ON CONFLICT DO NOTHING;
 
--- Jason: Precision Roofing (Apr 2026+)
+-- ── House rules (Top Mktr — confirmed recurring house accounts) ───
+
+-- Bay Community Health
 INSERT INTO commission_attribution_rules
   (entity_id, customer_name_pattern, match_type, priority, representative_id, effective_from, notes)
-SELECT '28775e76-4e8f-49cd-84e8-d2de4b4491a9', 'Precision Roofing', 'customer_name_pattern', 10,
-       id, '2026-04-01', 'Confirmed: Jason on Precision Roofing (Top Mktr, Apr 2026+)'
-FROM commission_representatives WHERE slug = 'jason'
+SELECT '28775e76-4e8f-49cd-84e8-d2de4b4491a9', 'Bay Community Health', 'customer_name_pattern', 5,
+       id, '2025-11-01', 'House: Bay Community Health (Top Mktr) — no commission'
+FROM commission_representatives WHERE slug = 'house'
 ON CONFLICT DO NOTHING;
 
--- Jason: Castle Hyundai (Nov 2025+)
+-- MHS Crane
 INSERT INTO commission_attribution_rules
   (entity_id, customer_name_pattern, match_type, priority, representative_id, effective_from, notes)
-SELECT '28775e76-4e8f-49cd-84e8-d2de4b4491a9', 'Castle Hyundai%', 'customer_name_pattern', 10,
-       id, '2025-11-01', 'Confirmed: Jason on Castle Hyundai (Top Mktr, Nov 2025+)'
-FROM commission_representatives WHERE slug = 'jason'
+SELECT '28775e76-4e8f-49cd-84e8-d2de4b4491a9', 'MHS Crane', 'customer_name_pattern', 5,
+       id, '2025-11-01', 'House: MHS Crane (Top Mktr) — no commission'
+FROM commission_representatives WHERE slug = 'house'
 ON CONFLICT DO NOTHING;
 
--- Jason: Mazda of Columbia (Dec 2025+)
+-- Chrysalis Law Partners LLC
 INSERT INTO commission_attribution_rules
   (entity_id, customer_name_pattern, match_type, priority, representative_id, effective_from, notes)
-SELECT '28775e76-4e8f-49cd-84e8-d2de4b4491a9', 'Mazda%Columbia', 'customer_name_pattern', 10,
-       id, '2025-12-01', 'Confirmed: Jason on Mazda of Columbia (Top Mktr, Dec 2025+)'
-FROM commission_representatives WHERE slug = 'jason'
+SELECT '28775e76-4e8f-49cd-84e8-d2de4b4491a9', 'Chrysalis Law Partners%', 'customer_name_pattern', 5,
+       id, '2025-11-01', 'House: Chrysalis Law Partners LLC (Top Mktr) — no commission'
+FROM commission_representatives WHERE slug = 'house'
 ON CONFLICT DO NOTHING;
 
--- ─────────────────────────────────────────────────────────────
--- Smile More (0bea3469-8fb5-460d-8bd9-7471e242a8c8)
--- ─────────────────────────────────────────────────────────────
+-- Roofing Recovery
+INSERT INTO commission_attribution_rules
+  (entity_id, customer_name_pattern, match_type, priority, representative_id, effective_from, notes)
+SELECT '28775e76-4e8f-49cd-84e8-d2de4b4491a9', 'Roofing Recovery', 'customer_name_pattern', 5,
+       id, '2025-11-01', 'House: Roofing Recovery (Top Mktr) — no commission'
+FROM commission_representatives WHERE slug = 'house'
+ON CONFLICT DO NOTHING;
+
+-- Home Office USA
+INSERT INTO commission_attribution_rules
+  (entity_id, customer_name_pattern, match_type, priority, representative_id, effective_from, notes)
+SELECT '28775e76-4e8f-49cd-84e8-d2de4b4491a9', 'Home Office USA', 'customer_name_pattern', 5,
+       id, '2025-11-01', 'House: Home Office USA (Top Mktr) — no commission'
+FROM commission_representatives WHERE slug = 'house'
+ON CONFLICT DO NOTHING;
+
+-- Slim CD
+INSERT INTO commission_attribution_rules
+  (entity_id, customer_name_pattern, match_type, priority, representative_id, effective_from, notes)
+SELECT '28775e76-4e8f-49cd-84e8-d2de4b4491a9', 'Slim CD', 'customer_name_pattern', 5,
+       id, '2025-11-01', 'House: Slim CD (Top Mktr) — no commission'
+FROM commission_representatives WHERE slug = 'house'
+ON CONFLICT DO NOTHING;
+
+-- Gentle Beginnings
+INSERT INTO commission_attribution_rules
+  (entity_id, customer_name_pattern, match_type, priority, representative_id, effective_from, notes)
+SELECT '28775e76-4e8f-49cd-84e8-d2de4b4491a9', 'Gentle Beginnings', 'customer_name_pattern', 5,
+       id, '2025-11-01', 'House: Gentle Beginnings (Top Mktr) — no commission'
+FROM commission_representatives WHERE slug = 'house'
+ON CONFLICT DO NOTHING;
+
+-- ═════════════════════════════════════════════════════════════
+-- SMILE MORE (0bea3469-8fb5-460d-8bd9-7471e242a8c8)
+-- ═════════════════════════════════════════════════════════════
 -- NOTE: No confirmed attribution rules from Excel audit for Smile More.
--- All Smile More invoices observed were house accounts but specific
--- customer names were not confirmed. Add explicit rules via UI once confirmed.
--- Invoices without a rule will appear as needs_review until rules are set.
+-- No single-sighting candidates seeded as active rules.
+-- All Smile More invoices → needs_review until rules are confirmed via UI.
+
+-- ═════════════════════════════════════════════════════════════
+-- SINGLE-SIGHTING CANDIDATES — NOT SEEDED (require business confirmation)
+-- ═════════════════════════════════════════════════════════════
+-- The following were seen in the Excel audit but only in a single month.
+-- They will produce needs_review until explicitly added via the rule UI:
+--
+--   Mazda of Columbia  (CarDealer.ai Feb 2026, T3 Dec 2025, Top Mktr Dec 2025)
+--     → Pattern "Mazda%Columbia" appears in 3 entities — requires disambiguation
+--       before seeding. May be same client invoiced across entities.
+--   Cargill Chevrolet  (T3, Jun 2026 only)
+--   Castle Hyundai     (Top Mktr, single period)
+--   Precision Roofing  (Top Mktr, Apr 2026 single period)
 
 COMMIT;
