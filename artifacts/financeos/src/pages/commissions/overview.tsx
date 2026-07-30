@@ -2,7 +2,7 @@ import { useState } from "react";
 import { CommissionLayout } from "@/components/commission/CommissionLayout";
 import { useCommissionEntity } from "@/lib/commission-context";
 import { api } from "@/lib/api";
-import type { CommissionRepSummary, CommissionRunLine } from "@/lib/api";
+import type { CommissionRepSummary, CommissionRunLine, CommissionRepresentative } from "@/lib/api";
 import { formatCurrency } from "@/lib/format";
 import { useEffect, useRef } from "react";
 
@@ -100,13 +100,28 @@ export default function CommissionOverviewPage() {
     () => api.commissionLines(activeSlug, { limit: 20 }),
     [activeSlug]
   );
+  const { data: repsData, loading: repsLoading } = useCommissionData(
+    () => api.commissionRepresentatives(activeSlug),
+    [activeSlug]
+  );
 
   const lines = (linesRes as { data?: CommissionRunLine[] } | null)?.data ?? (linesRes as CommissionRunLine[] | null) ?? [];
 
-  const externalReps = (summary ?? []).filter((s: CommissionRepSummary) => s.payoutEligible);
-  const houseRow     = (summary ?? []).find((s: CommissionRepSummary) => !s.payoutEligible);
+  const allReps = (repsData as CommissionRepresentative[] | null) ?? [];
+  const allExternalReps = allReps.filter(r => r.representativeType === "external_rep");
+  const houseRep = allReps.find(r => r.representativeType === "internal_house");
+
+  const summaryBySlug = new Map((summary ?? []).map((s: CommissionRepSummary) => [s.repSlug, s]));
+  const ZERO_SUMMARY = { lineCount: 0, totalInvoiceAmount: null, totalGrossProfit: null, totalCommission: null, calculated: 0, approved: 0, locked: 0, needsConfig: 0, needsReview: 0 };
+  const repCards: CommissionRepSummary[] = allExternalReps.map(rep => summaryBySlug.get(rep.slug) ?? {
+    repSlug: rep.slug, repName: rep.displayName, payoutEligible: true, ...ZERO_SUMMARY,
+  });
+  const houseRow = (summary ?? []).find((s: CommissionRepSummary) => !s.payoutEligible);
+  const houseRowFull: CommissionRepSummary | null = houseRow ?? (houseRep ? {
+    repSlug: houseRep.slug, repName: houseRep.displayName, payoutEligible: false, ...ZERO_SUMMARY,
+  } : null);
   // totalCommission is a sum of NUMERIC strings from the API — parse for display only
-  const totalCommission = externalReps.reduce((acc: number, s: CommissionRepSummary) => {
+  const totalCommission = repCards.reduce((acc: number, s: CommissionRepSummary) => {
     const n = parseFloat(s.totalCommission ?? "0");
     return acc + (isNaN(n) ? 0 : n);
   }, 0);
@@ -145,11 +160,11 @@ export default function CommissionOverviewPage() {
       </div>
 
       {/* Rep summary cards */}
-      {!sumLoading && externalReps.length > 0 && (
+      {!sumLoading && !repsLoading && repCards.length > 0 && (
         <div>
           <h2 className="text-sm font-semibold text-gray-600 uppercase tracking-wide mb-3">External Representatives</h2>
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-            {externalReps.map((rep: CommissionRepSummary) => (
+            {repCards.map((rep: CommissionRepSummary) => (
               <div key={rep.repSlug} className="bg-white rounded-xl border border-gray-200 shadow-sm px-5 py-4 space-y-2">
                 <div className="flex items-center justify-between">
                   <p className="font-semibold text-gray-900">{rep.repName}</p>
@@ -177,15 +192,15 @@ export default function CommissionOverviewPage() {
       )}
 
       {/* House summary */}
-      {!sumLoading && houseRow && (
+      {!sumLoading && !repsLoading && houseRowFull && (
         <div className="bg-gray-50 rounded-xl border border-gray-200 px-5 py-4 flex items-center gap-8">
           <div>
             <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">House</p>
-            <p className="text-xl font-bold text-gray-700 mt-0.5">{houseRow.lineCount} invoices</p>
+            <p className="text-xl font-bold text-gray-700 mt-0.5">{houseRowFull.lineCount} invoices</p>
             <p className="text-xs text-gray-400 mt-0.5">Direct contracts — payout = $0.00 (confirmed)</p>
           </div>
           <div className="text-sm text-gray-600">
-            <span className="font-medium">Total invoiced:</span> {fmt(houseRow.totalInvoiceAmount)}
+            <span className="font-medium">Total invoiced:</span> {fmt(houseRowFull.totalInvoiceAmount)}
           </div>
           <div className="ml-auto">
             <span className="bg-gray-200 text-gray-600 text-xs font-semibold px-3 py-1 rounded-full">payout_eligible = false</span>
