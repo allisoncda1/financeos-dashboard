@@ -11,7 +11,8 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "rc001:backfill:dry": "DRY_RUN=true tsx src/scripts/backfillPayments.ts",
-    "rc001:backfill": "tsx src/scripts/backfillPayments.ts"
+    "rc001:backfill": "tsx src/scripts/backfillPayments.ts",
+    "test:commissions:pg": "tsx scripts/test-commissions-pg.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.110.0",
