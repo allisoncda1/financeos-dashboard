@@ -301,24 +301,24 @@ export const api = {
     if (params?.limit)  qs.set("limit", String(params.limit));
     if (params?.offset) qs.set("offset", String(params.offset));
     const q = qs.toString();
-    return get<{ data: CommissionRunLine[]; total: number }>(`/commissions/${slug}/lines${q ? `?${q}` : ""}`);
+    return get<{ data: CommissionRunLine[]; total: number }>(`/commissions/${slug.toLowerCase()}/lines${q ? `?${q}` : ""}`);
   },
   commissionSummary: (slug: string) =>
-    get<{ data: CommissionRepSummary[] }>(`/commissions/${slug}/summary`),
+    get<{ data: CommissionRepSummary[] }>(`/commissions/${slug.toLowerCase()}/summary`),
   commissionRepresentatives: (slug: string) =>
-    get<{ data: CommissionRepresentative[] }>(`/commissions/${slug}/representatives`),
+    get<{ data: CommissionRepresentative[] }>(`/commissions/${slug.toLowerCase()}/representatives`),
   commissionRules: (slug: string) =>
-    get<{ data: CommissionRule[] }>(`/commissions/${slug}/rules`),
+    get<{ data: CommissionRule[] }>(`/commissions/${slug.toLowerCase()}/rules`),
   commissionRulePreview: (slug: string, body: CommissionRuleInput) =>
-    post<{ data: CommissionRulePreview }>(`/commissions/${slug}/rules/preview`, body),
+    post<{ data: CommissionRulePreview }>(`/commissions/${slug.toLowerCase()}/rules/preview`, body),
   createCommissionRule: (slug: string, body: CommissionRuleInput) =>
-    post<{ data: CommissionRule }>(`/commissions/${slug}/rules`, body),
+    post<{ data: CommissionRule }>(`/commissions/${slug.toLowerCase()}/rules`, body),
   ingestCommissions: (slug: string, body?: { fromDate?: string; toDate?: string }) =>
-    post<{ data: IngestResult }>(`/commissions/${slug}/ingest`, body ?? {}),
+    post<{ data: IngestResult }>(`/commissions/${slug.toLowerCase()}/ingest`, body ?? {}),
   approveCommissionLine: (slug: string, lineId: string) =>
-    post<{ ok: boolean }>(`/commissions/${slug}/lines/${lineId}/approve`, {}),
+    post<{ ok: boolean }>(`/commissions/${slug.toLowerCase()}/lines/${lineId}/approve`, {}),
   lockCommissionPeriod: (slug: string, year: number, month: number) =>
-    post<{ ok: boolean }>(`/commissions/${slug}/periods/lock`, { year, month }),
+    post<{ ok: boolean }>(`/commissions/${slug.toLowerCase()}/periods/lock`, { year, month }),
 };
 
 // ── Accounting module types ────────────────────────────────────────────────
