@@ -47,12 +47,32 @@ function assertValidDate(v: unknown, name: string): string {
   return v;
 }
 
-function assertValidNumericString(v: string | null | undefined, name: string, opts: { min?: number; max?: number } = {}): string | null {
+/**
+ * Strict decimal validator — rejects "1abc", "1e2", "NaN", "Infinity", and
+ * values that would silently truncate in NUMERIC SQL columns.
+ *
+ * @param maxDp  Maximum decimal places (enforces DB column precision).
+ */
+const _STRICT_DECIMAL_RE = /^-?\d+(\.\d+)?$/;
+
+function assertValidNumericString(
+  v: string | null | undefined,
+  name: string,
+  opts: { min?: number; max?: number; maxDp?: number } = {},
+): string | null {
   if (v == null) return null;
-  const n = parseFloat(v);
+  // Reject scientific notation, whitespace (leading, trailing, or internal), partial parses, NaN, Infinity.
+  if (!_STRICT_DECIMAL_RE.test(v))
+    throw new Error(`${name} must be a plain decimal number (no scientific notation, suffix, or whitespace): "${v}"`);
+  const n = Number(v);  // Number() — unlike parseFloat — returns NaN for "1abc"
   if (!isFinite(n)) throw new Error(`${name} must be finite: ${v}`);
   if (opts.min !== undefined && n < opts.min) throw new Error(`${name} must be >= ${opts.min}: ${n}`);
   if (opts.max !== undefined && n > opts.max) throw new Error(`${name} must be <= ${opts.max}: ${n}`);
+  if (opts.maxDp !== undefined) {
+    const dp = (v.split(".")[1] ?? "").length;
+    if (dp > opts.maxDp)
+      throw new Error(`${name} must have at most ${opts.maxDp} decimal place(s): "${v}"`);
+  }
   return v;
 }
 
@@ -311,8 +331,8 @@ export async function createCommissionRule(rule: {
     }
   }
   // ── Rate / amount validation ──────────────────────────────────────────────
-  assertValidNumericString(rule.commissionRate, "commissionRate", { min: 0, max: 10 });
-  assertValidNumericString(rule.fixedAmount, "fixedAmount", { min: -999999.99, max: 999999.99 });
+  assertValidNumericString(rule.commissionRate, "commissionRate", { min: 0, max: 10, maxDp: 6 });
+  assertValidNumericString(rule.fixedAmount, "fixedAmount", { min: -999999.99, max: 999999.99, maxDp: 2 });
 
   // ── Formula / field invariants (mirrors route validateFormulaMatrix) ───────
   const _PCT = new Set(["percentage_of_invoice","percentage_of_amount_paid","percentage_of_gross_profit"]);
@@ -331,7 +351,7 @@ export async function createCommissionRule(rule: {
       throw new Error("no_commission_house must not have calculationBasis");
   }
 
-  // ── calculationBasis compatibility ────────────────────────────────────────
+  // ── calculationBasis — required for PCT and fixed_amount, forbidden for house ─
   const _EXPECTED_BASIS: Record<string, string | null> = {
     percentage_of_invoice:      "invoice_amount",
     percentage_of_amount_paid:  "amount_paid",
@@ -340,14 +360,17 @@ export async function createCommissionRule(rule: {
     manual:                     null,
     no_commission_house:        null,
   };
-  if (rule.calculationBasis != null && rule.formulaType !== "manual") {
-    const expected = _EXPECTED_BASIS[rule.formulaType];
-    if (expected !== null && rule.calculationBasis !== expected) {
+  const _PCT_AND_FIXED = new Set(["percentage_of_invoice","percentage_of_amount_paid","percentage_of_gross_profit","fixed_amount"]);
+  if (_PCT_AND_FIXED.has(rule.formulaType)) {
+    // These formulas MUST have the correct calculationBasis — null is not accepted.
+    const expected = _EXPECTED_BASIS[rule.formulaType]!;
+    if (rule.calculationBasis !== expected) {
       throw new Error(
-        `calculationBasis '${rule.calculationBasis}' is incompatible with '${rule.formulaType}' (expected '${expected}')`
+        `calculationBasis must be '${expected}' for '${rule.formulaType}', got '${rule.calculationBasis ?? "null"}'`
       );
     }
   }
+  // manual: null or any explicit value allowed (no enforcement).
 
   // Wrap in a transaction with an advisory lock scoped to this rule's entity+rep+scope.
   // This prevents concurrent MAX(version)+1 races without relying solely on the unique index.
@@ -584,33 +607,54 @@ export async function upsertCommissionLine(line: {
   sourceFingerprint: string;
   recalculatedBy?: string | null;
 }): Promise<UpsertAction> {
-  // Lines without an invoiceDate have no period affiliation — no advisory lock needed.
-  if (!line.invoiceDate) {
-    return _upsertCore(opsDb, line);
-  }
-
-  const [newYear, newMonth] = _parsePeriod(line.invoiceDate);
-
-  // Phase 1 (outside transaction): discover the existing line's current invoiceDate so we
-  // can determine which periods to lock *before* starting the transaction.  Safe because
-  // source_fingerprint is content-addressed and does not change between reads.
-  const preRows = await opsDb.execute(sql`
-    SELECT invoice_date::text AS invoice_date
-    FROM commission_run_lines
-    WHERE source_fingerprint = ${line.sourceFingerprint}
-    LIMIT 1
-  `);
-  const prevDateStr = preRows.rows.length > 0
-    ? ((preRows.rows[0] as Record<string, unknown>).invoice_date as string | null)
-    : null;
-
-  // Compute the periods to lock in a deterministic sorted order to prevent deadlocks.
-  // If the invoice date changes (e.g. QBO correction), we must also guard the old period.
-  const periodsToLock = _sortedUniquePeriods(newYear, newMonth, prevDateStr);
-
   return await opsDb.transaction(async (tx) => {
-    // Acquire advisory lock(s) — identical key formula to lockCommissionPeriod.
-    // PostgreSQL releases xact locks automatically at transaction end.
+    // ── Step 1: Acquire source_fingerprint advisory lock FIRST ────────────────
+    // This serializes all concurrent upserts for the same invoice, eliminating
+    // the race where two upserts read divergent old-period state and disagree on
+    // which period locks to acquire.
+    await tx.execute(sql`
+      SELECT pg_advisory_xact_lock(
+        ('x' || md5(${line.sourceFingerprint}))::bit(64)::bigint
+      )
+    `);
+
+    // ── Step 2: Read the existing line INSIDE the transaction ─────────────────
+    // Under the source_fingerprint lock we get a consistent view of the current
+    // invoice_date — no other upsert for this fingerprint can be running.
+    const existing = await tx.execute(sql`
+      SELECT id, line_status,
+             invoice_date::text AS invoice_date,
+             invoice_amount::text, invoice_status, customer_name, customer_id::text
+      FROM commission_run_lines
+      WHERE source_fingerprint = ${line.sourceFingerprint}
+      LIMIT 1
+    `);
+    const prevDateStr = existing.rows.length > 0
+      ? ((existing.rows[0] as Record<string, unknown>).invoice_date as string | null)
+      : null;
+
+    // ── Step 3: Compute period set to lock (new + old, deduplicated, sorted) ──
+    // Sorted order prevents deadlocks when two transactions lock overlapping sets.
+    const seen = new Set<string>();
+    const periodsToLock: Array<[number, number]> = [];
+    function addPeriod(y: number, m: number) {
+      const key = `${y}-${m}`;
+      if (!seen.has(key)) { seen.add(key); periodsToLock.push([y, m]); }
+    }
+    if (line.invoiceDate) {
+      const [ny, nm] = _parsePeriod(line.invoiceDate);
+      addPeriod(ny, nm);
+    }
+    if (prevDateStr) {
+      // Existing line has a period — must guard it whether or not the new date changes it.
+      // This also handles the null-date path: setting invoiceDate=null on a line that was
+      // previously dated would move it out of a locked period, which must be prevented.
+      const [oy, om] = _parsePeriod(prevDateStr);
+      addPeriod(oy, om);
+    }
+    periodsToLock.sort((a, b) => (a[0] * 100 + a[1]) - (b[0] * 100 + b[1]));
+
+    // ── Step 4: Acquire period advisory lock(s) in deterministic order ────────
     for (const [y, m] of periodsToLock) {
       await tx.execute(sql`
         SELECT pg_advisory_xact_lock(
@@ -619,31 +663,25 @@ export async function upsertCommissionLine(line: {
       `);
     }
 
-    // Under the lock, refuse ingestion into any locked period.
+    // ── Step 5: Verify no affected period is closed ───────────────────────────
     for (const [y, m] of periodsToLock) {
       if (await _isPeriodLockedTx(tx, line.entityId, y, m)) return "skipped";
     }
 
-    return _upsertCore(tx, line);
+    // ── Step 6: Execute insert/update with pre-read existing rows ────────────
+    return _upsertCore(tx, line, existing);
   });
 }
 
 /**
- * Core insert/update logic — runs against either `opsDb` (no-date path) or a
- * transaction handle (date path, inside advisory lock).
+ * Core insert/update logic — called from upsertCommissionLine with pre-read
+ * existing rows (already fetched inside the serialized transaction).
  */
 async function _upsertCore(
   db: { execute: (q: ReturnType<typeof sql>) => Promise<{ rows: unknown[]; rowCount?: number | null }> },
   line: Parameters<typeof upsertCommissionLine>[0],
+  existing: { rows: unknown[] },
 ): Promise<UpsertAction> {
-  const existing = await db.execute(sql`
-    SELECT id, line_status,
-           invoice_amount::text, invoice_status, customer_name,
-           invoice_date::text, customer_id::text
-    FROM commission_run_lines
-    WHERE source_fingerprint = ${line.sourceFingerprint}
-    LIMIT 1
-  `);
 
   if (existing.rows.length === 0) {
     await db.execute(sql`

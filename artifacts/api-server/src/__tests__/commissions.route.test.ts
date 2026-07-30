@@ -1069,3 +1069,161 @@ describe("createCommissionRule (DB layer) — strict date validation (P26)", () 
 // Status: NOT TESTED — PostgreSQL unavailable in this environment.
 // Recommended: run `commission_002_attribution_seed.sql` and a concurrent-ingestion
 // integration test against a real pg instance before promoting to production.
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// P28: assertValidNumericString — strict regex (passe 5)
+// ═══════════════════════════════════════════════════════════════════════════════
+
+describe("createCommissionRule (DB layer) — assertValidNumericString strict validation (P28)", () => {
+  async function realCreate(overrides: Record<string, unknown>) {
+    const { createCommissionRule } =
+      await vi.importActual<typeof import("../db/commissions")>("../db/commissions");
+    return createCommissionRule({
+      entityId:         ENTITY_ID,
+      representativeId: REP_UUID,
+      formulaType:      "percentage_of_invoice",
+      commissionRate:   "0.15",
+      calculationBasis: "invoice_amount",
+      payableTrigger:   "invoice_paid",
+      effectiveFrom:    "2026-01-01",
+      ...overrides,
+    } as Parameters<typeof createCommissionRule>[0]);
+  }
+
+  it("commissionRate '1abc' (partial parse) → throws", async () => {
+    await expect(realCreate({ commissionRate: "1abc" }))
+      .rejects.toThrow(/plain decimal/);
+  });
+
+  it("commissionRate '1e2' (scientific notation) → throws", async () => {
+    await expect(realCreate({ commissionRate: "1e2" }))
+      .rejects.toThrow(/plain decimal/);
+  });
+
+  it("commissionRate 'NaN' → throws", async () => {
+    await expect(realCreate({ commissionRate: "NaN" }))
+      .rejects.toThrow(/plain decimal/);
+  });
+
+  it("commissionRate 'Infinity' → throws", async () => {
+    await expect(realCreate({ commissionRate: "Infinity" }))
+      .rejects.toThrow(/plain decimal/);
+  });
+
+  it("commissionRate '0.1 ' (trailing whitespace) → throws", async () => {
+    await expect(realCreate({ commissionRate: "0.1 " }))
+      .rejects.toThrow(/plain decimal/);
+  });
+
+  it("commissionRate '0.1234567' (7 dp, exceeds NUMERIC(8,6)) → throws", async () => {
+    await expect(realCreate({ commissionRate: "0.1234567" }))
+      .rejects.toThrow(/decimal place/);
+  });
+
+  it("commissionRate '0.123456' (6 dp) → passes DB validation layer", async () => {
+    // The transaction will fail (no DB), but the validation error must not be thrown first.
+    await expect(realCreate({ commissionRate: "0.123456" }))
+      .rejects.not.toThrow(/plain decimal|decimal place/);
+  });
+
+  it("fixedAmount '100.123' (3 dp, exceeds NUMERIC(12,2)) → throws", async () => {
+    const { createCommissionRule } =
+      await vi.importActual<typeof import("../db/commissions")>("../db/commissions");
+    await expect(createCommissionRule({
+      entityId:         ENTITY_ID,
+      representativeId: REP_UUID,
+      formulaType:      "fixed_amount",
+      fixedAmount:      "100.123",
+      calculationBasis: "fixed_amount",
+      payableTrigger:   "invoice_paid",
+      effectiveFrom:    "2026-01-01",
+    })).rejects.toThrow(/decimal place/);
+  });
+
+  it("fixedAmount '100.12' (2 dp) → passes DB validation layer", async () => {
+    const { createCommissionRule } =
+      await vi.importActual<typeof import("../db/commissions")>("../db/commissions");
+    await expect(createCommissionRule({
+      entityId:         ENTITY_ID,
+      representativeId: REP_UUID,
+      formulaType:      "fixed_amount",
+      fixedAmount:      "100.12",
+      calculationBasis: "fixed_amount",
+      payableTrigger:   "invoice_paid",
+      effectiveFrom:    "2026-01-01",
+    })).rejects.not.toThrow(/plain decimal|decimal place/);
+  });
+});
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// P29: calculationBasis null for PCT formula → required at DB layer (passe 5)
+// ═══════════════════════════════════════════════════════════════════════════════
+
+describe("createCommissionRule (DB layer) — calculationBasis required for PCT/fixed (P29)", () => {
+  it("percentage_of_invoice with calculationBasis=null → throws 'must be invoice_amount'", async () => {
+    const { createCommissionRule } =
+      await vi.importActual<typeof import("../db/commissions")>("../db/commissions");
+    await expect(createCommissionRule({
+      entityId:         ENTITY_ID,
+      representativeId: REP_UUID,
+      formulaType:      "percentage_of_invoice",
+      commissionRate:   "0.15",
+      calculationBasis: null,       // omitted at route — must be rejected at DB layer
+      payableTrigger:   "invoice_paid",
+      effectiveFrom:    "2026-01-01",
+    })).rejects.toThrow(/calculationBasis must be 'invoice_amount'/);
+  });
+
+  it("percentage_of_amount_paid with calculationBasis=null → throws 'must be amount_paid'", async () => {
+    const { createCommissionRule } =
+      await vi.importActual<typeof import("../db/commissions")>("../db/commissions");
+    await expect(createCommissionRule({
+      entityId:         ENTITY_ID,
+      representativeId: REP_UUID,
+      formulaType:      "percentage_of_amount_paid",
+      commissionRate:   "0.15",
+      calculationBasis: undefined,
+      payableTrigger:   "invoice_paid",
+      effectiveFrom:    "2026-01-01",
+    })).rejects.toThrow(/calculationBasis must be 'amount_paid'/);
+  });
+
+  it("fixed_amount with calculationBasis='gross_profit' → throws wrong basis", async () => {
+    const { createCommissionRule } =
+      await vi.importActual<typeof import("../db/commissions")>("../db/commissions");
+    await expect(createCommissionRule({
+      entityId:         ENTITY_ID,
+      representativeId: REP_UUID,
+      formulaType:      "fixed_amount",
+      fixedAmount:      "500.00",
+      calculationBasis: "gross_profit",   // wrong — must be 'fixed_amount'
+      payableTrigger:   "invoice_paid",
+      effectiveFrom:    "2026-01-01",
+    })).rejects.toThrow(/calculationBasis must be 'fixed_amount'/);
+  });
+
+  it("percentage_of_invoice with correct calculationBasis → passes validation", async () => {
+    const { createCommissionRule } =
+      await vi.importActual<typeof import("../db/commissions")>("../db/commissions");
+    // Validation passes; transaction fails at pg connect — error must not be about basis.
+    await expect(createCommissionRule({
+      entityId:         ENTITY_ID,
+      representativeId: REP_UUID,
+      formulaType:      "percentage_of_invoice",
+      commissionRate:   "0.15",
+      calculationBasis: "invoice_amount",
+      payableTrigger:   "invoice_paid",
+      effectiveFrom:    "2026-01-01",
+    })).rejects.not.toThrow(/calculationBasis must be/);
+  });
+});
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// P30: upsertCommissionLine — null-date and period-lock structural contract (passe 5)
+// ═══════════════════════════════════════════════════════════════════════════════
+//
+// Full concurrent isolation (source_fingerprint lock + period lock inside one transaction)
+// cannot be verified without a real PostgreSQL instance.
+// These tests verify the validation and structural contract via the DB mock.
+//
+// Status (concurrency part): NOT TESTED — PostgreSQL unavailable in this environment.
