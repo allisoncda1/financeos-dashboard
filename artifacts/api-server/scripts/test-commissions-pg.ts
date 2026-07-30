@@ -528,7 +528,7 @@ async function main(): Promise<void> {
       assertMatch(r!, /no commission lines found/i, "lockCommissionPeriod reason");
     });
 
-    await assert("Period with 'needs_review' line → cannot lock (unresolved status)", async () => {
+    await assert("Period with 'needs_review' line (external rep) → cannot lock (not yet approved)", async () => {
       await pool.query(`
         INSERT INTO commission_run_lines
           (entity_id, invoice_id, invoice_qbo_id, invoice_date, line_status,
@@ -537,11 +537,13 @@ async function main(): Promise<void> {
                 true, $3::uuid, 'ci-fp-lock-needs-review')
       `, [ENTITY_LOCK, INVOICE_ID, JEROD_ID]);
       const r = await lockCommissionPeriod(ENTITY_LOCK, LOCK_YEAR, LOCK_MONTH, "ci-test");
-      assertMatch(r!, /unresolved status/i, "lockCommissionPeriod reason");
+      // Jerod is external_rep — production checks _blockers (external unapproved) before
+      // _unresolved (any status), so needs_review for an external rep hits blocking first.
+      assertMatch(r!, /not yet approved/i, "lockCommissionPeriod reason");
       await pool.query("DELETE FROM commission_run_lines WHERE source_fingerprint = 'ci-fp-lock-needs-review'");
     });
 
-    await assert("Period with 'calculated' line → cannot lock (unresolved status)", async () => {
+    await assert("Period with 'calculated' line (external rep) → cannot lock (not yet approved)", async () => {
       await pool.query(`
         INSERT INTO commission_run_lines
           (entity_id, invoice_id, invoice_qbo_id, invoice_date, line_status,
@@ -550,7 +552,9 @@ async function main(): Promise<void> {
                 true, $3::uuid, 'ci-fp-lock-calculated')
       `, [ENTITY_LOCK, INVOICE_ID, JEROD_ID]);
       const r = await lockCommissionPeriod(ENTITY_LOCK, LOCK_YEAR, LOCK_MONTH, "ci-test");
-      assertMatch(r!, /unresolved status/i, "lockCommissionPeriod reason");
+      // Jerod is external_rep — calculated status is NOT IN ('approved','locked','house_no_commission')
+      // so blocking > 0 is triggered before problems > 0.
+      assertMatch(r!, /not yet approved/i, "lockCommissionPeriod reason");
       await pool.query("DELETE FROM commission_run_lines WHERE source_fingerprint = 'ci-fp-lock-calculated'");
     });
 

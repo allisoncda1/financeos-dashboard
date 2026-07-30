@@ -1,0 +1,16 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "noEmit": true,
+    "rootDir": ".",
+    "types": ["node"]
+  },
+  "include": [
+    "src/db/ops-connection.ts",
+    "src/db/commissions.ts",
+    "src/services/commissionEngine.ts",
+    "src/routes/commissions.ts",
+    "src/__tests__/commissions.route.test.ts",
+    "scripts/test-commissions-pg.ts"
+  ]
+}

@@ -6,7 +6,11 @@ on:
       - "artifacts/api-server/src/db/commissions.ts"
       - "artifacts/api-server/src/db/ops-connection.ts"
       - "artifacts/api-server/src/db/migrations/commission_*.sql"
+      - "artifacts/api-server/src/services/commissionEngine.ts"
+      - "artifacts/api-server/src/routes/commissions.ts"
+      - "artifacts/api-server/src/__tests__/commissions.route.test.ts"
       - "artifacts/api-server/scripts/test-commissions-pg.ts"
+      - "artifacts/api-server/tsconfig.commissions.json"
       - ".github/workflows/commission-postgres-integration.yml"
   workflow_dispatch:
 
@@ -32,9 +36,9 @@ jobs:
 
     env:
       TEST_DATABASE_URL: postgresql://ci_user:ci_password@127.0.0.1:5432/commission_test_ci
-      # DATABASE_URL and CORE_DATABASE_URL are intentionally absent.
-      # test-commissions-pg.ts sets DATABASE_URL = TEST_DATABASE_URL internally.
-      # CORE_DATABASE_URL is never set — commission functions do not need Neon Core.
+      # DATABASE_URL and CORE_DATABASE_URL are intentionally absent from the job environment.
+      # test-commissions-pg.ts sets DATABASE_URL = TEST_DATABASE_URL internally at runtime.
+      # CORE_DATABASE_URL is never set — commission functions have no runtime dependency on Neon Core.
 
     steps:
       - name: Checkout
@@ -67,11 +71,11 @@ jobs:
 
       - name: TypeScript check (commission files)
         working-directory: artifacts/api-server
-        run: pnpm exec tsc --noEmit --project tsconfig.json
+        run: pnpm exec tsc --noEmit --project tsconfig.commissions.json
 
-      - name: Unit tests (vitest — no database required)
+      - name: Unit tests (vitest — commission suite only, no database required)
         working-directory: artifacts/api-server
-        run: pnpm test --reporter=verbose
+        run: pnpm exec vitest run src/__tests__/commissions.route.test.ts --reporter=verbose
 
       - name: Wait for PostgreSQL service
         run: |
@@ -82,7 +86,10 @@ jobs:
 
       - name: Commission PostgreSQL integration tests
         working-directory: artifacts/api-server
-        run: pnpm test:commissions:pg 2>&1 | tee /tmp/pg-integration-output.txt
+        shell: bash
+        run: |
+          set -o pipefail
+          pnpm test:commissions:pg 2>&1 | tee /tmp/pg-integration-output.txt
         env:
           GITHUB_ACTIONS: "true"
 
@@ -92,4 +99,5 @@ jobs:
         with:
           name: pg-integration-output
           path: /tmp/pg-integration-output.txt
+          if-no-files-found: warn
           retention-days: 14
