@@ -1338,3 +1338,85 @@ describe("P32: deriveAmountPaid — BigInt subtraction, null safety", () => {
     expect(deriveAmountPaid("500.00", "500.00")).toBe("0.00");
   });
 });
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// P33: percentage_of_amount_paid — payableTrigger gate runs BEFORE formula
+// ═══════════════════════════════════════════════════════════════════════════════
+//
+// Regression: prior to this fix the percentage_of_amount_paid block ran before
+// the invoice_paid trigger gate, allowing Open/Overdue invoices with a partial
+// amountPaid to produce lineStatus="calculated" — a money-impacting bug.
+//
+// Correct order: unsupported_trigger → trigger gate → formula (including amount_paid).
+
+describe("P33: percentage_of_amount_paid — trigger gate precedes formula", () => {
+  const paidRule = {
+    id: "r1", entityId: ENTITY_ID, representativeId: REP_UUID,
+    coreCustomerId: null, customerNamePattern: null,
+    formulaType: "percentage_of_amount_paid", calculationBasis: "amount_paid",
+    commissionRate: "0.100000", fixedAmount: null,
+    payableTrigger: "invoice_paid", ruleVersion: 1, status: "active",
+    effectiveFrom: "2026-01-01", effectiveTo: null, notes: null,
+  } as const;
+
+  const issuedRule = { ...paidRule, payableTrigger: "invoice_issued" as const };
+
+  let applyFormula: typeof import("../services/commissionEngine").applyFormula;
+
+  beforeEach(async () => {
+    const engine = await vi.importActual<typeof import("../services/commissionEngine")>(
+      "../services/commissionEngine",
+    );
+    applyFormula = engine.applyFormula;
+  });
+
+  it("invoice_paid + Open + partial amountPaid → awaiting_payment, no commission", () => {
+    const r = applyFormula(paidRule, {
+      invoiceAmount: "1000.00", amountPaid: "400.00",
+      grossProfit: null, expensesAmount: null, invoiceStatus: "Open",
+    });
+    expect(r.lineStatus).toBe("awaiting_payment");
+    expect(r.exclusionReason).toBe("not_yet_paid");
+    expect(r.commissionAmount).toBeNull();
+  });
+
+  it("invoice_paid + Overdue + partial amountPaid → awaiting_payment, no commission", () => {
+    const r = applyFormula(paidRule, {
+      invoiceAmount: "1000.00", amountPaid: "400.00",
+      grossProfit: null, expensesAmount: null, invoiceStatus: "Overdue",
+    });
+    expect(r.lineStatus).toBe("awaiting_payment");
+    expect(r.exclusionReason).toBe("overdue_not_paid");
+    expect(r.commissionAmount).toBeNull();
+  });
+
+  it("invoice_paid + Paid + amountPaid available → calculated", () => {
+    const r = applyFormula(paidRule, {
+      invoiceAmount: "1000.00", amountPaid: "1000.00",
+      grossProfit: null, expensesAmount: null, invoiceStatus: "Paid",
+    });
+    expect(r.lineStatus).toBe("calculated");
+    expect(r.commissionAmount).toBe("100.00");
+    expect(r.calculationBasis).toBe("amount_paid");
+  });
+
+  it("invoice_paid + Paid + amountPaid null → needs_review / amount_paid_unavailable", () => {
+    const r = applyFormula(paidRule, {
+      invoiceAmount: "1000.00", amountPaid: null,
+      grossProfit: null, expensesAmount: null, invoiceStatus: "Paid",
+    });
+    expect(r.lineStatus).toBe("needs_review");
+    expect(r.exclusionReason).toBe("amount_paid_unavailable");
+    expect(r.commissionAmount).toBeNull();
+  });
+
+  it("invoice_issued + amountPaid available → calculated (no payment-status gate)", () => {
+    const r = applyFormula(issuedRule, {
+      invoiceAmount: "1000.00", amountPaid: "600.00",
+      grossProfit: null, expensesAmount: null, invoiceStatus: "Open",
+    });
+    expect(r.lineStatus).toBe("calculated");
+    expect(r.commissionAmount).toBe("60.00");
+    expect(r.calculationBasis).toBe("amount_paid");
+  });
+});

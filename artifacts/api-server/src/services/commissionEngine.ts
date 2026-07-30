@@ -209,7 +209,17 @@ export function applyFormula(rule: CommissionRule, inputs: FormulaInputs): Formu
     return { commissionAmount: null, calculationBasis: null, lineStatus: "needs_review", exclusionReason: "unsupported_trigger" };
   }
 
-  // percentage_of_amount_paid — derived from amount − balance; null if either component is null
+  // Apply payable trigger before any formula calculation
+  if (rule.payableTrigger === "invoice_paid") {
+    const status = (inputs.invoiceStatus ?? "").toLowerCase();
+    if (status !== "paid") {
+      const reason = status === "overdue" ? "overdue_not_paid" : "not_yet_paid";
+      return { commissionAmount: null, calculationBasis: null, lineStatus: "awaiting_payment", exclusionReason: reason };
+    }
+  }
+  // invoice_issued: continue regardless of payment status
+
+  // percentage_of_amount_paid — only reached after trigger gate passes
   if (rule.formulaType === "percentage_of_amount_paid") {
     if (inputs.amountPaid === null) {
       return { commissionAmount: null, calculationBasis: "amount_paid", lineStatus: "needs_review", exclusionReason: "amount_paid_unavailable" };
@@ -219,16 +229,6 @@ export function applyFormula(rule: CommissionRule, inputs: FormulaInputs): Formu
     }
     return { commissionAmount: mulMoney(inputs.amountPaid, rule.commissionRate), calculationBasis: "amount_paid", lineStatus: "calculated", exclusionReason: null };
   }
-
-  // Apply payable trigger before computing
-  if (rule.payableTrigger === "invoice_paid") {
-    const status = (inputs.invoiceStatus ?? "").toLowerCase();
-    if (status !== "paid") {
-      const reason = status === "overdue" ? "overdue_not_paid" : "not_yet_paid";
-      return { commissionAmount: null, calculationBasis: null, lineStatus: "awaiting_payment", exclusionReason: reason };
-    }
-  }
-  // invoice_issued: continue regardless of payment status
 
   // manual
   if (rule.formulaType === "manual") {
