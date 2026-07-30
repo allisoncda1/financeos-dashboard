@@ -115,8 +115,9 @@ if (!testNorm.database.startsWith("commission_test_ci")) {
 // Cross-check against any real database URLs present in the environment.
 // Normalizing host + port + database catches localhost vs 127.0.0.1 variants.
 for (const [name, raw] of [
-  ["DATABASE_URL",      process.env.DATABASE_URL],
-  ["CORE_DATABASE_URL", process.env.CORE_DATABASE_URL],
+  ["COMMISSION_DATABASE_URL", process.env.COMMISSION_DATABASE_URL],
+  ["DATABASE_URL",            process.env.DATABASE_URL],
+  ["CORE_DATABASE_URL",       process.env.CORE_DATABASE_URL],
 ] as [string, string | undefined][]) {
   if (!raw) continue;
   const norm = normalizeUrl(raw);
@@ -129,13 +130,14 @@ for (const [name, raw] of [
 
 // ─── Inject test database into commission ops connection ───────────────────
 //
-// Sets DATABASE_URL to TEST_DATABASE_URL so that getCommissionOpsDb() in
-// ops-connection.ts connects to the ephemeral CI database.
+// Sets COMMISSION_DATABASE_URL to TEST_DATABASE_URL so that getCommissionOpsDb()
+// in ops-connection.ts connects to the ephemeral CI database.
+// DATABASE_URL is intentionally NOT set here — Commission has no dependency on it.
 // CORE_DATABASE_URL is intentionally NOT set — commission functions do not need it.
-// This is the proof that the Commission module is decoupled from FinanceOS Core.
+// This is the proof that the Commission module is decoupled from both.
 
-process.env.DATABASE_URL = TEST_URL;
-// CORE_DATABASE_URL is deliberately left unset.
+process.env.COMMISSION_DATABASE_URL = TEST_URL;
+// DATABASE_URL and CORE_DATABASE_URL are deliberately left unset.
 
 // ─── Paths ─────────────────────────────────────────────────────────────────
 

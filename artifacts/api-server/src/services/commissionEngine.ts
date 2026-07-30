@@ -25,7 +25,7 @@
 import crypto from "crypto";
 import { db } from "../db/connection";
 import { invoices } from "@workspace/db";
-import { eq, and, gte, lte } from "drizzle-orm";
+import { eq, and, gte, lte, sql } from "drizzle-orm";
 import {
   getAttributionRulesForEntity,
   getCommissionRules,
@@ -116,6 +116,30 @@ export function addMoney(a: string, b: string): string {
   return centsToString(sign * cents);
 }
 
+/**
+ * deriveAmountPaid — compute amount_paid = amount − balance using BigInt arithmetic.
+ * Returns null if either component is null. Preserves negative values.
+ * Rounds half-away-from-zero to 2 decimal places.
+ *
+ * amount_paid is NEVER approximated: if either DB column is null, return null.
+ */
+export function deriveAmountPaid(amount: string | null, balance: string | null): string | null {
+  if (amount === null || balance === null) return null;
+  try {
+    const aScaled = parseToScaled(amount.trim());
+    const bScaled = parseToScaled(balance.trim());
+    const diff = aScaled - bScaled;
+    const CENTS_DIVISOR = 1_000_000n;
+    const HALF = 500_000n;
+    const sign = diff < 0n ? -1n : 1n;
+    const abs = diff < 0n ? -diff : diff;
+    const cents = (abs + HALF) / CENTS_DIVISOR;
+    return centsToString(sign * cents);
+  } catch {
+    return null;
+  }
+}
+
 // ─── Types ────────────────────────────────────────────────────────────────────
 
 export interface IngestResult {
@@ -131,6 +155,7 @@ export interface IngestResult {
 /** All amounts stored as NUMERIC strings. null = unavailable/not calculable. */
 interface FormulaInputs {
   invoiceAmount: string | null;
+  amountPaid: string | null;       // derived: amount − balance; null if either component is null
   grossProfit: string | null;
   expensesAmount: string | null;
   invoiceStatus: string | null;
@@ -184,9 +209,15 @@ export function applyFormula(rule: CommissionRule, inputs: FormulaInputs): Formu
     return { commissionAmount: null, calculationBasis: null, lineStatus: "needs_review", exclusionReason: "unsupported_trigger" };
   }
 
-  // percentage_of_amount_paid — requires authoritative payment records, never approximated
+  // percentage_of_amount_paid — derived from amount − balance; null if either component is null
   if (rule.formulaType === "percentage_of_amount_paid") {
-    return { commissionAmount: null, calculationBasis: "amount_paid", lineStatus: "needs_review", exclusionReason: "amount_paid_unavailable" };
+    if (inputs.amountPaid === null) {
+      return { commissionAmount: null, calculationBasis: "amount_paid", lineStatus: "needs_review", exclusionReason: "amount_paid_unavailable" };
+    }
+    if (rule.commissionRate == null) {
+      return { commissionAmount: null, calculationBasis: "amount_paid", lineStatus: "needs_configuration", exclusionReason: "missing_commission_formula" };
+    }
+    return { commissionAmount: mulMoney(inputs.amountPaid, rule.commissionRate), calculationBasis: "amount_paid", lineStatus: "calculated", exclusionReason: null };
   }
 
   // Apply payable trigger before computing
@@ -344,15 +375,19 @@ export async function ingestEntityInvoices(
   const conditions = [eq(invoices.entityId, entityId)];
   if (options.fromDate) conditions.push(gte(invoices.invoiceDate, options.fromDate));
   if (options.toDate)   conditions.push(lte(invoices.invoiceDate, options.toDate));
+  // Exclude soft-deleted invoices. IS NOT TRUE covers both FALSE and NULL.
+  conditions.push(sql`${invoices.isDeleted} IS NOT TRUE`);
   const invoiceRows: InvoiceRow[] = await db.select().from(invoices).where(and(...conditions));
 
   for (const inv of invoiceRows) {
     result.processed++;
     try {
       const fingerprint   = buildFingerprint(entityId, inv.qboId ?? inv.id);
-      // Invoice amount: stored as NUMERIC string, normalized via BigInt path (no parseFloat)
-      const rawAmount     = inv.amount != null ? String(inv.amount) : null;
-      const invoiceAmount = rawAmount != null ? normalizeMoneyString(rawAmount) : null;
+      // Invoice amount and amount_paid: stored as NUMERIC strings, BigInt path (no parseFloat)
+      const rawAmount     = inv.amount  != null ? String(inv.amount)  : null;
+      const rawBalance    = inv.balance != null ? String(inv.balance) : null;
+      const invoiceAmount = rawAmount  != null ? normalizeMoneyString(rawAmount)  : null;
+      const amountPaid    = deriveAmountPaid(rawAmount, rawBalance); // null if either column is null
       const invoiceStatus = inv.status ?? null;
       const customerName  = inv.customerName ?? null;
       // customerId: always null — QBO invoices lack canonical customer UUID without a join.
@@ -409,6 +444,7 @@ export async function ingestEntityInvoices(
 
               const formulaResult = applyFormula(commRule, {
                 invoiceAmount,
+                amountPaid,        // derived from amount − balance; null if either is null
                 grossProfit: null, // not in Neon Core invoices — requires manual entry
                 expensesAmount: null,
                 invoiceStatus,
@@ -536,10 +572,11 @@ export async function previewRuleApplication(params: {
     }
 
     const result = applyFormula(draftRule, {
-      invoiceAmount: line.invoiceAmount,
-      grossProfit: line.grossProfit,
+      invoiceAmount:  line.invoiceAmount,
+      amountPaid:     null, // not stored in commission_run_lines; balance not available in preview
+      grossProfit:    line.grossProfit,
       expensesAmount: line.expensesAmount,
-      invoiceStatus: line.invoiceStatus,
+      invoiceStatus:  line.invoiceStatus,
     });
 
     if (result.commissionAmount != null) {

@@ -1,10 +1,14 @@
 /**
- * Operational database connection — DATABASE_URL only.
+ * Commission module — dedicated database connection.
  *
- * This module creates a drizzle opsDb from DATABASE_URL without importing
- * from @workspace/db, which would also load the CORE_DATABASE_URL pool
- * (FinanceOS Neon Core). Commission functions only need the writable ops
- * database and must never have a runtime dependency on Core.
+ * Reads COMMISSION_DATABASE_URL exclusively. This variable must point to the
+ * shared FinanceOS Neon/PostgreSQL financial model (project: financeos,
+ * branch: production, database: neondb) using a Commission-scoped write role
+ * that has SELECT on public.entities and public.invoices plus full DML on the
+ * seven commission_* tables only.
+ *
+ * DATABASE_URL  — never read here (Dashboard operational DB / heliumdb).
+ * CORE_DATABASE_URL — never read here (Core is read-only via @workspace/db).
  *
  * Two entry points:
  *   getCommissionOpsDb()         — used by production code (lazy singleton).
@@ -21,15 +25,18 @@ type CommissionDb = ReturnType<typeof drizzle>;
 let _singleton: CommissionDb | null = null;
 
 /**
- * Returns the operational DB connection for commission functions.
- * Reads DATABASE_URL on first call; CORE_DATABASE_URL is never touched.
+ * Returns the Commission database connection backed by COMMISSION_DATABASE_URL.
+ * Fails loudly if the variable is absent — no fallback to DATABASE_URL or
+ * CORE_DATABASE_URL. The connection string is never logged.
  */
 export function getCommissionOpsDb(): CommissionDb {
   if (_singleton) return _singleton;
-  const url = process.env.DATABASE_URL;
+  const url = process.env.COMMISSION_DATABASE_URL;
   if (!url) {
     throw new Error(
-      "DATABASE_URL must be set. Commission operations require the writable ops database."
+      "COMMISSION_DATABASE_URL must be set. " +
+      "Commission operations require the shared FinanceOS Neon database. " +
+      "Do not use DATABASE_URL (Dashboard operational DB) or CORE_DATABASE_URL (read-only Core)."
     );
   }
   _singleton = drizzle(new Pool({ connectionString: url }));
@@ -38,9 +45,9 @@ export function getCommissionOpsDb(): CommissionDb {
 
 /**
  * Injects a test connection before the singleton is created.
- * Called by the CI integration test harness; never by production code.
+ * Called by the CI integration test harness only; never by production code.
  * Allows commission functions to run against a CI-ephemeral database
- * without setting CORE_DATABASE_URL.
+ * without setting any production connection string.
  */
 export function _injectCommissionDbForTest(db: CommissionDb): void {
   _singleton = db;

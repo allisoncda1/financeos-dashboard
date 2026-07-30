@@ -1,5 +1,5 @@
 /**
- * Commission module — operational DB queries (opsDb / DATABASE_URL only).
+ * Commission module — operational DB queries (opsDb / COMMISSION_DATABASE_URL only).
  *
  * Security constraints:
  *   - Never reads from or writes to Neon Core (db / CORE_DATABASE_URL).

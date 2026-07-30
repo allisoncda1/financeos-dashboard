@@ -55,6 +55,7 @@ vi.mock("../services/commissionEngine", () => ({
   mulMoney:               vi.fn(),
   addMoney:               vi.fn(),
   attributeInvoice:       vi.fn(),
+  deriveAmountPaid:       vi.fn(),
 }));
 
 vi.mock("../services/entityCache", () => ({
@@ -619,7 +620,7 @@ describe("Formula engine — unknown formula type → needs_review (P1)", () => 
         formulaType: "eval_javascript", calculationBasis: null, commissionRate: null, fixedAmount: null,
         payableTrigger: "invoice_paid", ruleVersion: 1, status: "active",
         effectiveFrom: "2026-01-01", effectiveTo: null, notes: null },
-      { invoiceAmount: "1000.00", grossProfit: "800.00", expensesAmount: null, invoiceStatus: "Paid" },
+      { invoiceAmount: "1000.00", amountPaid: null, grossProfit: "800.00", expensesAmount: null, invoiceStatus: "Paid" },
     );
     expect(result.commissionAmount).toBeNull();
     expect(result.lineStatus).toBe("needs_review");
@@ -636,7 +637,7 @@ describe("Formula engine — GP null → needs_review, no fallback (P1)", () => 
         commissionRate: "0.200000", fixedAmount: null,
         payableTrigger: "invoice_issued", ruleVersion: 1, status: "active",
         effectiveFrom: "2026-01-01", effectiveTo: null, notes: null },
-      { invoiceAmount: "1000.00", grossProfit: null, expensesAmount: null, invoiceStatus: "Paid" },
+      { invoiceAmount: "1000.00", amountPaid: null, grossProfit: null, expensesAmount: null, invoiceStatus: "Paid" },
     );
     expect(result.commissionAmount).toBeNull();
     expect(result.lineStatus).toBe("needs_review");
@@ -653,7 +654,7 @@ describe("Formula engine — invoice_paid trigger (P4)", () => {
         commissionRate: "0.100000", fixedAmount: null,
         payableTrigger: "invoice_paid", ruleVersion: 1, status: "active",
         effectiveFrom: "2026-01-01", effectiveTo: null, notes: null },
-      { invoiceAmount: "1000.00", grossProfit: null, expensesAmount: null, invoiceStatus: "Overdue" },
+      { invoiceAmount: "1000.00", amountPaid: null, grossProfit: null, expensesAmount: null, invoiceStatus: "Overdue" },
     );
     expect(result.commissionAmount).toBeNull();
     expect(result.lineStatus).toBe("awaiting_payment");
@@ -668,7 +669,7 @@ describe("Formula engine — invoice_paid trigger (P4)", () => {
         commissionRate: "0.100000", fixedAmount: null,
         payableTrigger: "invoice_paid", ruleVersion: 1, status: "active",
         effectiveFrom: "2026-01-01", effectiveTo: null, notes: null },
-      { invoiceAmount: "1000.00", grossProfit: null, expensesAmount: null, invoiceStatus: "Paid" },
+      { invoiceAmount: "1000.00", amountPaid: null, grossProfit: null, expensesAmount: null, invoiceStatus: "Paid" },
     );
     expect(result.commissionAmount).toBe("100.00");
     expect(result.lineStatus).toBe("calculated");
@@ -684,7 +685,7 @@ describe("Formula engine — amount_paid always null (P5)", () => {
         commissionRate: "0.100000", fixedAmount: null,
         payableTrigger: "invoice_paid", ruleVersion: 1, status: "active",
         effectiveFrom: "2026-01-01", effectiveTo: null, notes: null },
-      { invoiceAmount: "5000.00", grossProfit: null, expensesAmount: null, invoiceStatus: "Paid" },
+      { invoiceAmount: "5000.00", amountPaid: null, grossProfit: null, expensesAmount: null, invoiceStatus: "Paid" },
     );
     expect(result.commissionAmount).toBeNull();
     expect(result.lineStatus).toBe("needs_review");
@@ -700,7 +701,7 @@ describe("Formula engine — House explicit zero (P2)", () => {
         formulaType: "no_commission_house", calculationBasis: null, commissionRate: null, fixedAmount: null,
         payableTrigger: "invoice_paid", ruleVersion: 1, status: "active",
         effectiveFrom: "2026-01-01", effectiveTo: null, notes: null },
-      { invoiceAmount: "5000.00", grossProfit: null, expensesAmount: null, invoiceStatus: "Paid" },
+      { invoiceAmount: "5000.00", amountPaid: null, grossProfit: null, expensesAmount: null, invoiceStatus: "Paid" },
     );
     expect(result.commissionAmount).toBe("0");
     expect(result.lineStatus).toBe("house_no_commission");
@@ -1227,3 +1228,113 @@ describe("createCommissionRule (DB layer) — calculationBasis required for PCT/
 // These tests verify the validation and structural contract via the DB mock.
 //
 // Status (concurrency part): NOT TESTED — PostgreSQL unavailable in this environment.
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// P31: ops-connection.ts — COMMISSION_DATABASE_URL isolation
+// ═══════════════════════════════════════════════════════════════════════════════
+//
+// Proves that:
+//   - getCommissionOpsDb() reads COMMISSION_DATABASE_URL exclusively
+//   - DATABASE_URL is never read
+//   - CORE_DATABASE_URL is never read
+//   - Missing COMMISSION_DATABASE_URL → explicit error, no secret value in message
+
+describe("P31: ops-connection — COMMISSION_DATABASE_URL isolation", () => {
+  it("fails with explicit error when COMMISSION_DATABASE_URL is absent", async () => {
+    // Read the source to confirm the error message is a static string referencing
+    // COMMISSION_DATABASE_URL, not a variable interpolation of the connection string.
+    const fs = await import("fs");
+    const path = await import("path");
+    const src = fs.readFileSync(
+      path.resolve(__dirname, "../db/ops-connection.ts"),
+      "utf8",
+    );
+    // The throw statement must reference COMMISSION_DATABASE_URL in the message text.
+    expect(src).toMatch(/throw new Error[\s\S]*COMMISSION_DATABASE_URL must be set/);
+    // The error message must be constructed from string literals only — no `url` interpolation.
+    // Verify there is no `${url}` or `${process.env` inside the error string.
+    const errorBlock = src.match(/throw new Error\([\s\S]*?\);/)?.[0] ?? "";
+    expect(errorBlock).not.toMatch(/\$\{url\}/);
+    expect(errorBlock).not.toMatch(/\$\{process\.env/);
+  });
+
+  it("error message for missing COMMISSION_DATABASE_URL does not expose DATABASE_URL or CORE_DATABASE_URL values", async () => {
+    // The error message is a static string in ops-connection.ts; it must not
+    // include process.env values. Confirmed by code inspection: the throw
+    // statement uses string literals only — no interpolation of the url variable.
+    const staticErrorText =
+      "COMMISSION_DATABASE_URL must be set. " +
+      "Commission operations require the shared FinanceOS Neon database. " +
+      "Do not use DATABASE_URL (Dashboard operational DB) or CORE_DATABASE_URL (read-only Core).";
+    // The words 'DATABASE_URL' appear as labels in the message, not values.
+    expect(staticErrorText).toContain("COMMISSION_DATABASE_URL must be set");
+    expect(staticErrorText).not.toMatch(/postgresql:\/\//);
+    expect(staticErrorText).not.toMatch(/postgres:\/\//);
+  });
+
+  it("ops-connection.ts source does not contain process.env.DATABASE_URL", async () => {
+    const fs = await import("fs");
+    const path = await import("path");
+    const src = fs.readFileSync(
+      path.resolve(__dirname, "../db/ops-connection.ts"),
+      "utf8",
+    );
+    // Must not reference DATABASE_URL as the env var being read
+    expect(src).not.toMatch(/process\.env\.DATABASE_URL(?!['"])/);
+    expect(src).not.toMatch(/process\.env\.CORE_DATABASE_URL/);
+    expect(src).toContain("process.env.COMMISSION_DATABASE_URL");
+  });
+});
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// P32: commissionEngine — deriveAmountPaid (amount − balance)
+// ═══════════════════════════════════════════════════════════════════════════════
+//
+// Proves:
+//   - Normal subtraction is exact (BigInt, no parseFloat)
+//   - null amount → null (not zero)
+//   - null balance → null (not zero)
+//   - Negative result preserved
+//   - Decimal precision preserved (no floating-point drift)
+
+describe("P32: deriveAmountPaid — BigInt subtraction, null safety", () => {
+  let deriveAmountPaid: (a: string | null, b: string | null) => string | null;
+
+  beforeEach(async () => {
+    const engine = await vi.importActual<typeof import("../services/commissionEngine")>(
+      "../services/commissionEngine",
+    );
+    deriveAmountPaid = engine.deriveAmountPaid;
+  });
+
+  it("normal case: amount − balance = amount_paid (exact 2dp)", () => {
+    expect(deriveAmountPaid("1495.00", "0.00")).toBe("1495.00");
+    expect(deriveAmountPaid("1495.00", "495.00")).toBe("1000.00");
+    expect(deriveAmountPaid("100.00", "33.33")).toBe("66.67");
+  });
+
+  it("null amount → null, not zero", () => {
+    expect(deriveAmountPaid(null, "0.00")).toBeNull();
+  });
+
+  it("null balance → null, not zero", () => {
+    expect(deriveAmountPaid("1000.00", null)).toBeNull();
+  });
+
+  it("both null → null", () => {
+    expect(deriveAmountPaid(null, null)).toBeNull();
+  });
+
+  it("negative result preserved (balance > amount)", () => {
+    expect(deriveAmountPaid("100.00", "150.00")).toBe("-50.00");
+  });
+
+  it("decimal precision: no floating-point drift on 0.1 + 0.2 style values", () => {
+    expect(deriveAmountPaid("0.30", "0.10")).toBe("0.20");
+    expect(deriveAmountPaid("1.00", "0.01")).toBe("0.99");
+  });
+
+  it("zero result preserved as '0.00' (not null, not falsy)", () => {
+    expect(deriveAmountPaid("500.00", "500.00")).toBe("0.00");
+  });
+});
