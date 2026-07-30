@@ -1,0 +1,106 @@
+name: Commission PostgreSQL Integration
+
+on:
+  pull_request:
+    paths:
+      - "artifacts/api-server/src/db/commissions.ts"
+      - "artifacts/api-server/src/db/ops-connection.ts"
+      - "artifacts/api-server/src/db/migrations/commission_*.sql"
+      - "artifacts/api-server/src/services/commissionEngine.ts"
+      - "artifacts/api-server/src/routes/commissions.ts"
+      - "artifacts/api-server/src/__tests__/commissions.route.test.ts"
+      - "artifacts/api-server/scripts/test-commissions-pg.ts"
+      - "artifacts/api-server/tsconfig.commissions.json"
+      - "artifacts/api-server/package.json"
+      - "pnpm-lock.yaml"
+      - ".github/workflows/commission-postgres-integration.yml"
+  workflow_dispatch:
+
+jobs:
+  commission-postgres-integration:
+    name: Commission PostgreSQL Integration
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_DB: commission_test_ci
+          POSTGRES_USER: ci_user
+          POSTGRES_PASSWORD: ci_password
+        options: >-
+          --health-cmd "pg_isready -U ci_user -d commission_test_ci"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+        ports:
+          - 5432:5432
+
+    env:
+      TEST_DATABASE_URL: postgresql://ci_user:ci_password@127.0.0.1:5432/commission_test_ci
+      # DATABASE_URL and CORE_DATABASE_URL are intentionally absent from the job environment.
+      # test-commissions-pg.ts sets COMMISSION_DATABASE_URL = TEST_DATABASE_URL internally at runtime.
+      # DATABASE_URL is never set — Commission module no longer reads it.
+      # CORE_DATABASE_URL is never set — commission functions have no runtime dependency on Neon Core.
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Setup pnpm 10
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10
+
+      - name: Get pnpm store path
+        id: pnpm-cache
+        run: echo "store=$(pnpm store path)" >> $GITHUB_OUTPUT
+
+      - name: Cache pnpm store
+        uses: actions/cache@v4
+        with:
+          path: ${{ steps.pnpm-cache.outputs.store }}
+          key: ${{ runner.os }}-pnpm-${{ hashFiles('**/pnpm-lock.yaml') }}
+          restore-keys: |
+            ${{ runner.os }}-pnpm-
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: TypeScript check (commission files)
+        working-directory: artifacts/api-server
+        run: pnpm exec tsc --noEmit --project tsconfig.commissions.json
+
+      - name: Unit tests (vitest — commission suite only, no database required)
+        working-directory: artifacts/api-server
+        run: pnpm exec vitest run src/__tests__/commissions.route.test.ts --reporter=verbose
+
+      - name: Wait for PostgreSQL service
+        run: |
+          until pg_isready -h 127.0.0.1 -p 5432 -U ci_user; do
+            echo "Waiting for postgres…"
+            sleep 1
+          done
+
+      - name: Commission PostgreSQL integration tests
+        working-directory: artifacts/api-server
+        shell: bash
+        run: |
+          set -o pipefail
+          pnpm test:commissions:pg 2>&1 | tee /tmp/pg-integration-output.txt
+        env:
+          GITHUB_ACTIONS: "true"
+
+      - name: Upload integration test output
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: pg-integration-output
+          path: /tmp/pg-integration-output.txt
+          if-no-files-found: warn
+          retention-days: 14
