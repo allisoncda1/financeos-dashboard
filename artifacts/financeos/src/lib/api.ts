@@ -314,7 +314,7 @@ export const api = {
   createCommissionRule: (slug: string, body: CommissionRuleInput) =>
     post<{ data: CommissionRule }>(`/commissions/${slug}/rules`, body),
   ingestCommissions: (slug: string, body?: { fromDate?: string; toDate?: string }) =>
-    post<{ data: unknown }>(`/commissions/${slug}/ingest`, body ?? {}),
+    post<{ data: IngestResult }>(`/commissions/${slug}/ingest`, body ?? {}),
   approveCommissionLine: (slug: string, lineId: string) =>
     post<{ ok: boolean }>(`/commissions/${slug}/lines/${lineId}/approve`, {}),
   lockCommissionPeriod: (slug: string, year: number, month: number) =>
@@ -629,6 +629,19 @@ export type CommissionRepSummary = {
   calculated: number;
   approved: number;
   locked: number;
+};
+
+export type IngestResult = {
+  entityId: string;
+  processed: number;
+  created: number;
+  updated: number;
+  sourceChanged: number;
+  skipped: number;
+  needsConfig?: number;
+  needsReview?: number;
+  houseNoCommission?: number;
+  errors: Array<{ invoiceId: string; message: string }>;
 };
 
 export type CommissionRulePreview = {

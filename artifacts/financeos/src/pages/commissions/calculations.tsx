@@ -2,8 +2,10 @@ import { useState, useEffect, useRef } from "react";
 import { CommissionLayout } from "@/components/commission/CommissionLayout";
 import { useCommissionEntity } from "@/lib/commission-context";
 import { api } from "@/lib/api";
-import type { CommissionRunLine, CommissionRepresentative } from "@/lib/api";
+import type { CommissionRunLine, CommissionRepresentative, IngestResult } from "@/lib/api";
 import { formatCurrency } from "@/lib/format";
+
+const HISTORICAL_FROM = "2025-11-01";
 
 function useData<T>(fetcher: () => Promise<{ data: T }>, deps: unknown[]) {
   const [data, setData] = useState<T | null>(null);
@@ -70,6 +72,9 @@ export default function CommissionCalculationsPage() {
   const [statusFilter, setStatusFilter] = useState("");
   const [repFilter, setRepFilter]       = useState("");
   const [approving, setApproving]       = useState<string | null>(null);
+  const [fromDate, setFromDate]         = useState(HISTORICAL_FROM);
+  const [toDate, setToDate]             = useState(new Date().toISOString().slice(0, 10));
+  const [ingestResult, setIngestResult] = useState<IngestResult | null>(null);
 
   const { data: repsData } = useData(
     () => api.commissionRepresentatives(activeSlug),
@@ -106,8 +111,10 @@ export default function CommissionCalculationsPage() {
 
   async function handleIngest() {
     setLoading(true);
+    setIngestResult(null);
     try {
-      await api.ingestCommissions(activeSlug);
+      const ingestRes = await api.ingestCommissions(activeSlug, { fromDate, toDate });
+      setIngestResult(ingestRes.data ?? null);
       const res = await api.commissionLines(activeSlug, { limit: 200 }) as unknown as { data: CommissionRunLine[]; total: number };
       setLines(res.data ?? []);
       setTotal(res.total ?? 0);
@@ -139,14 +146,51 @@ export default function CommissionCalculationsPage() {
 
         <span className="text-xs text-gray-400 ml-2">{loading ? "…" : `${total} lines`}</span>
 
-        <button
-          onClick={handleIngest}
-          disabled={loading}
-          className="ml-auto text-sm bg-blue-600 hover:bg-blue-700 text-white font-semibold px-4 py-1.5 rounded-lg transition-colors disabled:opacity-50"
-        >
-          {loading ? "Loading…" : "Sync Invoices"}
-        </button>
+        {/* Import date range + trigger */}
+        <div className="ml-auto flex flex-wrap items-center gap-2">
+          <label className="text-xs text-gray-500 font-medium">Import from</label>
+          <input
+            type="date"
+            value={fromDate}
+            onChange={(e) => setFromDate((e.target as HTMLInputElement).value)}
+            className="text-sm border border-gray-200 rounded-lg px-2 py-1.5 focus:outline-none"
+          />
+          <label className="text-xs text-gray-500 font-medium">to</label>
+          <input
+            type="date"
+            value={toDate}
+            onChange={(e) => setToDate((e.target as HTMLInputElement).value)}
+            className="text-sm border border-gray-200 rounded-lg px-2 py-1.5 focus:outline-none"
+          />
+          <button
+            onClick={handleIngest}
+            disabled={loading}
+            className="text-sm bg-blue-600 hover:bg-blue-700 text-white font-semibold px-4 py-1.5 rounded-lg transition-colors disabled:opacity-50"
+          >
+            {loading ? "Importing…" : "Import Invoices"}
+          </button>
+        </div>
       </div>
+
+      {/* Ingest result summary */}
+      {ingestResult && (
+        <div className="bg-emerald-50 border border-emerald-200 rounded-xl px-5 py-3 flex flex-wrap gap-5 text-sm">
+          <span className="font-semibold text-emerald-800">Import complete</span>
+          <span className="text-emerald-700">Processed: <strong>{ingestResult.processed}</strong></span>
+          <span className="text-emerald-700">Created: <strong>{ingestResult.created}</strong></span>
+          <span className="text-emerald-700">Updated: <strong>{ingestResult.updated}</strong></span>
+          <span className="text-gray-500">Skipped: <strong>{ingestResult.skipped}</strong></span>
+          {ingestResult.needsConfig != null && ingestResult.needsConfig > 0 && (
+            <span className="text-amber-700">Needs config: <strong>{ingestResult.needsConfig}</strong></span>
+          )}
+          {ingestResult.needsReview != null && ingestResult.needsReview > 0 && (
+            <span className="text-red-700">Needs review: <strong>{ingestResult.needsReview}</strong></span>
+          )}
+          {ingestResult.errors?.length > 0 && (
+            <span className="text-red-700">Errors: <strong>{ingestResult.errors.length}</strong></span>
+          )}
+        </div>
+      )}
 
       <div className="bg-white rounded-xl border border-gray-200 shadow-sm">
         {loading ? (

@@ -5,6 +5,8 @@ import { RulesEngine } from "../rules/engine";
 import { invalidateCache as invalidateAiCache } from "../ai/cache";
 import { getSourceSummary } from "../lib/sourceTracker";
 import { hasPermission } from "../auth/permissions";
+import { ingestEntityInvoices } from "../services/commissionEngine";
+import { EntitiesService } from "../db";
 
 const router: IRouter = Router();
 
@@ -116,6 +118,24 @@ router.post("/refresh", (req, res) => {
   invalidateAiCache();
 
   req.log.info("[pipeline] cache invalidated via refresh webhook");
+
+  // Non-blocking commission re-ingest: process a 90-day rolling window for all entities
+  // so any invoices written to public.invoices by the QBO pipeline get commission lines.
+  // Idempotent — existing lines are upserted, not duplicated. Missing rules yield
+  // needs_configuration / needs_review (never silently zero). Errors are logged, not surfaced.
+  void (async () => {
+    try {
+      const toDate   = new Date().toISOString().slice(0, 10);
+      const fromDate = new Date(Date.now() - 90 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
+      const entities = await EntitiesService.getAllEntities();
+      for (const entity of entities) {
+        await ingestEntityInvoices(entity.id, { fromDate, toDate, reingesterBy: "pipeline/refresh" });
+      }
+      req.log.info("[pipeline] commission re-ingest complete for %d entities", entities.length);
+    } catch (err) {
+      req.log.warn({ err }, "[pipeline] commission re-ingest failed (non-blocking)");
+    }
+  })();
 
   res.json({
     ok: true,
