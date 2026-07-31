@@ -18,6 +18,12 @@ import {
   isOAuthReturn, restoreLinkToken, storeLinkToken, clearLinkToken,
   cleanOAuthParams, sanitizePlaidExitError, PLAID_OAUTH_PATH,
 } from "@/lib/plaid-oauth";
+import { Link } from "wouter";
+import {
+  institutionColor,
+  formatRelativeTime,
+  totalAvailableCash,
+} from "@/lib/banking-utils";
 import { formatCurrency } from "@/lib/format";
 
 // ─── API helpers ──────────────────────────────────────────────────────────────
@@ -317,177 +323,165 @@ function PlaidLinkButton({
   );
 }
 
-// ─── Accounts table ───────────────────────────────────────────────────────────
 
-function AccountsTable({
-  accounts,
-  onSync,
-  syncingItemId,
-}: {
-  accounts: PlaidAccount[];
-  onSync: (plaidItemId: string) => void;
-  syncingItemId: string | null;
-}) {
-  if (accounts.length === 0) {
-    return (
-      <div className="px-5 py-8 text-center text-sm text-gray-400">
-        No connected accounts. Click "Connect bank account" to link your first institution.
-      </div>
-    );
-  }
+
+// ─── Institution avatar ─────────────────────────────────────────────────────────────
+// Local initial-letter fallback — not a Plaid logo. (institutionsGet is not
+// called during exchange; only institution_id/name are stored in plaid_items.)
+
+function InstitutionAvatar({ name }: { name: string }) {
+  const { bg, text } = institutionColor(name);
+  return (
+    <span
+      className="w-9 h-9 rounded-lg flex items-center justify-center text-sm font-bold
+                 flex-shrink-0 select-none"
+      style={{ backgroundColor: bg, color: text }}
+      aria-hidden="true"
+    >
+      {name.charAt(0).toUpperCase()}
+    </span>
+  );
+}
+
+// ─── Account card ───────────────────────────────────────────────────────────────────────────
+
+function AccountCard({ account }: { account: PlaidAccount }) {
+  const instName = account.institutionName ?? "Bank";
 
   return (
-    <div className="overflow-x-auto">
-      <table className="w-full text-sm">
-        <thead>
-          <tr className="border-b border-gray-100">
-            <th className="px-5 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Institution</th>
-            <th className="px-5 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Account</th>
-            <th className="px-5 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Type</th>
-            <th className="px-5 py-3 text-right text-xs font-semibold text-gray-500 uppercase tracking-wider">Current</th>
-            <th className="px-5 py-3 text-right text-xs font-semibold text-gray-500 uppercase tracking-wider">Available</th>
-            <th className="px-5 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Last Sync</th>
-            <th className="px-5 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Status</th>
-            <th className="px-5 py-3" />
-          </tr>
-        </thead>
-        <tbody className="divide-y divide-gray-50">
-          {accounts.map((acct) => {
-            const syncing = syncingItemId === acct.plaidItemId;
-            return (
-              <tr key={acct.plaidAccountId} className="hover:bg-gray-50/50">
-                <td className="px-5 py-3 font-medium text-gray-900">
-                  {acct.institutionName ?? "—"}
-                </td>
-                <td className="px-5 py-3 text-gray-700">
-                  {acct.name ?? "—"}
-                  {acct.mask && (
-                    <span className="ml-1 text-gray-400 font-mono text-xs">···{acct.mask}</span>
-                  )}
-                </td>
-                <td className="px-5 py-3 text-gray-600 capitalize">
-                  {acct.subtype ?? acct.type ?? "—"}
-                </td>
-                <td className="px-5 py-3 text-right tabular-nums text-gray-900">
-                  {acct.currentBalance != null
-                    ? formatCurrency(acct.currentBalance)
-                    : "—"}
-                </td>
-                <td className="px-5 py-3 text-right tabular-nums text-gray-600">
-                  {acct.availableBalance != null
-                    ? formatCurrency(acct.availableBalance)
-                    : "—"}
-                </td>
-                <td className="px-5 py-3 text-gray-500 text-xs">
-                  {acct.lastSyncAt
-                    ? new Date(acct.lastSyncAt).toLocaleString()
-                    : "Never"}
-                </td>
-                <td className="px-5 py-3">
-                  <Pill
-                    tone={
-                      acct.status === "active"
-                        ? "emerald"
-                        : acct.status === "error"
-                        ? "red"
-                        : "gray"
-                    }
-                  >
-                    {acct.status}
-                  </Pill>
-                </td>
-                <td className="px-5 py-3">
-                  <button
-                    onClick={() => onSync(acct.plaidItemId)}
-                    disabled={syncing}
-                    className="text-xs text-blue-600 hover:text-blue-800 disabled:text-gray-400
-                               disabled:cursor-not-allowed font-medium"
-                  >
-                    {syncing ? "Syncing…" : "Sync now"}
-                  </button>
-                </td>
-              </tr>
-            );
-          })}
-        </tbody>
-      </table>
+    <Link
+      href={`/accounting/banking/accounts/${account.plaidAccountId}`}
+      className="group block bg-white rounded-xl border border-gray-200 shadow-sm
+                 hover:shadow-md hover:border-gray-300 transition-all duration-150
+                 no-underline focus:outline-none focus:ring-2 focus:ring-blue-500/40
+                 overflow-hidden"
+    >
+      <div className="flex items-center gap-3 px-5 pt-4 pb-3 border-b border-gray-100">
+        <InstitutionAvatar name={instName} />
+        <div className="min-w-0 flex-1">
+          <div className="text-sm font-semibold text-gray-900 truncate">{instName}</div>
+          <div className="flex items-center gap-1.5 mt-0.5">
+            <span
+              className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${
+                account.status === "active" ? "bg-emerald-500" : "bg-red-500"
+              }`}
+            />
+            <span
+              className={`text-xs ${
+                account.status === "active"
+                  ? "text-gray-400"
+                  : "text-red-500 capitalize"
+              }`}
+            >
+              {account.status === "active" ? "Connected" : account.status}
+            </span>
+          </div>
+        </div>
+      </div>
+
+      <div className="px-5 pt-3 pb-2">
+        <div className="text-base font-semibold text-gray-900 truncate">
+          {account.name ?? "Account"}
+        </div>
+        <div className="flex items-center gap-2 mt-0.5">
+          {account.mask && (
+            <span className="text-xs text-gray-400 font-mono tracking-widest">
+              ···{account.mask}
+            </span>
+          )}
+          <span className="text-xs text-gray-500 capitalize">
+            {account.subtype ?? account.type ?? "Account"}
+          </span>
+        </div>
+      </div>
+
+      <div className="px-5 pb-3">
+        <div className="text-2xl font-bold text-gray-900 tabular-nums leading-none">
+          {account.currentBalance != null
+            ? formatCurrency(account.currentBalance)
+            : "—"}
+        </div>
+        <div className="text-xs text-gray-500 mt-1">Current balance</div>
+        {account.availableBalance != null && (
+          <div className="text-xs text-gray-400 mt-1">
+            Available:{" "}
+            <span className="tabular-nums font-medium text-gray-600">
+              {formatCurrency(account.availableBalance)}
+            </span>
+          </div>
+        )}
+      </div>
+
+      <div className="px-5 pb-4 flex items-center justify-between">
+        <div className="text-xs text-gray-400">
+          {account.lastSyncAt
+            ? `Synced ${formatRelativeTime(account.lastSyncAt)}`
+            : "Not yet synced"}
+        </div>
+        <div
+          className="text-xs font-medium text-blue-600 flex items-center gap-1
+                      group-hover:text-blue-700 transition-colors"
+        >
+          View transactions →
+        </div>
+      </div>
+    </Link>
+  );
+}
+
+// ─── Summary stats ────────────────────────────────────────────────────────────────────────────
+
+function BankingSummary({ accounts }: { accounts: PlaidAccount[] }) {
+  if (accounts.length === 0) return null;
+  const cash = totalAvailableCash(accounts);
+  const latestSync = accounts
+    .map((a) => a.lastSyncAt)
+    .filter((s): s is string => s != null)
+    .sort()
+    .at(-1);
+  const stats: { label: string; value: string; sub: string }[] = [
+    {
+      label: "Connected Accounts",
+      value: String(accounts.length),
+      sub: accounts.length === 1 ? "account" : "accounts",
+    },
+    {
+      label: "Available Cash",
+      value: formatCurrency(cash),
+      sub: "Depository accounts only",
+    },
+    {
+      label: "Last Synced",
+      value: latestSync ? formatRelativeTime(latestSync) : "—",
+      sub: "Across all accounts",
+    },
+  ];
+  return (
+    <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+      {stats.map(({ label, value, sub }) => (
+        <div
+          key={label}
+          className="bg-white rounded-xl border border-gray-200 shadow-sm px-5 py-4"
+        >
+          <div className="text-xs text-gray-500 font-medium uppercase tracking-wider">
+            {label}
+          </div>
+          <div className="text-xl font-bold text-gray-900 mt-1 tabular-nums truncate">
+            {value}
+          </div>
+          <div className="text-xs text-gray-400 mt-0.5">{sub}</div>
+        </div>
+      ))}
     </div>
   );
 }
 
-// ─── Transactions table ───────────────────────────────────────────────────────
-
-function TransactionsTable({ transactions }: { transactions: BankTransaction[] }) {
-  if (transactions.length === 0) {
-    return (
-      <div className="px-5 py-8 text-center text-sm text-gray-400">
-        No transactions found. Connect a bank account and sync to populate.
-      </div>
-    );
-  }
-
-  return (
-    <div className="overflow-x-auto">
-      <table className="w-full text-sm">
-        <thead>
-          <tr className="border-b border-gray-100">
-            <th className="px-5 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Date</th>
-            <th className="px-5 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Merchant / Name</th>
-            <th className="px-5 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Category</th>
-            <th className="px-5 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Channel</th>
-            <th className="px-5 py-3 text-right text-xs font-semibold text-gray-500 uppercase tracking-wider">Amount</th>
-            <th className="px-5 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Status</th>
-          </tr>
-        </thead>
-        <tbody className="divide-y divide-gray-50">
-          {transactions.map((txn) => (
-            <tr key={txn.id} className="hover:bg-gray-50/50">
-              <td className="px-5 py-3 text-gray-500 text-xs tabular-nums whitespace-nowrap">
-                {txn.date}
-              </td>
-              <td className="px-5 py-3 text-gray-900 font-medium">
-                {txn.merchantName ?? txn.name ?? "—"}
-              </td>
-              <td className="px-5 py-3 text-gray-500 text-xs">
-                {txn.personalFinanceCategory?.detailed
-                  ?.replace(/_/g, " ")
-                  .toLowerCase()
-                  .replace(/\b\w/g, (c) => c.toUpperCase()) ?? "—"}
-              </td>
-              <td className="px-5 py-3 text-gray-500 text-xs capitalize">
-                {txn.paymentChannel ?? "—"}
-              </td>
-              <td className="px-5 py-3 text-right tabular-nums">
-                <span className={txn.amount != null && txn.amount > 0 ? "text-red-600" : "text-emerald-700"}>
-                  {txn.amount != null ? formatCurrency(Math.abs(txn.amount)) : "—"}
-                </span>
-              </td>
-              <td className="px-5 py-3">
-                {txn.pending ? (
-                  <Pill tone="amber">Pending</Pill>
-                ) : (
-                  <Pill tone="emerald">Posted</Pill>
-                )}
-              </td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
-    </div>
-  );
-}
-
-// ─── Main page ────────────────────────────────────────────────────────────────
+// ─── Main page ───────────────────────────────────────────────────────────────────────────────
 
 export default function AccountingBankingPage() {
   const { activeSlug } = useAccountingEntity();
-
   const [accounts, setAccounts] = useState<PlaidAccount[]>([]);
-  const [transactions, setTransactions] = useState<BankTransaction[]>([]);
   const [loadingAccounts, setLoadingAccounts] = useState(false);
-  const [loadingTransactions, setLoadingTransactions] = useState(false);
-  const [syncingItemId, setSyncingItemId] = useState<string | null>(null);
-  const [lastSyncSummary, setLastSyncSummary] = useState<SyncSummary | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   const loadAccounts = useCallback(async () => {
@@ -495,7 +489,9 @@ export default function AccountingBankingPage() {
     setLoadingAccounts(true);
     setError(null);
     try {
-      const data = await apiGet<PlaidAccount[]>(`/plaid/accounts?entitySlug=${encodeURIComponent(activeSlug)}`);
+      const data = await apiGet<PlaidAccount[]>(
+        `/plaid/accounts?entitySlug=${encodeURIComponent(activeSlug)}`,
+      );
       setAccounts(data);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to load accounts");
@@ -504,44 +500,9 @@ export default function AccountingBankingPage() {
     }
   }, [activeSlug]);
 
-  const loadTransactions = useCallback(async () => {
-    if (!activeSlug) return;
-    setLoadingTransactions(true);
-    try {
-      const data = await apiGet<{ transactions: BankTransaction[]; pagination: unknown }>(
-        `/plaid/transactions?entitySlug=${encodeURIComponent(activeSlug)}&limit=50`,
-      );
-      setTransactions(data.transactions);
-    } catch {
-      // Non-fatal — transactions may be empty on first connect
-    } finally {
-      setLoadingTransactions(false);
-    }
-  }, [activeSlug]);
-
-  const handleSync = useCallback(async (plaidItemId: string) => {
-    setSyncingItemId(plaidItemId);
-    setError(null);
-    try {
-      const summary = await apiPost<SyncSummary>(`/plaid/items/${plaidItemId}/sync`, {});
-      setLastSyncSummary(summary);
-      await Promise.all([loadAccounts(), loadTransactions()]);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Sync failed");
-    } finally {
-      setSyncingItemId(null);
-    }
-  }, [loadAccounts, loadTransactions]);
-
-  const handleLinkSuccess = useCallback(async () => {
-    await Promise.all([loadAccounts(), loadTransactions()]);
-  }, [loadAccounts, loadTransactions]);
-
-  // Load on mount and when entity changes
   useEffect(() => {
     void loadAccounts();
-    void loadTransactions();
-  }, [loadAccounts, loadTransactions]);
+  }, [loadAccounts]);
 
   return (
     <AccountingLayout
@@ -549,15 +510,12 @@ export default function AccountingBankingPage() {
       subtitle="Plaid-connected bank and credit accounts"
     >
       <div className="space-y-6">
-        {/* Connect button + status */}
+        {/* Connection controls — PlaidLinkButton preserved byte-for-byte */}
         <div className="flex items-center justify-between">
-          <PlaidLinkButton entitySlug={activeSlug} onSuccess={handleLinkSuccess} />
-          {lastSyncSummary && (
-            <p className="text-xs text-gray-500">
-              Last sync: +{lastSyncSummary.added} added, {lastSyncSummary.modified} modified,{" "}
-              {lastSyncSummary.removed} removed
-            </p>
-          )}
+          <PlaidLinkButton
+            entitySlug={activeSlug}
+            onSuccess={() => void loadAccounts()}
+          />
         </div>
 
         {error && (
@@ -566,27 +524,31 @@ export default function AccountingBankingPage() {
           </div>
         )}
 
-        {/* Connected accounts */}
-        <Card title="Connected Accounts">
-          {loadingAccounts ? (
-            <div className="px-5 py-8 text-center text-sm text-gray-400">Loading accounts…</div>
-          ) : (
-            <AccountsTable
-              accounts={accounts}
-              onSync={handleSync}
-              syncingItemId={syncingItemId}
-            />
-          )}
-        </Card>
+        {!loadingAccounts && <BankingSummary accounts={accounts} />}
 
-        {/* Transactions */}
-        <Card title="Recent Transactions">
-          {loadingTransactions ? (
-            <div className="px-5 py-8 text-center text-sm text-gray-400">Loading transactions…</div>
+        <div>
+          <h2 className="text-sm font-semibold text-gray-500 uppercase tracking-wider mb-3">
+            Connected Accounts
+          </h2>
+          {loadingAccounts ? (
+            <div className="py-12 text-center text-sm text-gray-400">
+              Loading accounts…
+            </div>
+          ) : accounts.length === 0 ? (
+            <div className="bg-white rounded-xl border border-gray-200 shadow-sm px-6 py-12 text-center">
+              <div className="text-sm font-medium text-gray-500">No connected accounts</div>
+              <div className="text-xs text-gray-400 mt-1">
+                Click “Connect bank account” above to link your first institution.
+              </div>
+            </div>
           ) : (
-            <TransactionsTable transactions={transactions} />
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+              {accounts.map((account) => (
+                <AccountCard key={account.plaidAccountId} account={account} />
+              ))}
+            </div>
           )}
-        </Card>
+        </div>
       </div>
     </AccountingLayout>
   );
