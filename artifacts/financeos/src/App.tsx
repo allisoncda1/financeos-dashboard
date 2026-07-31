@@ -89,6 +89,8 @@ import CommissionCalculationsPage from "@/pages/commissions/calculations";
 import CommissionPayoutsPage from "@/pages/commissions/payouts";
 import CommissionReportsPage from "@/pages/commissions/reports";
 import CommissionSettingsPage from "@/pages/commissions/settings";
+import CommissionReviewDetailPage from "@/pages/commissions/review-detail";
+import CommissionReviewPage from "@/pages/commissions/review";
 import ForecastOverviewPage from "@/pages/forecast/overview";
 import RevenueForecastPage from "@/pages/forecast/revenue";
 import CashFlowForecastPage from "@/pages/forecast/cash-flow";
@@ -266,6 +268,8 @@ function CommissionRoutes() {
       <Route path="/commissions/clients" component={CommissionClientsPage} />
       <Route path="/commissions/plans" component={CommissionPlansPage} />
       <Route path="/commissions/calculations" component={CommissionCalculationsPage} />
+      <Route path="/commissions/review/:lineId" component={CommissionReviewDetailPage} />
+      <Route path="/commissions/review" component={CommissionReviewPage} />
       <Route path="/commissions/payouts" component={CommissionPayoutsPage} />
       <Route path="/commissions/reports" component={CommissionReportsPage} />
       <Route path="/commissions/settings" component={CommissionSettingsPage} />

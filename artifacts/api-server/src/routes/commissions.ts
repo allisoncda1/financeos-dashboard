@@ -555,7 +555,7 @@ router.post("/:slug/lines/:lineId/review-draft", requireAuth, requirePermission(
     await saveLineReviewDraft(entityId, lineId, { expensesAmount: String(raw) });
     return res.json({ ok: true, ts: new Date().toISOString() });
   } catch (e) {
-    req.log.error({ err: e }, "[commission] review-draft internal error");
+    (req as unknown as { log?: { error?(...a: unknown[]): void } }).log?.error?.({ err: e }, "[commission] review-draft internal error");
     return res.status(500).json({ ok: false, error: "Internal error" });
   }
 });
@@ -656,7 +656,7 @@ router.post("/:slug/lines/:lineId/review-approve", requireAuth, requirePermissio
       const status = code === "line_not_found" ? 404 : 422;
       return res.status(status).json({ ok: false, error: code });
     }
-    req.log.error({ err: e }, "[commission] review-approve internal error");
+    (req as unknown as { log?: { error?(...a: unknown[]): void } }).log?.error?.({ err: e }, "[commission] review-approve internal error");
     return res.status(500).json({ ok: false, error: "Internal error" });
   }
 });
@@ -676,7 +676,7 @@ router.get("/:slug/kpi-summary", requireAuth, async (req, res) => {
     const data = await getCommissionKpiSummary(entityId, month);
     return res.json({ ok: true, data, ts: new Date().toISOString() });
   } catch (e) {
-    req.log.error({ err: e }, "[commission] kpi-summary internal error");
+    (req as unknown as { log?: { error?(...a: unknown[]): void } }).log?.error?.({ err: e }, "[commission] kpi-summary internal error");
     return res.status(500).json({ ok: false, error: "Internal error" });
   }
 });
