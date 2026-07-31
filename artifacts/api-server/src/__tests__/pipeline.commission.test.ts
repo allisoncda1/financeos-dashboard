@@ -32,6 +32,7 @@ function makeApp() {
   const app = express();
   app.use(express.json());
   app.use((req, _res, next) => {
+    (req as unknown as Record<string, unknown>).session = {};
     (req as unknown as Record<string, unknown>).log = {
       info: vi.fn(), warn: vi.fn(), error: vi.fn(),
     };
