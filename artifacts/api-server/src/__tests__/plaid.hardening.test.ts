@@ -840,3 +840,87 @@ describe("Plaid consent INSERT — array param regression (tests 28–34)", () =
     expect(pgState.queryFn).not.toHaveBeenCalled();
   });
 });
+
+// ─── Tests 35–37: link-token redirect_uri for OAuth institutions ───────────────
+//
+// Root cause (fixed in routes/plaid.ts):
+// linkTokenCreate was called without redirect_uri. OAuth institutions like Chase
+// require it — without it Plaid immediately closes when the user selects Chase.
+//
+// The correct value is: `${APP_PUBLIC_URL}/accounting/banking`
+// registered in both the Plaid Dashboard and the Replit APP_PUBLIC_URL secret.
+
+describe("POST /plaid/link-token — OAuth redirect_uri (tests 35–37)", () => {
+  let plaidRouter: import("express").Router;
+  const savedAppUrl = process.env["APP_PUBLIC_URL"];
+
+  beforeEach(async () => {
+    pgState.queryFn.mockReset();
+    plaidState.linkTokenCreate.mockReset();
+    entityCacheState.getCachedEntityId.mockReset();
+    entityCacheState.getCachedEntityId.mockResolvedValue("entity-uuid-oauth-test");
+    // consent record exists so the route proceeds to linkTokenCreate
+    pgState.queryFn.mockResolvedValue({ rows: [{ id: "consent-uuid" }] });
+    plaidState.linkTokenCreate.mockResolvedValue({ data: { link_token: "link-prod-xyz" } });
+    const mod = await import("../routes/plaid.js");
+    plaidRouter = mod.default;
+  });
+
+  afterEach(() => {
+    // Restore env var so other test suites are not affected
+    if (savedAppUrl !== undefined) {
+      process.env["APP_PUBLIC_URL"] = savedAppUrl;
+    } else {
+      delete process.env["APP_PUBLIC_URL"];
+    }
+    vi.resetModules();
+  });
+
+  it("35. link-token includes correct redirect_uri when APP_PUBLIC_URL is set", async () => {
+    process.env["APP_PUBLIC_URL"] = "https://finance-os-1.replit.app";
+
+    const app = makeApp("admin");
+    app.use(plaidRouter);
+    const res = await request(app)
+      .post("/plaid/link-token")
+      .send({ entitySlug: "CarDealer_ai" });
+
+    expect(res.status).toBe(200);
+    const callArgs = plaidState.linkTokenCreate.mock.calls[0]?.[0] as Record<string, unknown>;
+    expect(callArgs).toBeDefined();
+    expect(callArgs["redirect_uri"]).toBe("https://finance-os-1.replit.app/accounting/banking");
+  });
+
+  it("36. trailing slash in APP_PUBLIC_URL is stripped — no double-slash in redirect_uri", async () => {
+    process.env["APP_PUBLIC_URL"] = "https://finance-os-1.replit.app/";
+
+    const app = makeApp("admin");
+    app.use(plaidRouter);
+    const res = await request(app)
+      .post("/plaid/link-token")
+      .send({ entitySlug: "CarDealer_ai" });
+
+    expect(res.status).toBe(200);
+    const callArgs = plaidState.linkTokenCreate.mock.calls[0]?.[0] as Record<string, unknown>;
+    const uri = callArgs["redirect_uri"] as string;
+    expect(uri).toBe("https://finance-os-1.replit.app/accounting/banking");
+    expect(uri).not.toContain("//accounting");
+  });
+
+  it("37. redirect_uri is undefined when APP_PUBLIC_URL is not configured", async () => {
+    delete process.env["APP_PUBLIC_URL"];
+
+    const app = makeApp("admin");
+    app.use(plaidRouter);
+    const res = await request(app)
+      .post("/plaid/link-token")
+      .send({ entitySlug: "CarDealer_ai" });
+
+    // Route still responds 200 (degraded — OAuth institutions won't work, but non-OAuth will)
+    expect(res.status).toBe(200);
+    const callArgs = plaidState.linkTokenCreate.mock.calls[0]?.[0] as Record<string, unknown>;
+    // redirect_uri must be undefined — never an empty string or localhost
+    expect(callArgs["redirect_uri"]).toBeUndefined();
+    expect(callArgs["redirect_uri"]).not.toBe("");
+  });
+});

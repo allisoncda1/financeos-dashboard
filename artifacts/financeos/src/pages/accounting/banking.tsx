@@ -14,6 +14,10 @@ import { AccountingLayout } from "@/components/accounting/AccountingLayout";
 import { Card, Pill } from "@/components/accounting/AccountingUI";
 import { useAccountingEntity } from "@/lib/accounting-context";
 import { usePlaidLink } from "react-plaid-link";
+import {
+  isOAuthReturn, restoreLinkToken, storeLinkToken, clearLinkToken,
+  cleanOAuthParams, sanitizePlaidExitError, PLAID_OAUTH_PATH,
+} from "@/lib/plaid-oauth";
 import { formatCurrency } from "@/lib/format";
 
 // ─── API helpers ──────────────────────────────────────────────────────────────
@@ -169,7 +173,15 @@ function ConsentModal({
   );
 }
 
-// ─── Plaid Link wrapper (consent-gated) ──────────────────────────────────────
+// ─── Plaid Link wrapper (consent-gated, OAuth-safe) ──────────────────────────
+//
+// OAuth flow (Chase, Wells Fargo, etc.):
+//  1. User clicks Connect → fetchLinkToken → saved to sessionStorage → open()
+//  2. User selects Chase → Plaid redirects to Chase OAuth (page navigates away)
+//  3. Chase redirects back to APP_PUBLIC_URL/accounting/banking?oauth_state_id=XXX
+//  4. Component mounts → isOAuthReturn() true → restoreLinkToken() from sessionStorage
+//  5. usePlaidLink receives receivedRedirectUri=window.location.href → resumes Link
+//  6. onSuccess → exchange token → clearLinkToken() → cleanOAuthParams()
 
 function PlaidLinkButton({
   entitySlug,
@@ -178,20 +190,26 @@ function PlaidLinkButton({
   entitySlug: string;
   onSuccess: () => void;
 }) {
+  const oauthReturn = isOAuthReturn();
+
+  // On OAuth return, seed state from sessionStorage (survives page reload).
+  // On fresh start, start null and fetch on button click.
+  const [linkToken, setLinkToken] = useState<string | null>(() =>
+    oauthReturn ? restoreLinkToken() : null,
+  );
   const [showConsent, setShowConsent] = useState(false);
-  const [linkToken, setLinkToken] = useState<string | null>(null);
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [loading, setLoading]         = useState(false);
+  const [error, setError]             = useState<string | null>(null);
 
   const fetchLinkToken = useCallback(async () => {
     setLoading(true);
     setError(null);
     try {
       const data = await apiPost<{ linkToken: string }>("/plaid/link-token", { entitySlug });
+      storeLinkToken(data.linkToken);
       setLinkToken(data.linkToken);
     } catch (err) {
       const msg = err instanceof Error ? err.message : "Failed to initialize Plaid Link";
-      // If consent is required, show the consent modal
       if (msg.includes("Consent required") || msg.includes("CONSENT_REQUIRED")) {
         setShowConsent(true);
       } else {
@@ -207,32 +225,60 @@ function PlaidLinkButton({
     void fetchLinkToken();
   }, [fetchLinkToken]);
 
+  // On OAuth return, the full current URL (with oauth_state_id) must be passed
+  // so Plaid Link knows to resume the OAuth flow rather than starting fresh.
+  const receivedRedirectUri = oauthReturn ? window.location.href : undefined;
+
   const { open, ready } = usePlaidLink({
     token: linkToken ?? "",
+    receivedRedirectUri,
+
     onSuccess: async (publicToken, metadata) => {
+      clearLinkToken();
+      cleanOAuthParams();
       try {
-        await apiPost("/plaid/exchange-token", {
-          entitySlug,
-          publicToken,
-          metadata,
-        });
+        await apiPost("/plaid/exchange-token", { entitySlug, publicToken, metadata });
         setLinkToken(null);
         onSuccess();
       } catch (err) {
         setError(err instanceof Error ? err.message : "Failed to connect bank account");
       }
     },
-    onExit: () => {
+
+    onExit: (err, _metadata) => {
+      // Surface a sanitized message — never raw Plaid error payloads
+      const msg = sanitizePlaidExitError(err);
+      if (msg) setError(msg);
+      // Clear token and storage so the next click starts a fresh session
+      clearLinkToken();
       setLinkToken(null);
+      // Remove OAuth params so a subsequent normal click works correctly
+      if (oauthReturn) cleanOAuthParams();
+    },
+
+    onEvent: (eventName, metadata) => {
+      // Safe diagnostics only — no credentials, phone numbers, or account numbers
+      const safe = {
+        event:       eventName,
+        institution: (metadata as Record<string, unknown>)?.["institution_name"],
+        institutionId: (metadata as Record<string, unknown>)?.["institution_id"],
+        errorCode:   (metadata as Record<string, unknown>)?.["error_code"],
+      };
+      console.info("[Plaid Link]", safe);
     },
   });
 
-  // Auto-open Plaid Link once we have a token
+  // Auto-open when token is ready — covers both fresh and OAuth-return paths
   useEffect(() => {
-    if (linkToken && ready) {
-      open();
-    }
+    if (linkToken && ready) open();
   }, [linkToken, ready, open]);
+
+  // OAuth return with no stored token — session expired before redirect
+  useEffect(() => {
+    if (oauthReturn && !linkToken) {
+      setError("Bank connection session expired. Please click Connect bank account to try again.");
+    }
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   return (
     <>
@@ -247,7 +293,7 @@ function PlaidLinkButton({
       <div className="flex flex-col items-start gap-2">
         <button
           onClick={() => void fetchLinkToken()}
-          disabled={loading}
+          disabled={loading || (oauthReturn && Boolean(linkToken))}
           className="inline-flex items-center gap-2 px-4 py-2 text-sm font-medium
                      bg-blue-600 text-white rounded-lg hover:bg-blue-700
                      disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
@@ -263,7 +309,9 @@ function PlaidLinkButton({
             </>
           )}
         </button>
-        {error && <p className="text-xs text-red-600">{error}</p>}
+        {error && (
+          <p className="text-xs text-red-600" role="alert">{error}</p>
+        )}
       </div>
     </>
   );

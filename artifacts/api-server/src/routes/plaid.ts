@@ -628,7 +628,18 @@ router.post(
     }
 
     try {
-      const webhookUrl = process.env["PLAID_WEBHOOK_URL"] ?? "";
+      const webhookUrl   = process.env["PLAID_WEBHOOK_URL"] ?? "";
+      // APP_PUBLIC_URL is required for OAuth institutions (Chase, Wells Fargo, etc.).
+      // redirect_uri must match exactly what is registered in the Plaid Dashboard.
+      const appPublicUrl = (process.env["APP_PUBLIC_URL"] ?? "").replace(/\/$/, "");
+      const redirectUri  = appPublicUrl ? `${appPublicUrl}/accounting/banking` : undefined;
+      if (!redirectUri) {
+        req.log.warn(
+          "[plaid] APP_PUBLIC_URL not configured — OAuth institutions (Chase, etc.) will " +
+          "close immediately. Set APP_PUBLIC_URL=https://finance-os-1.replit.app in Replit Secrets " +
+          "and add the redirect URI to the Plaid Dashboard.",
+        );
+      }
       const linkRes = await plaidClient.linkTokenCreate({
         user: { client_user_id: user.id },
         client_name: "FinanceOS",
@@ -636,6 +647,7 @@ router.post(
         country_codes: [CountryCode.Us],
         language: "en",
         webhook: webhookUrl || undefined,
+        redirect_uri: redirectUri,
         transactions: { days_requested: 730 },
       });
 
