@@ -344,6 +344,41 @@ export const api = {
     post<{ ok: boolean }>(`/commissions/${slug.toLowerCase()}/lines/${lineId}/approve`, {}),
   lockCommissionPeriod: (slug: string, year: number, month: number) =>
     post<{ ok: boolean }>(`/commissions/${slug.toLowerCase()}/periods/lock`, { year, month }),
+
+  commissionLine: (slug: string, lineId: string) =>
+    get<CommissionRunLine>(`/commissions/${slug}/lines/${lineId}`),
+  commissionKpiSummary: (slug: string, month?: string) =>
+    get<CommissionKpiSummary>(`/commissions/${slug}/kpi-summary${month ? `?month=${month}` : ""}`),
+  commissionReviewDraft: (slug: string, lineId: string, expensesAmount: string) =>
+    post<void>(`/commissions/${slug}/lines/${lineId}/review-draft`, { expensesAmount }),
+  commissionReviewApprove: (
+    slug: string,
+    lineId: string,
+    body: {
+      expensesAmount: string;
+      commissionRate: string;
+      saveForFuture?: boolean;
+      representativeId?: string;
+      customerNamePattern?: string | null;
+      payableTrigger?: string;
+    },
+  ) => post<ReviewApproveData>(`/commissions/${slug}/lines/${lineId}/review-approve`, body),
+};
+
+
+export type CommissionKpiSummary = {
+  confirmedCommission: string;
+  approvedPayoutTotal: string;
+  needsAction: number;
+  calculatedCount: number;
+  outstandingInvoices: number;
+};
+
+export type ReviewApproveData = {
+  line: CommissionRunLine;
+  commissionAmount: string;
+  warning: string | null;
+  ruleWarning: string | null;
 };
 
 // ── Accounting module types ────────────────────────────────────────────────

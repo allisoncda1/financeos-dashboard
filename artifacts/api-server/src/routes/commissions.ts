@@ -33,6 +33,10 @@ import {
   approveCommissionLine,
   lockCommissionPeriod,
   isValidUuid,
+  getCommissionLineById,
+  saveLineReviewDraft,
+  reviewApproveCommissionLine,
+  getCommissionKpiSummary,
 } from "../db/commissions";
 import { ingestEntityInvoices, previewRuleApplication } from "../services/commissionEngine";
 
@@ -46,18 +50,19 @@ function slugGuard(slug: string): boolean { return SLUG_RE.test(slug); }
 
 const ALLOWED_FORMULA_TYPES = new Set([
   "percentage_of_invoice","percentage_of_amount_paid","percentage_of_gross_profit",
-  "fixed_amount","manual","no_commission_house",
+  "fixed_amount","manual","no_commission_house","percentage_of_adjusted_gp",
 ]);
 const ALLOWED_TRIGGERS = new Set(["invoice_issued","invoice_paid","payment_received","manual_approval"]);
 const VALID_LINE_STATUSES = new Set([
   "attributed","house_no_commission","needs_configuration","needs_review",
   "calculated","awaiting_payment","ready_for_review","approved","locked","excluded",
 ]);
-const PCT_FORMULAS = new Set(["percentage_of_invoice","percentage_of_amount_paid","percentage_of_gross_profit"]);
+const PCT_FORMULAS = new Set(["percentage_of_invoice","percentage_of_amount_paid","percentage_of_gross_profit","percentage_of_adjusted_gp"]);
 const FORMULA_BASIS: Record<string, string> = {
   percentage_of_invoice:      "invoice_amount",
   percentage_of_amount_paid:  "amount_paid",
   percentage_of_gross_profit: "gross_profit",
+  percentage_of_adjusted_gp:  "adjusted_gp",
 };
 /** The exact calculationBasis required for each formula (null = flexible / none). */
 const FORMULA_CALCULATION_BASIS: Record<string, string | null> = {
@@ -65,6 +70,7 @@ const FORMULA_CALCULATION_BASIS: Record<string, string | null> = {
   percentage_of_amount_paid:  "amount_paid",
   percentage_of_gross_profit: "gross_profit",
   fixed_amount:               "fixed_amount",
+  percentage_of_adjusted_gp:  "adjusted_gp",
   manual:                     null,
   no_commission_house:        null,
 };
@@ -208,6 +214,10 @@ function validateRuleBody(body: RuleBody): string | null {
 }
 
 // ─── GET /:slug/representatives ──────────────────────────────────────────────
+
+const REVIEW_APPROVE_BUSINESS_ERRORS = new Set([
+  "line_not_found", "already_finalized", "historical_line", "not_external_rep",
+]);
 router.get("/:slug/representatives", requireAuth, async (req, res) => {
   const slug = req.params["slug"] as string;
   if (!slugGuard(slug)) return res.status(404).json({ ok: false, error: "Invalid slug" });
@@ -504,6 +514,171 @@ router.post("/:slug/periods/lock", requireAuth, requirePermission("control"), as
     if (err) return res.status(409).json({ ok: false, error: err });
     return res.json({ ok: true, ts: new Date().toISOString() });
   } catch { return res.status(500).json({ ok: false, error: "Internal error" }); }
+});
+
+
+// ─── GET /:slug/lines/:lineId ─────────────────────────────────────────────────
+router.get("/:slug/lines/:lineId", requireAuth, async (req, res) => {
+  const slug   = req.params["slug"]   as string;
+  const lineId = req.params["lineId"] as string;
+  if (!slugGuard(slug))     return res.status(404).json({ ok: false, error: "Invalid slug" });
+  if (!isValidUuid(lineId)) return res.status(400).json({ ok: false, error: "Invalid lineId" });
+  const entityId = await getCachedEntityId(slug);
+  if (!entityId) return res.status(404).json({ ok: false, error: "Entity not found" });
+  try {
+    const line = await getCommissionLineById(entityId, lineId);
+    if (!line) return res.status(404).json({ ok: false, error: "Line not found" });
+    return res.json({ ok: true, data: line, ts: new Date().toISOString() });
+  } catch {
+    return res.status(500).json({ ok: false, error: "Internal error" });
+  }
+});
+
+// ─── POST /:slug/lines/:lineId/review-draft ───────────────────────────────────
+router.post("/:slug/lines/:lineId/review-draft", requireAuth, requirePermission("financials"), async (req, res) => {
+  const slug   = req.params["slug"]   as string;
+  const lineId = req.params["lineId"] as string;
+  if (!slugGuard(slug))     return res.status(404).json({ ok: false, error: "Invalid slug" });
+  if (!isValidUuid(lineId)) return res.status(400).json({ ok: false, error: "Invalid lineId" });
+  const entityId = await getCachedEntityId(slug);
+  if (!entityId) return res.status(404).json({ ok: false, error: "Entity not found" });
+
+  const body = req.body as Record<string, unknown>;
+  const raw  = body["expensesAmount"];
+  if (raw == null || !isValidMoneyString(raw)) {
+    return res.status(400).json({ ok: false, error: "expensesAmount must be a non-negative decimal with at most 2 decimal places" });
+  }
+  if (parseFloat(String(raw)) < 0) {
+    return res.status(400).json({ ok: false, error: "expensesAmount must be >= 0" });
+  }
+  try {
+    await saveLineReviewDraft(entityId, lineId, { expensesAmount: String(raw) });
+    return res.json({ ok: true, ts: new Date().toISOString() });
+  } catch (e) {
+    req.log.error({ err: e }, "[commission] review-draft internal error");
+    return res.status(500).json({ ok: false, error: "Internal error" });
+  }
+});
+
+// ─── POST /:slug/lines/:lineId/review-approve ─────────────────────────────────
+router.post("/:slug/lines/:lineId/review-approve", requireAuth, requirePermission("financials"), async (req, res) => {
+  const slug   = req.params["slug"]   as string;
+  const lineId = req.params["lineId"] as string;
+  if (!slugGuard(slug))     return res.status(404).json({ ok: false, error: "Invalid slug" });
+  if (!isValidUuid(lineId)) return res.status(400).json({ ok: false, error: "Invalid lineId" });
+  const entityId = await getCachedEntityId(slug);
+  if (!entityId) return res.status(404).json({ ok: false, error: "Entity not found" });
+
+  const body           = req.body as Record<string, unknown>;
+  const expensesAmount = body["expensesAmount"];
+  const commissionRate = body["commissionRate"];
+  const saveForFuture  = body["saveForFuture"] === true;
+
+  if (expensesAmount == null || !isValidMoneyString(expensesAmount)) {
+    return res.status(400).json({ ok: false, error: "expensesAmount must be a non-negative decimal with at most 2 decimal places" });
+  }
+  if (parseFloat(String(expensesAmount)) < 0) {
+    return res.status(400).json({ ok: false, error: "expensesAmount must be >= 0" });
+  }
+  if (commissionRate == null || !isValidRateString(commissionRate)) {
+    return res.status(400).json({ ok: false, error: "commissionRate must be a decimal between 0 and 10" });
+  }
+  const rateNum = parseFloat(String(commissionRate));
+  if (rateNum < 0 || rateNum > 10) {
+    return res.status(400).json({ ok: false, error: "commissionRate must be between 0 and 10 (0–1000%)" });
+  }
+
+  const user       = (req as { user?: { name?: string; email?: string } }).user;
+  const approvedBy = user?.email ?? user?.name ?? "unknown";
+
+  try {
+    const result = await reviewApproveCommissionLine(entityId, lineId, {
+      expensesAmount: String(expensesAmount),
+      commissionRate: String(commissionRate),
+      approvedBy,
+    });
+
+    let ruleWarning: string | null = null;
+
+    if (saveForFuture) {
+      const repId          = body["representativeId"];
+      const rawPattern     = body["customerNamePattern"];
+      const rawTrigger     = body["payableTrigger"];
+
+      // All three fields are required — never invent a trigger or scope.
+      const customerNamePattern =
+        typeof rawPattern === "string" && rawPattern.trim()
+          ? rawPattern.trim()
+          : null;
+
+      if (!isValidUuid(repId)) {
+        ruleWarning = "Invoice approved. Future rate not saved — representativeId is required and must be a valid UUID.";
+      } else if (!customerNamePattern) {
+        ruleWarning = "Invoice approved. Future rate not saved — a non-empty customer name or pattern is required for a scoped rule.";
+      } else if (!ALLOWED_TRIGGERS.has(String(rawTrigger ?? ""))) {
+        ruleWarning = "Invoice approved. Future rate not saved — payableTrigger must be explicitly provided and valid (never defaulted).";
+      } else {
+        try {
+          await createCommissionRule({
+            entityId,
+            representativeId:    String(repId),
+            customerNamePattern,
+            formulaType:         "percentage_of_adjusted_gp",
+            calculationBasis:    "adjusted_gp",
+            commissionRate:      String(commissionRate),
+            payableTrigger:      String(rawTrigger),
+            effectiveFrom:       new Date().toISOString().slice(0, 10),
+            notes:               null,
+            createdBy:           approvedBy,
+            reason:              `Rate set via Commission Review — approved ${new Date().toISOString().slice(0, 10)}`,
+          });
+        } catch {
+          ruleWarning = "Invoice approved. Future rate could not be saved — please retry from Rules or Review.";
+        }
+      }
+    }
+
+    // warning and ruleWarning are inside data so api.get<T>() → json.data exposes them
+    return res.json({
+      ok: true,
+      data: {
+        line:             result.line,
+        commissionAmount: result.commissionAmount,
+        warning:          result.warning,
+        ruleWarning,
+      },
+      ts: new Date().toISOString(),
+    });
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e);
+    const code = [...REVIEW_APPROVE_BUSINESS_ERRORS].find((c) => msg.includes(c));
+    if (code) {
+      const status = code === "line_not_found" ? 404 : 422;
+      return res.status(status).json({ ok: false, error: code });
+    }
+    req.log.error({ err: e }, "[commission] review-approve internal error");
+    return res.status(500).json({ ok: false, error: "Internal error" });
+  }
+});
+
+// ─── GET /:slug/kpi-summary ───────────────────────────────────────────────────
+router.get("/:slug/kpi-summary", requireAuth, async (req, res) => {
+  const slug = req.params["slug"] as string;
+  if (!slugGuard(slug)) return res.status(404).json({ ok: false, error: "Invalid slug" });
+  const entityId = await getCachedEntityId(slug);
+  if (!entityId) return res.status(404).json({ ok: false, error: "Entity not found" });
+
+  const month = typeof req.query["month"] === "string" ? req.query["month"] : undefined;
+  if (month !== undefined && !/^\d{4}-\d{2}$/.test(month)) {
+    return res.status(400).json({ ok: false, error: "month must be YYYY-MM" });
+  }
+  try {
+    const data = await getCommissionKpiSummary(entityId, month);
+    return res.json({ ok: true, data, ts: new Date().toISOString() });
+  } catch (e) {
+    req.log.error({ err: e }, "[commission] kpi-summary internal error");
+    return res.status(500).json({ ok: false, error: "Internal error" });
+  }
 });
 
 export default router;

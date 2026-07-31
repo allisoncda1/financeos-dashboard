@@ -23,7 +23,7 @@ const VALID_LINE_STATUSES = new Set([
 ]);
 const ALLOWED_FORMULA_TYPES = new Set([
   "percentage_of_invoice","percentage_of_amount_paid","percentage_of_gross_profit",
-  "fixed_amount","manual","no_commission_house",
+  "fixed_amount","manual","no_commission_house","percentage_of_adjusted_gp",
 ]);
 const ALLOWED_TRIGGERS = new Set(["invoice_issued","invoice_paid","payment_received","manual_approval"]);
 
@@ -335,7 +335,7 @@ export async function createCommissionRule(rule: {
   assertValidNumericString(rule.fixedAmount, "fixedAmount", { min: -999999.99, max: 999999.99, maxDp: 2 });
 
   // ── Formula / field invariants (mirrors route validateFormulaMatrix) ───────
-  const _PCT = new Set(["percentage_of_invoice","percentage_of_amount_paid","percentage_of_gross_profit"]);
+  const _PCT = new Set(["percentage_of_invoice","percentage_of_amount_paid","percentage_of_gross_profit","percentage_of_adjusted_gp"]);
   if (_PCT.has(rule.formulaType)) {
     if (rule.commissionRate == null) throw new Error(`${rule.formulaType} requires commissionRate`);
     if (rule.fixedAmount != null)    throw new Error(`${rule.formulaType} must not have fixedAmount`);
@@ -357,10 +357,11 @@ export async function createCommissionRule(rule: {
     percentage_of_amount_paid:  "amount_paid",
     percentage_of_gross_profit: "gross_profit",
     fixed_amount:               "fixed_amount",
+    percentage_of_adjusted_gp: "adjusted_gp",
     manual:                     null,
     no_commission_house:        null,
   };
-  const _PCT_AND_FIXED = new Set(["percentage_of_invoice","percentage_of_amount_paid","percentage_of_gross_profit","fixed_amount"]);
+  const _PCT_AND_FIXED = new Set(["percentage_of_invoice","percentage_of_amount_paid","percentage_of_gross_profit","fixed_amount","percentage_of_adjusted_gp"]);
   if (_PCT_AND_FIXED.has(rule.formulaType)) {
     // These formulas MUST have the correct calculationBasis — null is not accepted.
     const expected = _EXPECTED_BASIS[rule.formulaType]!;
@@ -982,5 +983,300 @@ function mapRunLine(r: Record<string, unknown>): CommissionRunLine {
     approvedBy: r.approved_by as string | null,
     lockedAt: r.locked_at as string | null,
     lockedBy: r.locked_by as string | null,
+  };
+}
+
+// ─── Review module types ──────────────────────────────────────────────────────
+
+export interface ReviewApproveResult {
+  line: CommissionRunLine;
+  commissionAmount: string;
+  warning: string | null;
+}
+
+export interface CommissionKpiSummary {
+  confirmedCommission: string;
+  approvedPayoutTotal: string;
+  needsAction: number;
+  calculatedCount: number;
+  outstandingInvoices: number;
+}
+
+// ─── getCommissionLineById ────────────────────────────────────────────────────
+export async function getCommissionLineById(
+  entityId: string,
+  lineId: string,
+): Promise<CommissionRunLine | null> {
+  assertValidUuid(entityId, "entityId");
+  assertValidUuid(lineId, "lineId");
+  const db = getCommissionOpsDb();
+  const rows = await db.execute(sql`
+    SELECT
+      cl.id, cl.entity_id, cl.invoice_id, cl.invoice_qbo_id, cl.invoice_doc_number,
+      cl.invoice_date::text, cl.customer_id, cl.customer_name,
+      cl.invoice_amount::text, cl.invoice_status, cl.representative_id,
+      rep.slug           AS representative_slug,
+      rep.display_name   AS representative_display_name,
+      cl.attribution_match AS attribution_match_type,
+      cl.commission_rule_id, cl.formula_type, cl.calculation_basis,
+      cl.commission_rate::text, cl.gross_profit::text, cl.expenses_amount::text,
+      cl.commission_amount::text,
+      cl.line_status, cl.payout_eligible, cl.exclusion_reason, cl.source_fingerprint,
+      cl.created_at::text, cl.updated_at::text,
+      cl.approved_at::text, cl.approved_by,
+      cl.locked_at::text, cl.locked_by
+    FROM commission_run_lines cl
+    LEFT JOIN commission_representatives rep ON rep.id = cl.representative_id
+    WHERE cl.id        = ${lineId}::uuid
+      AND cl.entity_id = ${entityId}::uuid
+    LIMIT 1
+  `);
+  if (rows.rows.length === 0) return null;
+  return mapRunLine(rows.rows[0] as Record<string, unknown>);
+}
+
+// ─── saveLineReviewDraft ──────────────────────────────────────────────────────
+// Sets expenses_amount as a work-in-progress draft. Works without migration 003.
+export async function saveLineReviewDraft(
+  entityId: string,
+  lineId: string,
+  opts: { expensesAmount: string },
+): Promise<void> {
+  assertValidUuid(entityId, "entityId");
+  assertValidUuid(lineId, "lineId");
+  assertValidNumericString(opts.expensesAmount, "expensesAmount", { min: 0, maxDp: 2 });
+  const db = getCommissionOpsDb();
+  await db.execute(sql`
+    UPDATE commission_run_lines
+    SET
+      expenses_amount = ${opts.expensesAmount}::numeric,
+      updated_at      = now()
+    WHERE id          = ${lineId}::uuid
+      AND entity_id   = ${entityId}::uuid
+      AND line_status NOT IN ('approved', 'locked')
+  `);
+}
+
+// ─── reviewApproveCommissionLine ──────────────────────────────────────────────
+// Requires migration 003 (expenses_explicitly_set column).
+// One authoritative PostgreSQL NUMERIC calculation: (invoice_amount - expenses) * rate.
+// Negative commissions are preserved; warning is returned to the caller.
+const _REVIEW_LIVE_FROM = "2026-07-01";
+
+export async function reviewApproveCommissionLine(
+  entityId: string,
+  lineId: string,
+  opts: {
+    expensesAmount: string;
+    commissionRate: string;
+    approvedBy: string;
+  },
+): Promise<ReviewApproveResult> {
+  assertValidUuid(entityId, "entityId");
+  assertValidUuid(lineId, "lineId");
+  assertValidNumericString(opts.expensesAmount, "expensesAmount", { min: 0, maxDp: 2 });
+  assertValidNumericString(opts.commissionRate, "commissionRate", { min: 0, max: 10, maxDp: 6 });
+
+  const db = getCommissionOpsDb();
+
+  return db.transaction(async (tx) => {
+    // Advisory lock — prevents concurrent double-approval of the same line
+    await tx.execute(sql`
+      SELECT pg_advisory_xact_lock(
+        ('x' || md5(${lineId}))::bit(64)::bigint
+      )
+    `);
+
+    const lineRows = await tx.execute(sql`
+      SELECT
+        cl.id,
+        cl.line_status,
+        cl.invoice_date::text AS invoice_date,
+        rep.representative_type
+      FROM commission_run_lines cl
+      LEFT JOIN commission_representatives rep ON rep.id = cl.representative_id
+      WHERE cl.id        = ${lineId}::uuid
+        AND cl.entity_id = ${entityId}::uuid
+      LIMIT 1
+    `);
+
+    const line = lineRows.rows[0] as {
+      id: string;
+      line_status: string;
+      invoice_date: string | null;
+      representative_type: string | null;
+    } | undefined;
+
+    if (!line)                                    throw new Error("line_not_found");
+    if (line.line_status === "approved" ||
+        line.line_status === "locked")            throw new Error("already_finalized");
+    if (line.invoice_date && line.invoice_date < _REVIEW_LIVE_FROM)
+                                                  throw new Error("historical_line");
+    if (line.representative_type !== "external_rep")
+                                                  throw new Error("not_external_rep");
+
+    // One authoritative calculation — SQL ROUND(numeric, 2) is half-away-from-zero.
+    const calcRows = await tx.execute(sql`
+      SELECT ROUND(
+        (cl.invoice_amount::numeric - ${opts.expensesAmount}::numeric)
+        * ${opts.commissionRate}::numeric,
+        2
+      )::text AS commission_amount
+      FROM commission_run_lines cl
+      WHERE cl.id        = ${lineId}::uuid
+        AND cl.entity_id = ${entityId}::uuid
+    `);
+
+    const commissionAmountStr = (
+      calcRows.rows[0] as { commission_amount: string }
+    ).commission_amount;
+
+    // Negative amounts are preserved — never clamped to zero
+    const isNegative = commissionAmountStr.startsWith("-");
+
+    await tx.execute(sql`
+      UPDATE commission_run_lines
+      SET
+        expenses_amount         = ${opts.expensesAmount}::numeric,
+        expenses_explicitly_set = true,
+        commission_amount       = ${commissionAmountStr}::numeric,
+        calculation_basis       = 'adjusted_gp',
+        formula_type            = 'percentage_of_adjusted_gp',
+        commission_rate         = ${opts.commissionRate}::numeric,
+        line_status             = 'approved',
+        payout_eligible         = true,
+        approved_at             = now(),
+        approved_by             = ${opts.approvedBy},
+        updated_at              = now()
+      WHERE id        = ${lineId}::uuid
+        AND entity_id = ${entityId}::uuid
+    `);
+
+    const updatedRows = await tx.execute(sql`
+      SELECT
+        cl.id, cl.entity_id, cl.invoice_id, cl.invoice_qbo_id, cl.invoice_doc_number,
+        cl.invoice_date::text, cl.customer_id, cl.customer_name,
+        cl.invoice_amount::text, cl.invoice_status, cl.representative_id,
+        rep.slug         AS representative_slug,
+        rep.display_name AS representative_display_name,
+        cl.attribution_match AS attribution_match_type,
+        cl.commission_rule_id, cl.formula_type, cl.calculation_basis,
+        cl.commission_rate::text, cl.gross_profit::text, cl.expenses_amount::text,
+        cl.commission_amount::text,
+        cl.line_status, cl.payout_eligible, cl.exclusion_reason, cl.source_fingerprint,
+        cl.created_at::text, cl.updated_at::text,
+        cl.approved_at::text, cl.approved_by,
+        cl.locked_at::text, cl.locked_by
+      FROM commission_run_lines cl
+      LEFT JOIN commission_representatives rep ON rep.id = cl.representative_id
+      WHERE cl.id        = ${lineId}::uuid
+        AND cl.entity_id = ${entityId}::uuid
+      LIMIT 1
+    `);
+
+    return {
+      line: mapRunLine(updatedRows.rows[0] as Record<string, unknown>),
+      commissionAmount: commissionAmountStr,
+      warning: isNegative
+        ? "Commission is negative — expenses exceed invoice amount. Approved as entered."
+        : null,
+    };
+  });
+}
+
+// ─── getCommissionKpiSummary ──────────────────────────────────────────────────
+// month: optional "YYYY-MM" — defaults to current calendar month.
+// upperBound is built once and interpolated into every FILTER clause.
+const _KPI_LIVE_FROM = "2026-07-01";
+
+export async function getCommissionKpiSummary(
+  entityId: string,
+  month?: string,
+): Promise<CommissionKpiSummary> {
+  assertValidUuid(entityId, "entityId");
+
+  let periodStart: string;
+  let periodEnd: string;
+  if (month) {
+    if (!/^\d{4}-\d{2}$/.test(month)) throw new Error("month must be YYYY-MM");
+    const [y, m] = month.split("-").map(Number);
+    if (m < 1 || m > 12) throw new Error("month component must be 01-12");
+    periodStart = `${month}-01`;
+    const nextM = m === 12 ? 1 : m + 1;
+    const nextY = m === 12 ? y + 1 : y;
+    periodEnd = `${nextY}-${String(nextM).padStart(2, "0")}-01`;
+  } else {
+    const now = new Date();
+    const y = now.getUTCFullYear();
+    const m = now.getUTCMonth() + 1;
+    periodStart = `${y}-${String(m).padStart(2, "0")}-01`;
+    const nextM = m === 12 ? 1 : m + 1;
+    const nextY = m === 12 ? y + 1 : y;
+    periodEnd = `${nextY}-${String(nextM).padStart(2, "0")}-01`;
+  }
+
+  const db = getCommissionOpsDb();
+  const upperBound = sql`AND cl.invoice_date < ${periodEnd}::date`;
+
+  const rows = await db.execute(sql`
+    SELECT
+      COALESCE(SUM(cl.commission_amount) FILTER (
+        WHERE rep.representative_type = 'external_rep'
+          AND cl.line_status IN ('approved', 'locked')
+          AND cl.invoice_date >= ${periodStart}::date
+          ${upperBound}
+      ), 0)::text AS confirmed_commission,
+
+      COALESCE(SUM(cl.commission_amount) FILTER (
+        WHERE rep.representative_type = 'external_rep'
+          AND cl.line_status IN ('approved', 'locked')
+          AND cl.invoice_date >= ${periodStart}::date
+          ${upperBound}
+      ), 0)::text AS approved_payout_total,
+
+      COUNT(*) FILTER (
+        WHERE rep.representative_type = 'external_rep'
+          AND cl.line_status IN ('needs_review', 'needs_configuration')
+          AND cl.invoice_date >= ${_KPI_LIVE_FROM}::date
+          AND cl.invoice_date >= ${periodStart}::date
+          ${upperBound}
+      )::int AS needs_action,
+
+      COUNT(*) FILTER (
+        WHERE rep.representative_type = 'external_rep'
+          AND cl.commission_amount IS NOT NULL
+          AND cl.line_status NOT IN ('excluded', 'house_no_commission')
+          AND cl.invoice_date >= ${_KPI_LIVE_FROM}::date
+          AND cl.invoice_date >= ${periodStart}::date
+          ${upperBound}
+      )::int AS calculated_count,
+
+      COUNT(*) FILTER (
+        WHERE rep.representative_type = 'external_rep'
+          AND cl.invoice_status IN ('Open', 'Overdue')
+          AND cl.invoice_date >= ${_KPI_LIVE_FROM}::date
+          AND cl.invoice_date >= ${periodStart}::date
+          ${upperBound}
+      )::int AS outstanding_invoices
+
+    FROM commission_run_lines cl
+    LEFT JOIN commission_representatives rep ON rep.id = cl.representative_id
+    WHERE cl.entity_id = ${entityId}::uuid
+  `);
+
+  const r = rows.rows[0] as {
+    confirmed_commission: string;
+    approved_payout_total: string;
+    needs_action: number;
+    calculated_count: number;
+    outstanding_invoices: number;
+  };
+
+  return {
+    confirmedCommission: r.confirmed_commission,
+    approvedPayoutTotal: r.approved_payout_total,
+    needsAction:         r.needs_action,
+    calculatedCount:     r.calculated_count,
+    outstandingInvoices: r.outstanding_invoices,
   };
 }

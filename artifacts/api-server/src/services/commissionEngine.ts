@@ -177,6 +177,7 @@ const ALLOWED_FORMULA_TYPES = new Set([
   "fixed_amount",
   "manual",
   "no_commission_house",
+  "percentage_of_adjusted_gp",
 ]);
 
 const SUPPORTED_PAYABLE_TRIGGERS = new Set(["invoice_issued", "invoice_paid"]);
@@ -228,6 +229,11 @@ export function applyFormula(rule: CommissionRule, inputs: FormulaInputs): Formu
       return { commissionAmount: null, calculationBasis: "amount_paid", lineStatus: "needs_configuration", exclusionReason: "missing_commission_formula" };
     }
     return { commissionAmount: mulMoney(inputs.amountPaid, rule.commissionRate), calculationBasis: "amount_paid", lineStatus: "calculated", exclusionReason: null };
+  }
+
+  // percentage_of_adjusted_gp — manual review required per line; no auto-calculation
+  if (rule.formulaType === "percentage_of_adjusted_gp") {
+    return { commissionAmount: null, calculationBasis: "adjusted_gp", lineStatus: "needs_review", exclusionReason: "expenses_required" };
   }
 
   // manual
