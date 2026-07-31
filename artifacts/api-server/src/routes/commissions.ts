@@ -275,8 +275,11 @@ router.get("/:slug/summary", requireAuth, async (req, res) => {
   if (!slugGuard(slug)) return res.status(404).json({ ok: false, error: "Invalid slug" });
   const entityId = await getCachedEntityId(slug);
   if (!entityId) return res.status(404).json({ ok: false, error: "Entity not found" });
+  const q = req.query as Record<string, string>;
+  const periodYear  = q["periodYear"]  ? parseInt(q["periodYear"],  10) : undefined;
+  const periodMonth = q["periodMonth"] ? parseInt(q["periodMonth"], 10) : undefined;
   try {
-    return res.json({ ok: true, data: await getCommissionLineSummary(entityId), ts: new Date().toISOString() });
+    return res.json({ ok: true, data: await getCommissionLineSummary(entityId, periodYear, periodMonth), ts: new Date().toISOString() });
   } catch { return res.status(500).json({ ok: false, error: "Internal error" }); }
 });
 

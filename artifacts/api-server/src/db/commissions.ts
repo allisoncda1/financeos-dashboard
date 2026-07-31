@@ -539,7 +539,11 @@ export async function getCommissionLines(filters: {
   return { lines: (rows.rows as Record<string, unknown>[]).map(mapRunLine), total };
 }
 
-export async function getCommissionLineSummary(entityId?: string) {
+export async function getCommissionLineSummary(
+  entityId?: string,
+  periodYear?: number,
+  periodMonth?: number,
+) {
   if (entityId) assertValidUuid(entityId, "entityId");
 
   const rows = await getCommissionOpsDb().execute(sql`
@@ -560,6 +564,10 @@ export async function getCommissionLineSummary(entityId?: string) {
     LEFT JOIN commission_representatives rep ON rep.id = cl.representative_id
     WHERE 1=1
       ${entityId ? sql`AND cl.entity_id = ${entityId}::uuid` : sql``}
+      ${periodYear != null && periodMonth != null
+        ? sql`AND EXTRACT(YEAR  FROM cl.invoice_date::date) = ${periodYear}
+              AND EXTRACT(MONTH FROM cl.invoice_date::date) = ${periodMonth}`
+        : sql``}
     GROUP BY rep.slug, rep.display_name, rep.payout_eligible
     ORDER BY rep.payout_eligible DESC, rep.display_name ASC
   `);

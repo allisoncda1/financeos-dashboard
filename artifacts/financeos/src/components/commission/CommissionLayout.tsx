@@ -9,6 +9,29 @@ import { useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { Zap } from "lucide-react";
 
+const SMILE_MORE_SLUG = "Smile_More";
+const MONTHS = ["January","February","March","April","May","June","July","August","September","October","November","December"];
+const COMMISSION_START_YEAR  = 2025;
+const COMMISSION_START_MONTH = 10;
+
+function buildPeriodOptions(): { value: string; label: string }[] {
+  const opts: { value: string; label: string }[] = [];
+  const now = new Date();
+  const curYear  = now.getFullYear();
+  const curMonth = now.getMonth();
+  let y = COMMISSION_START_YEAR;
+  let m = COMMISSION_START_MONTH;
+  while (y < curYear || (y === curYear && m <= curMonth)) {
+    opts.push({
+      value: `${y}-${String(m + 1).padStart(2, "0")}`,
+      label: `${MONTHS[m]} ${y}`,
+    });
+    m++;
+    if (m > 11) { m = 0; y++; }
+  }
+  return opts.reverse();
+}
+
 type CommissionLayoutProps = {
   title: string;
   subtitle: string;
@@ -17,18 +40,17 @@ type CommissionLayoutProps = {
 
 export function CommissionLayout({ title, subtitle, children }: CommissionLayoutProps) {
   const [sidebarOpen, setSidebarOpen] = useState(false);
-  const { activeSlug, setActiveSlug } = useCommissionEntity();
+  const { activeSlug, setActiveSlug, activePeriod, setActivePeriod } = useCommissionEntity();
+  const periodOptions = buildPeriodOptions();
+  const selectValue = activePeriod ?? "all";
 
   return (
     <div className="flex h-screen w-full bg-slate-50 overflow-hidden font-sans">
-      {/* Mobile overlay */}
       <AnimatePresence>
         {sidebarOpen && (
           <motion.div
             className="fixed inset-0 z-40 bg-black/40 md:hidden"
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
+            initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
             transition={{ duration: 0.15 }}
             onClick={() => setSidebarOpen(false)}
           />
@@ -70,13 +92,20 @@ export function CommissionLayout({ title, subtitle, children }: CommissionLayout
                 </SelectContent>
               </Select>
 
-              <Select disabled>
-                <SelectTrigger
-                  className="w-[130px] h-8 text-xs font-medium bg-gray-50 border-gray-200 text-gray-400 cursor-not-allowed"
-                  title="Period selection not yet implemented"
-                >
+              <Select
+                value={selectValue}
+                onValueChange={(v) => setActivePeriod(v === "all" ? null : v)}
+                data-testid="commission-period-select"
+              >
+                <SelectTrigger className="w-[160px] h-8 text-xs font-medium bg-white border-gray-200 shadow-sm focus:ring-emerald-500 focus:border-emerald-500">
                   <SelectValue placeholder="Period" />
                 </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All time</SelectItem>
+                  {periodOptions.map((o) => (
+                    <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>
+                  ))}
+                </SelectContent>
               </Select>
 
               <button
@@ -93,7 +122,16 @@ export function CommissionLayout({ title, subtitle, children }: CommissionLayout
         </div>
 
         <div className="p-4 sm:p-6 w-full space-y-6">
-          {children}
+          {activeSlug === SMILE_MORE_SLUG ? (
+            <div className="flex flex-col items-center justify-center min-h-[400px] gap-3 text-center">
+              <p className="text-lg font-semibold text-gray-700">No commissions applicable</p>
+              <p className="text-sm text-gray-400 max-w-xs">
+                Commission tracking does not apply to Smile More.
+              </p>
+            </div>
+          ) : (
+            children
+          )}
         </div>
       </main>
     </div>
