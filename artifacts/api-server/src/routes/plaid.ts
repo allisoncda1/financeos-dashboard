@@ -37,6 +37,7 @@ import {
   buildConsentRecord,
 } from "../services/consentService.js";
 import { getCachedEntityId } from "../services/entityCache.js";
+import { fetchInstitutionMeta } from "../services/institutionMetaService.js";
 
 // ─── Permission helpers ───────────────────────────────────────────────────────
 
@@ -858,7 +859,7 @@ router.get(
       const result = await query<Record<string, unknown>>(
         `SELECT pa.plaid_account_id, pa.name, pa.official_name, pa.type, pa.subtype,
                 pa.mask, pa.current_balance, pa.available_balance, pa.iso_currency_code,
-                pa.status, pi.institution_name, pi.plaid_item_id, pi.last_successful_sync_at
+                pa.status, pi.institution_name, pi.institution_id, pi.plaid_item_id, pi.last_successful_sync_at
          FROM plaid_accounts pa
          JOIN plaid_items pi ON pi.plaid_item_id = pa.plaid_item_id
          WHERE pa.entity_slug = $1 AND pa.status = 'active' AND pi.status = 'active'
@@ -866,14 +867,36 @@ router.get(
         [entitySlug],
       );
 
+      // Deduplicate institution_ids — one fetchInstitutionMeta call per institution,
+      // not one per account. fetchInstitutionMeta is TTL-cached; Plaid failures
+      // return null gracefully without breaking this response.
+      const uniqueInstIds = [
+        ...new Set(
+          result.rows
+            .map((r) => r["institution_id"])
+            .filter((id): id is string => typeof id === "string" && id.length > 0),
+        ),
+      ];
+      const metaEntries = await Promise.all(
+        uniqueInstIds.map(async (id) => [id, await fetchInstitutionMeta(id)] as const),
+      );
+      const metaMap = new Map(metaEntries);
+
       res.json({
         ok: true,
-        data: result.rows.map((row) => ({
-          ...rowToSafeAccount(row),
-          institutionName: row["institution_name"] ?? null,
-          plaidItemId: row["plaid_item_id"],
-          lastSyncAt: row["last_successful_sync_at"] ?? null,
-        })),
+        data: result.rows.map((row) => {
+          const instId =
+            typeof row["institution_id"] === "string" ? row["institution_id"] : null;
+          const meta = instId ? metaMap.get(instId) : undefined;
+          return {
+            ...rowToSafeAccount(row),
+            institutionName: row["institution_name"] ?? null,
+            institutionLogo: meta?.logoDataUri ?? null,
+            institutionPrimaryColor: meta?.primaryColor ?? null,
+            plaidItemId: row["plaid_item_id"],
+            lastSyncAt: row["last_successful_sync_at"] ?? null,
+          };
+        }),
         ts: ts(),
       });
     } catch (err) {

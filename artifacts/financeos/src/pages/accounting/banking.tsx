@@ -65,6 +65,8 @@ interface PlaidAccount {
   status: string;
   institutionName: string | null;
   lastSyncAt: string | null;
+  institutionLogo: string | null;
+  institutionPrimaryColor: string | null;
 }
 
 interface BankTransaction {
@@ -329,8 +331,36 @@ function PlaidLinkButton({
 // Local initial-letter fallback — not a Plaid logo. (institutionsGet is not
 // called during exchange; only institution_id/name are stored in plaid_items.)
 
-function InstitutionAvatar({ name }: { name: string }) {
+function InstitutionAvatar({
+  name,
+  logo,
+  primaryColor,
+}: {
+  name: string;
+  logo?: string | null;
+  primaryColor?: string | null;
+}) {
+  const [imgFailed, setImgFailed] = useState(false);
   const { bg, text } = institutionColor(name);
+  const showLogo = Boolean(logo) && !imgFailed;
+
+  if (showLogo) {
+    return (
+      <span
+        className="w-9 h-9 rounded-lg flex items-center justify-center
+                   flex-shrink-0 bg-white overflow-hidden"
+        style={primaryColor ? { boxShadow: `0 0 0 1.5px ${primaryColor}40` } : undefined}
+      >
+        <img
+          src={logo ?? ""}
+          alt={`${name} logo`}
+          className="w-full h-full object-contain p-0.5"
+          onError={() => setImgFailed(true)}
+        />
+      </span>
+    );
+  }
+
   return (
     <span
       className="w-9 h-9 rounded-lg flex items-center justify-center text-sm font-bold
@@ -357,7 +387,11 @@ function AccountCard({ account }: { account: PlaidAccount }) {
                  overflow-hidden"
     >
       <div className="flex items-center gap-3 px-5 pt-4 pb-3 border-b border-gray-100">
-        <InstitutionAvatar name={instName} />
+        <InstitutionAvatar
+          name={instName}
+          logo={account.institutionLogo}
+          primaryColor={account.institutionPrimaryColor}
+        />
         <div className="min-w-0 flex-1">
           <div className="text-sm font-semibold text-gray-900 truncate">{instName}</div>
           <div className="flex items-center gap-1.5 mt-0.5">

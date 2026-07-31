@@ -40,6 +40,8 @@ interface PlaidAccount {
   status: string;
   institutionName: string | null;
   lastSyncAt: string | null;
+  institutionLogo: string | null;
+  institutionPrimaryColor: string | null;
 }
 
 interface BankTransaction {
@@ -56,6 +58,52 @@ interface BankTransaction {
 }
 
 // ─── Transaction row ──────────────────────────────────────────────────────────
+
+function InstitutionAvatar({
+  name,
+  logo,
+  primaryColor,
+  size = "sm",
+}: {
+  name: string;
+  logo?: string | null;
+  primaryColor?: string | null;
+  size?: "sm" | "lg";
+}) {
+  const [imgFailed, setImgFailed] = useState(false);
+  const { bg, text } = institutionColor(name);
+  const cls =
+    size === "lg"
+      ? "w-12 h-12 rounded-xl text-lg"
+      : "w-9 h-9 rounded-lg text-sm";
+  const showLogo = Boolean(logo) && !imgFailed;
+
+  if (showLogo) {
+    return (
+      <span
+        className={`${cls} flex items-center justify-center flex-shrink-0 bg-white overflow-hidden`}
+        style={primaryColor ? { boxShadow: `0 0 0 1.5px ${primaryColor}40` } : undefined}
+      >
+        <img
+          src={logo ?? ""}
+          alt={`${name} logo`}
+          className="w-full h-full object-contain p-0.5"
+          onError={() => setImgFailed(true)}
+        />
+      </span>
+    );
+  }
+
+  return (
+    <span
+      className={`${cls} flex items-center justify-center font-bold flex-shrink-0 select-none`}
+      style={{ backgroundColor: bg, color: text }}
+      aria-hidden="true"
+    >
+      {name.charAt(0).toUpperCase()}
+    </span>
+  );
+}
 
 function TransactionRow({ txn }: { txn: BankTransaction }) {
   const isDebit = txn.amount != null && txn.amount > 0;
@@ -138,7 +186,6 @@ export default function BankingAccountPage() {
   }, [loadAll]);
 
   const instName = account?.institutionName ?? "Bank";
-  const { bg, text: textColor } = institutionColor(instName);
 
   return (
     <AccountingLayout
@@ -175,14 +222,12 @@ export default function BankingAccountPage() {
             {/* Identity + balances */}
             <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
               <div className="flex items-center gap-4 px-6 py-5 border-b border-gray-100">
-                <div
-                  className="w-12 h-12 rounded-xl flex items-center justify-center text-lg
-                             font-bold flex-shrink-0 select-none"
-                  style={{ backgroundColor: bg, color: textColor }}
-                  aria-hidden="true"
-                >
-                  {instName.charAt(0).toUpperCase()}
-                </div>
+                <InstitutionAvatar
+                  name={instName}
+                  logo={account.institutionLogo}
+                  primaryColor={account.institutionPrimaryColor}
+                  size="lg"
+                />
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-2 flex-wrap">
                     <h2 className="text-lg font-bold text-gray-900 truncate">
