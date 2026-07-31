@@ -204,6 +204,27 @@ async function _isPeriodLockedTx(
 
 // ─── Representatives ──────────────────────────────────────────────────────────
 
+
+export async function createCommissionRepresentative(input: {
+  displayName: string;
+  slug: string;
+}): Promise<{ id: string; displayName: string; slug: string }> {
+  const id = crypto.randomUUID();
+  const now = new Date().toISOString();
+  const rows = await query(
+    `INSERT INTO commission_representatives
+       (id, display_name, slug, representative_type, payout_eligible, is_active, created_at, updated_at)
+     VALUES ($1, $2, $3, 'external_rep', true, true, $4, $4)
+     ON CONFLICT (slug) DO NOTHING
+     RETURNING id, display_name, slug`,
+    [id, input.displayName, input.slug, now]
+  );
+  if (!rows.length) {
+    throw Object.assign(new Error("duplicate_slug"), { code: "DUPLICATE_SLUG" });
+  }
+  return { id: rows[0].id, displayName: rows[0].display_name, slug: rows[0].slug };
+}
+
 export async function getCommissionRepresentatives(): Promise<CommissionRepresentative[]> {
   const rows = await getCommissionOpsDb().execute(sql`
     SELECT id, slug, display_name, representative_type, payout_eligible, notes

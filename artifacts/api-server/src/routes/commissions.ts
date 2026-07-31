@@ -26,6 +26,7 @@ import { getCachedEntityId } from "../services/entityCache";
 import {
   getCommissionLines,
   getCommissionLineSummary,
+  createCommissionRepresentative,
   getCommissionRepresentatives,
   getCommissionRepresentativeById,
   getCommissionRules,
@@ -41,7 +42,7 @@ import {
 import { ingestEntityInvoices, previewRuleApplication } from "../services/commissionEngine";
 
 const router = Router();
-const SLUG_RE       = /^[a-z0-9_]{2,50}$/;
+const SLUG_RE       = /^[a-zA-Z0-9_]{2,50}$/;  // uppercase allowed; getCachedEntityId lowercases internally
 const DATE_RE       = /^\d{4}-\d{2}-\d{2}$/;
 const MONEY_RE      = /^-?\d{1,15}(\.\d{1,2})?$/;   // max 2 decimal places for amounts
 const RATE_MONEY_RE = /^-?\d{1,15}(\.\d{1,8})?$/;   // rates may have more precision (0.150000)
@@ -680,5 +681,39 @@ router.get("/:slug/kpi-summary", requireAuth, async (req, res) => {
     return res.status(500).json({ ok: false, error: "Internal error" });
   }
 });
+
+
+// POST /:slug/representatives — add external sales rep
+router.post("/:slug/representatives", slugGuard, requirePermission("control"), async (req, res) => {
+  const { slug } = req.params as { slug: string };
+  const { displayName } = req.body as { displayName?: string };
+
+  if (!displayName || typeof displayName !== "string" || !displayName.trim()) {
+    return res.status(400).json({ error: "displayName is required" });
+  }
+
+  const trimmedName = displayName.trim();
+  const repSlug = trimmedName
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "_")
+    .replace(/^_+|_+$/g, "")
+    .slice(0, 50) || `rep_${Date.now()}`;
+
+  try {
+    const entityId = await getCachedEntityId(slug);
+    if (!entityId) return res.status(404).json({ error: "Entity not found" });
+
+    const rep = await createCommissionRepresentative({ displayName: trimmedName, slug: repSlug });
+    return res.status(201).json({ data: rep });
+  } catch (err: unknown) {
+    if (err instanceof Error && (err as { code?: string }).code === "DUPLICATE_SLUG") {
+      return res.status(409).json({ error: "A representative with that name already exists", code: "DUPLICATE_SLUG" });
+    }
+    const log = (req as unknown as { log?: { error?(...a: unknown[]): void } }).log;
+    log?.error?.("POST /representatives error", err);
+    return res.status(500).json({ error: "Internal server error" });
+  }
+});
+
 
 export default router;

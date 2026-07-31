@@ -1,150 +1,186 @@
 import { useState, useEffect, useRef } from "react";
+import { useLocation } from "wouter";
 import { CommissionLayout } from "@/components/commission/CommissionLayout";
-import { useCommissionEntity, parsePeriod } from "@/lib/commission-context";
+import { useCommissionEntity } from "@/lib/commission-context";
 import { api } from "@/lib/api";
-import type { CommissionRepSummary, CommissionRepresentative } from "@/lib/api";
+import type { CommissionRepresentative, CommissionRunLine } from "@/lib/api";
 import { formatCurrency } from "@/lib/format";
-import { isHistoricalPeriod } from "@/lib/commission-history";
+import { UserPlus, House, ExternalLink } from "lucide-react";
 
-function useEnvData<T>(fetcher: () => Promise<{ data: T }>, deps: unknown[]) {
-  const [data, setData]       = useState<T | null>(null);
+function fmt(v: string | null | undefined) { const n = parseFloat(v ?? ""); return isNaN(n) ? "$0.00" : formatCurrency(n); }
+
+function RepCard({ rep, slug, month }: { rep: CommissionRepresentative; slug: string; month: string }) {
+  const [, navigate] = useLocation();
+  const [lines, setLines]   = useState<CommissionRunLine[]>([]);
   const [loading, setLoading] = useState(true);
-  const mounted               = useRef(true);
+  const mounted = useRef(true);
+
   useEffect(() => {
     mounted.current = true;
-    setLoading(true);
-    fetcher()
-      .then((r) => { if (mounted.current) { setData(r.data); setLoading(false); } })
-      .catch(()  => { if (mounted.current) setLoading(false); });
+    const [y, m] = month.split("-").map(Number);
+    api.commissionLines(slug, { representativeId: rep.id, periodYear: y, periodMonth: m, limit: 500 })
+      .then(res => {
+        if (!mounted.current) return;
+        const data = Array.isArray(res) ? (res as CommissionRunLine[]) : ((res as { data?: CommissionRunLine[] }).data ?? []);
+        setLines(data);
+        setLoading(false);
+      })
+      .catch(() => { if (mounted.current) setLoading(false); });
     return () => { mounted.current = false; };
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, deps);
-  return { data, loading };
+  }, [rep.id, slug, month]);
+
+  const approved   = lines.filter(l => l.lineStatus === "approved" || l.lineStatus === "locked");
+  const needsAction = lines.filter(l => l.lineStatus === "needs_review" || l.lineStatus === "needs_configuration").length;
+  const commTotal  = approved.reduce((a, l) => { const n = parseFloat(l.commissionAmount ?? "0"); return a + (isNaN(n) ? 0 : n); }, 0);
+
+  return (
+    <button
+      onClick={() => navigate(`/commissions/sales-reps/${rep.id}`)}
+      className="w-full text-left bg-white rounded-xl border border-gray-200 shadow-sm p-5 hover:border-blue-300 hover:shadow-md transition-all group"
+    >
+      <div className="flex items-start justify-between mb-3">
+        <div>
+          <p className="text-sm font-semibold text-gray-900 group-hover:text-blue-700">{rep.displayName}</p>
+          <p className="text-xs text-gray-400 mt-0.5">External rep · payout eligible</p>
+        </div>
+        <ExternalLink className="w-4 h-4 text-gray-300 group-hover:text-blue-400 mt-0.5" />
+      </div>
+      <div className="grid grid-cols-3 gap-3 text-center">
+        <div><p className="text-xs text-gray-400">Invoices</p><p className="text-sm font-bold text-gray-800">{loading ? "…" : lines.length}</p></div>
+        <div><p className="text-xs text-gray-400">Commission</p><p className="text-sm font-bold text-emerald-700">{loading ? "…" : fmt(String(commTotal))}</p></div>
+        <div><p className="text-xs text-gray-400">Needs Action</p><p className={`text-sm font-bold ${needsAction > 0 ? "text-amber-600" : "text-gray-400"}`}>{loading ? "…" : needsAction}</p></div>
+      </div>
+    </button>
+  );
 }
 
-function fmt(v: string | number | null | undefined) {
-  if (v == null) return "—";
-  const n = typeof v === "string" ? parseFloat(v) : v;
-  return isNaN(n) ? "—" : formatCurrency(n);
+function AddRepModal({ slug, onClose, onAdded }: { slug: string; onClose: () => void; onAdded: () => void }) {
+  const [name, setName]     = useState("");
+  const [saving, setSaving] = useState(false);
+  const [error, setError]   = useState<string | null>(null);
+
+  async function handleSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    if (!name.trim()) return;
+    setSaving(true);
+    setError(null);
+    try {
+      await api.createCommissionRepresentative(slug, name.trim());
+      onAdded();
+      onClose();
+    } catch (err: unknown) {
+      const body = err && typeof err === "object" && "body" in err
+        ? (err as { body?: { code?: string; error?: string } }).body : null;
+      if (body?.code === "DUPLICATE_SLUG") {
+        setError("A representative with that name already exists.");
+      } else {
+        setError("Failed to add representative. Please try again.");
+      }
+      setSaving(false);
+    }
+  }
+
+  return (
+    <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4" onClick={onClose}>
+      <div className="bg-white rounded-2xl shadow-xl w-full max-w-md p-6" onClick={e => e.stopPropagation()}>
+        <h2 className="text-base font-semibold text-gray-900 mb-1">Add Sales Representative</h2>
+        <p className="text-xs text-gray-500 mb-4 leading-relaxed">
+          Adding a representative does not assign customers or create a commission rate.
+          Customer attribution and rates must be configured separately after the rep is created.
+        </p>
+        <form onSubmit={handleSubmit} className="space-y-4">
+          <div>
+            <label className="block text-xs font-semibold text-gray-600 mb-1">Display Name <span className="text-red-500">*</span></label>
+            <input
+              type="text"
+              className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400"
+              placeholder="e.g. Jason Smith"
+              value={name}
+              onChange={e => setName(e.target.value)}
+              autoFocus
+              disabled={saving}
+            />
+          </div>
+          {error && <p className="text-xs text-red-600 bg-red-50 px-3 py-2 rounded-lg">{error}</p>}
+          <div className="flex gap-2 pt-1">
+            <button type="button" onClick={onClose} className="flex-1 border border-gray-200 rounded-lg px-4 py-2 text-sm font-medium text-gray-600 hover:bg-gray-50" disabled={saving}>Cancel</button>
+            <button type="submit" className="flex-1 bg-blue-600 text-white rounded-lg px-4 py-2 text-sm font-semibold hover:bg-blue-700 disabled:opacity-50" disabled={saving || !name.trim()}>
+              {saving ? "Adding…" : "Add Representative"}
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  );
 }
 
 export default function CommissionSalesRepsPage() {
-  const { activeSlug, activePeriod } = useCommissionEntity();
-  const periodParams  = parsePeriod(activePeriod);
-  const isHistorical  = isHistoricalPeriod(activePeriod);
+  const { activeSlug } = useCommissionEntity();
+  const currentMonth = new Date().toISOString().slice(0, 7);
+  const [month, setMonth]       = useState(currentMonth);
+  const [reps, setReps]         = useState<CommissionRepresentative[]>([]);
+  const [loading, setLoading]   = useState(true);
+  const [showModal, setShowModal] = useState(false);
+  const mounted = useRef(true);
 
-  const { data: repsData,    loading: repsLoading } = useEnvData(
-    () => api.commissionRepresentatives(activeSlug),
-    [activeSlug],
-  );
-  const { data: summaryData, loading: sumLoading  } = useEnvData(
-    () => api.commissionSummary(activeSlug, periodParams),
-    [activeSlug, activePeriod],
-  );
+  function loadReps() {
+    mounted.current = true;
+    setLoading(true);
+    api.commissionRepresentatives(activeSlug)
+      .then(res => {
+        if (!mounted.current) return;
+        const data = Array.isArray(res) ? (res as CommissionRepresentative[]) : ((res as { data?: CommissionRepresentative[] }).data ?? []);
+        setReps(data);
+        setLoading(false);
+      })
+      .catch(() => { if (mounted.current) setLoading(false); });
+  }
 
-  const reps         = (repsData    as CommissionRepresentative[] | null) ?? [];
-  const summary      = (summaryData as CommissionRepSummary[]    | null) ?? [];
-  const externalReps = reps.filter(r => r.representativeType === "external_rep");
-  const houseRep     = reps.find(r => r.representativeType === "internal_house");
-  const bySlug       = new Map(summary.map(s => [s.repSlug, s]));
-  const ZERO         = { lineCount: 0, totalInvoiceAmount: null, totalGrossProfit: null, totalCommission: null, calculated: 0, approved: 0, locked: 0, needsConfig: 0, needsReview: 0 };
-  const repCards     = externalReps.map(rep => bySlug.get(rep.slug) ?? { repSlug: rep.slug, repName: rep.displayName, payoutEligible: true, ...ZERO });
-  const houseRow     = summary.find(s => !s.payoutEligible) ?? (houseRep ? { repSlug: houseRep.slug, repName: houseRep.displayName, payoutEligible: false, ...ZERO } : null);
-  const loading      = repsLoading || sumLoading;
+  useEffect(() => {
+    loadReps();
+    return () => { mounted.current = false; };
+  }, [activeSlug]);
+
+  const external = reps.filter(r => r.representativeType === "external_rep");
+  const house    = reps.filter(r => r.representativeType === "internal_house");
 
   return (
-    <CommissionLayout title="Sales Reps" subtitle="Sales representative commission performance">
+    <CommissionLayout title="Sales Representatives" subtitle={`${activeSlug} · ${month}`}>
+      {showModal && <AddRepModal slug={activeSlug} onClose={() => setShowModal(false)} onAdded={loadReps} />}
 
-      {isHistorical && (
-        <div className="flex items-center gap-3 bg-slate-100 border border-slate-200 rounded-xl px-5 py-3 text-sm text-slate-700" data-testid="sales-reps-historical-banner">
-          <span className="text-slate-400 flex-shrink-0">🗂</span>
-          <span>
-            <strong>Historical period</strong> — commission data for this month was settled outside FinanceOS.
-            Invoice counts and amounts are shown for reference. No action required.
-          </span>
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-2">
+          <label className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Period</label>
+          <input type="month" className="border border-gray-200 rounded-md px-3 py-1.5 text-sm" value={month} max={new Date().toISOString().slice(0,7)} onChange={e => { if (e.target.value) setMonth(e.target.value); }} />
         </div>
-      )}
+        <button onClick={() => setShowModal(true)} className="flex items-center gap-1.5 bg-blue-600 text-white text-sm font-semibold px-4 py-2 rounded-lg hover:bg-blue-700">
+          <UserPlus className="w-4 h-4" /> Add Sales Rep
+        </button>
+      </div>
 
-      {loading ? (
-        <p className="text-sm text-gray-400">Loading…</p>
-      ) : (
+      {loading ? <p className="text-sm text-gray-400 py-8">Loading…</p> : (
         <>
-          {externalReps.length > 0 && (
-            <div>
-              <h2 className="text-sm font-semibold text-gray-600 uppercase tracking-wide mb-3">External Representatives</h2>
-              <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
-                {repCards.map(rep => {
-                  const needsAction = isHistorical ? 0 : rep.needsConfig + rep.needsReview;
-                  return (
-                    <div key={rep.repSlug} className="bg-white rounded-xl border border-gray-200 shadow-sm px-5 py-5 space-y-3">
-                      <div className="flex items-center justify-between">
-                        <p className="font-semibold text-gray-900 text-[15px]">{rep.repName}</p>
-                        {isHistorical ? (
-                          <span className="text-[11px] bg-slate-100 text-slate-600 font-semibold px-2 py-0.5 rounded" data-testid="historical-settled-badge">
-                            Historical — Settled
-                          </span>
-                        ) : needsAction > 0 ? (
-                          <span className="text-[11px] bg-amber-100 text-amber-800 font-semibold px-2 py-0.5 rounded">
-                            {needsAction} needs action
-                          </span>
-                        ) : null}
-                      </div>
-                      {isHistorical ? (
-                        <p className="text-[15px] text-slate-500 font-medium">Historical period settled</p>
-                      ) : rep.totalCommission != null ? (
-                        <p className="text-2xl font-bold text-gray-900">{fmt(rep.totalCommission)}</p>
-                      ) : (
-                        <p className="text-xl font-semibold text-amber-600">Not configured</p>
-                      )}
-                      <div className="text-xs text-gray-500 grid grid-cols-2 gap-x-4 gap-y-0.5">
-                        <span>Invoices:</span>
-                        <span className="font-medium text-gray-700">{rep.lineCount}</span>
-                        <span>Invoiced:</span>
-                        <span className="font-medium text-gray-700">{fmt(rep.totalInvoiceAmount)}</span>
-                        {!isHistorical && (
-                          <>
-                            <span>GP (known):</span>
-                            <span className="font-medium text-gray-700">{fmt(rep.totalGrossProfit)}</span>
-                            <span>Calculated:</span>
-                            <span className="font-medium text-gray-700">{rep.calculated}</span>
-                            <span>Approved:</span>
-                            <span className="font-medium text-gray-700">{rep.approved}</span>
-                            <span>Locked:</span>
-                            <span className="font-medium text-gray-700">{rep.locked}</span>
-                          </>
-                        )}
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
+          {external.length === 0 ? (
+            <div className="bg-white rounded-xl border border-gray-200 p-8 text-center text-gray-400 text-sm">No external representatives found.</div>
+          ) : (
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+              {external.map(r => <RepCard key={r.id} rep={r} slug={activeSlug} month={month} />)}
             </div>
           )}
 
-          {houseRow && (
-            <div className="bg-gray-50 rounded-xl border border-gray-200 px-5 py-4 flex flex-wrap items-center gap-6">
-              <div>
-                <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">House</p>
-                <p className="text-xl font-bold text-gray-700 mt-0.5">{houseRow.lineCount} invoices</p>
-                <p className="text-xs text-gray-400 mt-0.5">Internal — no commission payout</p>
-              </div>
-              <div className="text-sm text-gray-600">
-                <span className="font-medium">Total invoiced:</span> {fmt(houseRow.totalInvoiceAmount)}
-              </div>
-              <div className="ml-auto">
-                <span className="bg-gray-200 text-gray-600 text-xs font-semibold px-3 py-1 rounded-full">Direct contracts</span>
-              </div>
-            </div>
-          )}
-
-          {externalReps.length === 0 && !houseRow && (
-            <div className="bg-white rounded-xl border border-gray-200 px-5 py-8 text-center text-gray-400 text-sm">
-              No representatives configured for this entity.
+          {house.length > 0 && (
+            <div className="mt-4">
+              <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-2">House</p>
+              {house.map(r => (
+                <div key={r.id} className="bg-gray-50 rounded-xl border border-gray-200 p-4 flex items-center gap-3">
+                  <House className="w-4 h-4 text-gray-400" />
+                  <div><p className="text-sm font-semibold text-gray-700">{r.displayName}</p><p className="text-xs text-gray-400">Internal · no payout</p></div>
+                </div>
+              ))}
             </div>
           )}
         </>
       )}
-
     </CommissionLayout>
   );
 }
