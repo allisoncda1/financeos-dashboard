@@ -4,6 +4,7 @@ import { useCommissionEntity, parsePeriod } from "@/lib/commission-context";
 import { api } from "@/lib/api";
 import type { CommissionRunLine, CommissionRepresentative, IngestResult } from "@/lib/api";
 import { formatCurrency } from "@/lib/format";
+import { isHistoricalInvoice } from "@/lib/commission-history";
 
 const HISTORICAL_FROM = "2025-11-01";
 
@@ -240,19 +241,30 @@ export default function CommissionCalculationsPage() {
                         : <span className="italic text-gray-300 text-xs">unknown</span>}
                     </td>
                     <td className="px-4 py-2 text-right font-semibold">
-                      {line.lineStatus === "house_no_commission"
-                        ? <span className="text-gray-400">$0.00</span>
-                        : line.commissionAmount != null
-                          ? <span className="text-emerald-700">{fmt(line.commissionAmount)}</span>
-                          : <span className="text-amber-400 italic text-xs">
-                              {line.exclusionReason === "missing_gross_profit"       ? "GP missing" :
-                               line.exclusionReason === "missing_commission_formula" ? "No rule"    : "—"}
-                            </span>
-                      }
+                      {isHistoricalInvoice(line.invoiceDate) ? (
+                        <span className="text-slate-400 italic text-xs">Not tracked</span>
+                      ) : line.lineStatus === "house_no_commission" ? (
+                        <span className="text-gray-400">$0.00</span>
+                      ) : line.commissionAmount != null ? (
+                        <span className="text-emerald-700">{fmt(line.commissionAmount)}</span>
+                      ) : (
+                        <span className="text-amber-400 italic text-xs">
+                          {line.exclusionReason === "missing_gross_profit"       ? "GP missing" :
+                           line.exclusionReason === "missing_commission_formula" ? "No rule"    : "—"}
+                        </span>
+                      )}
                     </td>
-                    <td className="px-4 py-2"><Pill status={line.lineStatus} /></td>
                     <td className="px-4 py-2">
-                      {line.lineStatus === "calculated" && (
+                    {isHistoricalInvoice(line.invoiceDate) ? (
+                      <span className="inline-block px-2 py-0.5 rounded text-[11px] font-semibold bg-slate-100 text-slate-600">
+                        Historical — Settled
+                      </span>
+                    ) : (
+                      <Pill status={line.lineStatus} />
+                    )}
+                  </td>
+                    <td className="px-4 py-2">
+                      {!isHistoricalInvoice(line.invoiceDate) && line.lineStatus === "calculated" && (
                         <button
                           onClick={() => handleApprove(line.id)}
                           disabled={approving === line.id}
