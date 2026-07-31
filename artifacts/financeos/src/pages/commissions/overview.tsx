@@ -1,10 +1,11 @@
 import { useState } from "react";
 import { CommissionLayout } from "@/components/commission/CommissionLayout";
-import { useCommissionEntity } from "@/lib/commission-context";
+import { useCommissionEntity, parsePeriod } from "@/lib/commission-context";
 import { api } from "@/lib/api";
 import type { CommissionRepSummary, CommissionRunLine, CommissionRepresentative } from "@/lib/api";
 import { formatCurrency } from "@/lib/format";
 import { useEffect, useRef } from "react";
+import { CalendarDays } from "lucide-react";
 
 // ─── Mini fetch hook (no global store needed for commission module) ────────────
 function useCommissionData<T>(fetcher: () => Promise<{ data: T }>, deps: unknown[]) {
@@ -90,15 +91,32 @@ function MiniKpi({ label, value, sub, tone = "blue" }: { label: string; value: s
   );
 }
 
+
+const MONTH_NAMES = ["January","February","March","April","May","June","July","August","September","October","November","December"];
+
+function getPayoutMessage(period: string | null): { prefix: string; day: string; suffix: string } {
+  if (!period) {
+    return { prefix: "Monthly commissions are paid by the", day: "5th", suffix: " of the following month." };
+  }
+  const [y, m] = period.split("-");
+  const year  = parseInt(y, 10);
+  const month = parseInt(m, 10);
+  const nextIdx  = month === 12 ? 0 : month;
+  const nextYear = month === 12 ? year + 1 : year;
+  const selectedLabel = `${MONTH_NAMES[month - 1]} ${year}`;
+  const nextLabel = month === 12 ? `${MONTH_NAMES[0]} ${nextYear}` : MONTH_NAMES[month];
+  return { prefix: `${selectedLabel} commissions are due by ${nextLabel}`, day: "5", suffix: "." };
+}
+
 export default function CommissionOverviewPage() {
-  const { activeSlug } = useCommissionEntity();
+  const { activeSlug, activePeriod } = useCommissionEntity();
   const { data: summary, loading: sumLoading } = useCommissionData(
-    () => api.commissionSummary(activeSlug),
-    [activeSlug]
+    () => api.commissionSummary(activeSlug, parsePeriod(activePeriod)),
+    [activeSlug, activePeriod]
   );
   const { data: linesRes, loading: linesLoading } = useCommissionData(
-    () => api.commissionLines(activeSlug, { limit: 20 }),
-    [activeSlug]
+    () => api.commissionLines(activeSlug, { limit: 20, ...parsePeriod(activePeriod) }),
+    [activeSlug, activePeriod]
   );
   const { data: repsData, loading: repsLoading } = useCommissionData(
     () => api.commissionRepresentatives(activeSlug),
@@ -158,6 +176,21 @@ export default function CommissionOverviewPage() {
           tone="gray"
         />
       </div>
+
+      {/* Payout reminder */}
+      {(() => {
+        const msg = getPayoutMessage(activePeriod);
+        return (
+          <div className="flex items-center gap-3 bg-blue-50 border border-blue-100 rounded-xl px-5 py-3 text-[13px] text-blue-900">
+            <CalendarDays className="w-5 h-5 text-blue-400 flex-shrink-0" />
+            <span>
+              {msg.prefix}{" "}
+              <span className="font-bold text-blue-700 text-base">{msg.day}</span>
+              {msg.suffix}
+            </span>
+          </div>
+        );
+      })()}
 
       {/* Rep summary cards */}
       {!sumLoading && !repsLoading && repCards.length > 0 && (

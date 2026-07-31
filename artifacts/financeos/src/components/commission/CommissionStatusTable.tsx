@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from "react";
 import { api } from "@/lib/api";
 import type { CommissionRunLine } from "@/lib/api";
-import { useCommissionEntity } from "@/lib/commission-context";
+import { useCommissionEntity, parsePeriod } from "@/lib/commission-context";
 import { formatCurrency } from "@/lib/format";
 
 const STATUS_TONE: Record<string, string> = {
@@ -28,7 +28,7 @@ function fmt(v: string | number | null | undefined) {
 }
 
 export function CommissionStatusTable() {
-  const { activeSlug } = useCommissionEntity();
+  const { activeSlug, activePeriod } = useCommissionEntity();
   const [lines, setLines] = useState<CommissionRunLine[]>([]);
   const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(true);
@@ -37,7 +37,7 @@ export function CommissionStatusTable() {
   useEffect(() => {
     mounted.current = true;
     setLoading(true);
-    api.commissionLines(activeSlug, { limit: 200 }).then((res) => {
+    api.commissionLines(activeSlug, { limit: 200, ...parsePeriod(activePeriod) }).then((res) => {
       if (mounted.current) {
         setLines(res.data ?? []);
         setTotal(res.total ?? 0);
@@ -45,7 +45,7 @@ export function CommissionStatusTable() {
       }
     }).catch(() => { if (mounted.current) setLoading(false); });
     return () => { mounted.current = false; };
-  }, [activeSlug]);
+  }, [activeSlug, activePeriod]);
 
   if (loading) {
     return <p className="px-5 py-10 text-sm text-gray-400 text-center">Loading…</p>;

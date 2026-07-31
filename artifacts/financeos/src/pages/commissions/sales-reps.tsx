@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from "react";
 import { CommissionLayout } from "@/components/commission/CommissionLayout";
-import { useCommissionEntity } from "@/lib/commission-context";
+import { useCommissionEntity, parsePeriod } from "@/lib/commission-context";
 import { api } from "@/lib/api";
 import type { CommissionRepresentative, CommissionRepSummary } from "@/lib/api";
 import { formatCurrency } from "@/lib/format";
@@ -28,15 +28,15 @@ function fmt(v: string | number | null | undefined) {
 }
 
 export default function SalesRepsPage() {
-  const { activeSlug } = useCommissionEntity();
+  const { activeSlug, activePeriod } = useCommissionEntity();
 
   const { data: repsRaw, loading: repsLoading } = useEnvData(
     () => api.commissionRepresentatives(activeSlug),
     [activeSlug]
   );
   const { data: summaryRaw, loading: sumLoading } = useEnvData(
-    () => api.commissionSummary(activeSlug),
-    [activeSlug]
+    () => api.commissionSummary(activeSlug, parsePeriod(activePeriod)),
+    [activeSlug, activePeriod]
   );
 
   const reps    = (repsRaw    as CommissionRepresentative[] | null) ?? [];

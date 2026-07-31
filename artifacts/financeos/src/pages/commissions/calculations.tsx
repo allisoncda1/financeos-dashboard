@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from "react";
 import { CommissionLayout } from "@/components/commission/CommissionLayout";
-import { useCommissionEntity } from "@/lib/commission-context";
+import { useCommissionEntity, parsePeriod } from "@/lib/commission-context";
 import { api } from "@/lib/api";
 import type { CommissionRunLine, CommissionRepresentative, IngestResult } from "@/lib/api";
 import { formatCurrency } from "@/lib/format";
@@ -68,7 +68,7 @@ function fmt(v: string | number | null | undefined) {
 }
 
 export default function CommissionCalculationsPage() {
-  const { activeSlug } = useCommissionEntity();
+  const { activeSlug, activePeriod } = useCommissionEntity();
   const [statusFilter, setStatusFilter] = useState("");
   const [repFilter, setRepFilter]       = useState("");
   const [approving, setApproving]       = useState<string | null>(null);
@@ -92,12 +92,13 @@ export default function CommissionCalculationsPage() {
       representativeId: repFilter || undefined,
       lineStatus: statusFilter || undefined,
       limit: 200,
+      ...parsePeriod(activePeriod),
     }) as Promise<{ data: CommissionRunLine[]; total: number }>).then((res) => {
       setLines(res.data ?? []);
       setTotal(res.total ?? 0);
       setLoading(false);
     }).catch(() => setLoading(false));
-  }, [activeSlug, statusFilter, repFilter]);
+  }, [activeSlug, statusFilter, repFilter, activePeriod]);
 
   async function handleApprove(lineId: string) {
     setApproving(lineId);
@@ -115,7 +116,7 @@ export default function CommissionCalculationsPage() {
     try {
       const ingestRes = await api.ingestCommissions(activeSlug, { fromDate, toDate });
       setIngestResult(ingestRes.data ?? null);
-      const res = await api.commissionLines(activeSlug, { limit: 200 }) as unknown as { data: CommissionRunLine[]; total: number };
+      const res = await api.commissionLines(activeSlug, { limit: 200, ...parsePeriod(activePeriod) }) as unknown as { data: CommissionRunLine[]; total: number };
       setLines(res.data ?? []);
       setTotal(res.total ?? 0);
     } finally {

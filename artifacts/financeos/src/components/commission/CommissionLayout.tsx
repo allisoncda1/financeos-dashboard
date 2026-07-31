@@ -82,7 +82,7 @@ export function CommissionLayout({ title, subtitle, children }: CommissionLayout
               <button
                 data-testid="button-calculate-commissions"
                 disabled
-                title="Commission engine not yet implemented"
+                title="Use Import Invoices and Rule Builder to calculate commissions."
                 className="flex items-center gap-2 px-4 h-8 bg-gray-300 text-gray-500 rounded-lg shadow-sm text-[12px] font-semibold cursor-not-allowed"
               >
                 <Zap className="w-3.5 h-3.5" />
