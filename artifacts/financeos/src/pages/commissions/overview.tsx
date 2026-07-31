@@ -115,7 +115,7 @@ export default function CommissionOverviewPage() {
     [activeSlug, activePeriod]
   );
   const { data: linesRes, loading: linesLoading } = useCommissionData(
-    () => api.commissionLines(activeSlug, { limit: 20, ...parsePeriod(activePeriod) }),
+    () => api.commissionLines(activeSlug, { limit: 10, ...parsePeriod(activePeriod) }),
     [activeSlug, activePeriod]
   );
   const { data: repsData, loading: repsLoading } = useCommissionData(
@@ -268,7 +268,10 @@ export default function CommissionOverviewPage() {
                 </tr>
               </thead>
               <tbody>
-                {(lines as CommissionRunLine[]).slice(0, 20).map((line) => (
+                {(lines as CommissionRunLine[]).sort((a, b) => {
+                    const d = (b.invoiceDate ?? '').localeCompare(a.invoiceDate ?? '');
+                    return d !== 0 ? d : (b.updatedAt ?? b.createdAt ?? '').localeCompare(a.updatedAt ?? a.createdAt ?? '');
+                  }).slice(0, 10).map((line) => (
                   <tr key={line.id} className="border-b border-gray-50 hover:bg-gray-50 transition-colors">
                     <td className="px-4 py-2 text-gray-500">{line.invoiceDate ?? "—"}</td>
                     <td className="px-4 py-2 font-medium text-gray-900 max-w-[200px] truncate">{line.customerName ?? "—"}</td>

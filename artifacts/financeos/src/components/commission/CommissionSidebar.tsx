@@ -9,12 +9,10 @@ import {
   LayoutDashboard,
   FileText,
   Users,
-  Building2,
   ClipboardList,
   Calculator,
   Banknote,
   BarChart3,
-  Settings,
   X,
   ChevronDown,
   LogOut,
@@ -43,12 +41,10 @@ const NAV_ITEMS: { icon: LucideIcon; label: string; href: string; exact?: boolea
   { icon: LayoutDashboard, label: "Overview", href: "/commissions", exact: true },
   { icon: FileText, label: "Invoices", href: "/commissions/invoices" },
   { icon: Users, label: "Sales Reps", href: "/commissions/sales-reps" },
-  { icon: Building2, label: "Clients", href: "/commissions/clients" },
-  { icon: ClipboardList, label: "Rule Builder", href: "/commissions/plans" },
-  { icon: Calculator, label: "Calculations", href: "/commissions/calculations" },
+  { icon: ClipboardList, label: "Rules", href: "/commissions/plans" },
+  { icon: Calculator, label: "Review", href: "/commissions/calculations" },
   { icon: Banknote, label: "Payouts", href: "/commissions/payouts" },
   { icon: BarChart3, label: "Reports", href: "/commissions/reports" },
-  { icon: Settings, label: "Settings", href: "/commissions/settings" },
 ];
 
 export function CommissionSidebar({ onClose }: { onClose?: () => void }) {

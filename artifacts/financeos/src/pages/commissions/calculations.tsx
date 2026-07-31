@@ -125,7 +125,7 @@ export default function CommissionCalculationsPage() {
   }
 
   return (
-    <CommissionLayout title="Commission Lines" subtitle="All invoice-level commission calculations">
+    <CommissionLayout title="Commission Review" subtitle="Review invoice-level commission results, missing configuration, and items requiring attention.">
 
       <div className="flex flex-wrap items-center gap-3">
         <select

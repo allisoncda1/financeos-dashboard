@@ -235,7 +235,50 @@ export default function CommissionPlansPage() {
   const repById = new Map(reps.map((r) => [r.id, r]));
 
   return (
-    <CommissionLayout title="Rule Builder" subtitle="Configure commission formulas per representative and client">
+    <CommissionLayout title="Rules" subtitle="Define who earns commission, how it is calculated, and when it becomes eligible.">
+
+      {/* Purpose explanation */}
+      <div className="bg-blue-50 border border-blue-200 rounded-xl px-5 py-3 text-sm text-blue-800">
+        Rules define who receives commission, how it is calculated, and when it becomes eligible.
+      </div>
+
+      {/* Eligibility & Assignments */}
+      <div>
+        <h2 className="text-sm font-semibold text-gray-600 uppercase tracking-wide mb-1">Eligibility &amp; Assignments</h2>
+        <p className="text-xs text-gray-400 mb-3">Read-only. Shows which customers are attributed to each representative under active rules.</p>
+        {rulesLoading ? (
+          <p className="text-sm text-gray-400">Loading…</p>
+        ) : rules.length === 0 ? (
+          <p className="text-sm text-gray-400 italic">No rules configured yet.</p>
+        ) : (
+          <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
+            <div className="overflow-x-auto">
+              <table className="w-full text-[12px]">
+                <thead>
+                  <tr className="border-b border-gray-100 text-left text-[10px] text-gray-400 uppercase tracking-wide">
+                    <th className="px-4 py-2 font-medium">Representative</th>
+                    <th className="px-4 py-2 font-medium">Customer Scope</th>
+                    <th className="px-4 py-2 font-medium">Formula</th>
+                    <th className="px-4 py-2 font-medium">Trigger</th>
+                    <th className="px-4 py-2 font-medium">Effective</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {rules.map((rule) => (
+                    <tr key={rule.id} className="border-b border-gray-50 hover:bg-gray-50">
+                      <td className="px-4 py-2 font-medium text-gray-900">{repById.get(rule.representativeId)?.displayName ?? "—"}</td>
+                      <td className="px-4 py-2 text-gray-600 font-mono text-[11px]">{rule.customerNamePattern ?? <span className="italic text-gray-400 font-sans">All customers</span>}</td>
+                      <td className="px-4 py-2 text-gray-600">{FORMULA_TYPES.find(f => f.value === rule.formulaType)?.label ?? rule.formulaType}</td>
+                      <td className="px-4 py-2 text-gray-600">{TRIGGERS.find(t => t.value === rule.payableTrigger)?.label ?? rule.payableTrigger}</td>
+                      <td className="px-4 py-2 text-gray-500 text-[11px]">{rule.effectiveFrom}{rule.effectiveTo ? ` → ${rule.effectiveTo}` : ""}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        )}
+      </div>
 
       {/* Existing rules */}
       <div>
