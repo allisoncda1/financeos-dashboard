@@ -685,3 +685,158 @@ describe("Plaid consent — entity not resolved by getCachedEntityId", () => {
     expect(entityIdArg).not.toBe("smile_more");
   });
 });
+
+// ─── Tests 28–34: Consent INSERT regression — TEXT[] must be native JS array ──
+//
+// Root cause (fixed in routes/plaid.ts): scope_requested and plaid_products were
+// JSON.stringify()-ed before being passed as query params. PostgreSQL TEXT[] columns
+// require native JS arrays from the pg driver; a plain string is rejected with
+// "column … is of type text[] but expression is of type text", which the catch block
+// converted to { ok: false, error: "Failed to record consent" }.
+
+describe("Plaid consent INSERT — array param regression (tests 28–34)", () => {
+  let plaidRouter: import("express").Router;
+
+  beforeEach(async () => {
+    pgState.queryFn.mockReset();
+    entityCacheState.getCachedEntityId.mockReset();
+    entityCacheState.getCachedEntityId.mockResolvedValue("uuid-regression-test");
+    const mod = await import("../routes/plaid.js");
+    plaidRouter = mod.default;
+  });
+
+  it("28. scope_requested INSERT param is a native JS array, not a JSON string", async () => {
+    pgState.queryFn
+      .mockResolvedValueOnce({ rows: [] })                               // duplicate check
+      .mockResolvedValueOnce({ rows: [{ id: "cid-28" }] });             // insert
+
+    const app = makeApp("admin");
+    app.use(plaidRouter);
+    const res = await request(app)
+      .post("/plaid/consent")
+      .send({ entitySlug: "CarDealer_ai" });
+
+    expect(res.status).toBe(200);
+
+    const insertCall = pgState.queryFn.mock.calls.find(
+      (c: unknown[]) => typeof c[0] === "string" && (c[0] as string).includes("INSERT INTO plaid_consent_records"),
+    );
+    expect(insertCall, "INSERT INTO plaid_consent_records was not called").toBeDefined();
+    // $5 in the INSERT is scope_requested
+    const scopeArg = (insertCall as unknown[][])[1][4];
+    expect(Array.isArray(scopeArg), `scope_requested must be an array, got: ${JSON.stringify(scopeArg)}`).toBe(true);
+    expect(typeof scopeArg, "scope_requested must not be a string").not.toBe("string");
+  });
+
+  it("29. plaid_products INSERT param is a native JS array, not a JSON string", async () => {
+    pgState.queryFn
+      .mockResolvedValueOnce({ rows: [] })
+      .mockResolvedValueOnce({ rows: [{ id: "cid-29" }] });
+
+    const app = makeApp("admin");
+    app.use(plaidRouter);
+    await request(app)
+      .post("/plaid/consent")
+      .send({ entitySlug: "CarDealer_ai" });
+
+    const insertCall = pgState.queryFn.mock.calls.find(
+      (c: unknown[]) => typeof c[0] === "string" && (c[0] as string).includes("INSERT INTO plaid_consent_records"),
+    );
+    expect(insertCall).toBeDefined();
+    // $6 in the INSERT is plaid_products
+    const productsArg = (insertCall as unknown[][])[1][5];
+    expect(Array.isArray(productsArg), `plaid_products must be an array, got: ${JSON.stringify(productsArg)}`).toBe(true);
+    expect(typeof productsArg).not.toBe("string");
+  });
+
+  it("30. scope_requested contains the expected string values (not double-encoded)", async () => {
+    pgState.queryFn
+      .mockResolvedValueOnce({ rows: [] })
+      .mockResolvedValueOnce({ rows: [{ id: "cid-30" }] });
+
+    const app = makeApp("admin");
+    app.use(plaidRouter);
+    await request(app)
+      .post("/plaid/consent")
+      .send({ entitySlug: "CarDealer_ai" });
+
+    const insertCall = pgState.queryFn.mock.calls.find(
+      (c: unknown[]) => typeof c[0] === "string" && (c[0] as string).includes("INSERT INTO plaid_consent_records"),
+    );
+    expect(insertCall).toBeDefined();
+    const scopeArg = (insertCall as unknown[][])[1][4] as string[];
+    // Values must be plain strings inside the array, not a JSON blob
+    expect(scopeArg.every((v: unknown) => typeof v === "string")).toBe(true);
+    expect(scopeArg.join(",")).not.toContain("[");
+    expect(scopeArg.join(",")).not.toContain('"');
+  });
+
+  it("31. repeated consent submission → 200 with existing:true, no INSERT fired", async () => {
+    // Duplicate-check SELECT returns an existing row → early 200, INSERT never called
+    pgState.queryFn.mockResolvedValueOnce({ rows: [{ id: "existing-consent-id" }] });
+
+    const app = makeApp("admin");
+    app.use(plaidRouter);
+    const res = await request(app)
+      .post("/plaid/consent")
+      .send({ entitySlug: "CarDealer_ai" });
+
+    expect(res.status).toBe(200);
+    expect(res.body.ok).toBe(true);
+    expect(res.body.data.existing).toBe(true);
+    expect(res.body.data.consentId).toBe("existing-consent-id");
+
+    const insertCall = pgState.queryFn.mock.calls.find(
+      (c: unknown[]) => typeof c[0] === "string" && (c[0] as string).includes("INSERT INTO plaid_consent_records"),
+    );
+    expect(insertCall, "INSERT must NOT be called for a duplicate submission").toBeUndefined();
+  });
+
+  it("32. DB failure on INSERT → 500, sanitized error message returned", async () => {
+    pgState.queryFn
+      .mockResolvedValueOnce({ rows: [] })   // duplicate check ok
+      .mockRejectedValueOnce(new Error("column scope_requested is of type text[] but expression is of type text"));
+
+    const app = makeApp("admin");
+    app.use(plaidRouter);
+    const res = await request(app)
+      .post("/plaid/consent")
+      .send({ entitySlug: "CarDealer_ai" });
+
+    expect(res.status).toBe(500);
+    expect(res.body.ok).toBe(false);
+    // Sanitized message — never the raw pg error with type details
+    expect(res.body.error).not.toContain("text[]");
+    expect(res.body.error).not.toContain("expression is of type text");
+    expect(res.body.error).toBeTruthy();
+  });
+
+  it("33. DB failure on duplicate check → 500, sanitized error, no DB URL in response", async () => {
+    pgState.queryFn.mockRejectedValueOnce(
+      new Error("connect ETIMEDOUT postgres://writer:supersecret@host:5432/heliumdb"),
+    );
+
+    const app = makeApp("admin");
+    app.use(plaidRouter);
+    const res = await request(app)
+      .post("/plaid/consent")
+      .send({ entitySlug: "CarDealer_ai" });
+
+    expect(res.status).toBe(500);
+    expect(res.body.ok).toBe(false);
+    expect(res.body.error).not.toContain("supersecret");
+    expect(res.body.error).not.toContain("postgres://");
+    expect(res.body.error).toBeTruthy();
+  });
+
+  it("34. unauthenticated consent request → 401, no DB query fired at all", async () => {
+    const app = makeApp(null);
+    app.use(plaidRouter);
+    const res = await request(app)
+      .post("/plaid/consent")
+      .send({ entitySlug: "CarDealer_ai" });
+
+    expect(res.status).toBe(401);
+    expect(pgState.queryFn).not.toHaveBeenCalled();
+  });
+});
