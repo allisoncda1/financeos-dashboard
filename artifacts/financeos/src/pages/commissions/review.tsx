@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from "react";
 import { CommissionLayout } from "@/components/commission/CommissionLayout";
-import { useCommissionEntity } from "@/lib/commission-context";
+import { parsePeriod, useCommissionEntity } from "@/lib/commission-context";
 import { api } from "@/lib/api";
 import type { CommissionRunLine } from "@/lib/api";
 import { formatCurrency } from "@/lib/format";
@@ -13,7 +13,8 @@ function fmt(v: string | null | undefined) {
 }
 
 export default function CommissionReviewPage() {
-  const { activeSlug } = useCommissionEntity();
+  const { activeSlug, activePeriod } = useCommissionEntity();
+  const periodParams = parsePeriod(activePeriod);
   const [lines, setLines] = useState<CommissionRunLine[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -24,19 +25,23 @@ export default function CommissionReviewPage() {
     setLoading(true);
     setError(null);
     Promise.all([
-      api.commissionLines(activeSlug, { lineStatus: "needs_review",        limit: 500 }),
-      api.commissionLines(activeSlug, { lineStatus: "needs_configuration",  limit: 500 }),
+      api.commissionLines(activeSlug, { lineStatus: "needs_review", limit: 500, ...periodParams }),
+      api.commissionLines(activeSlug, { lineStatus: "needs_configuration", limit: 500, ...periodParams }),
     ])
       .then(([r, c]) => {
         if (!mounted.current) return;
         const rd = Array.isArray(r) ? (r as CommissionRunLine[]) : ((r as { data?: CommissionRunLine[] }).data ?? []);
         const cd = Array.isArray(c) ? (c as CommissionRunLine[]) : ((c as { data?: CommissionRunLine[] }).data ?? []);
-        setLines([...rd, ...cd].sort((a, b) => (b.invoiceDate ?? "").localeCompare(a.invoiceDate ?? "")));
+        setLines(
+          [...rd, ...cd]
+            .filter(line => line.representativeId != null)
+            .sort((a, b) => (b.invoiceDate ?? "").localeCompare(a.invoiceDate ?? ""))
+        );
         setLoading(false);
       })
       .catch(e => { if (mounted.current) { setError(String(e)); setLoading(false); } });
     return () => { mounted.current = false; };
-  }, [activeSlug]);
+  }, [activeSlug, activePeriod]);
 
   return (
     <CommissionLayout title="Commission Review" subtitle="Live external-rep lines requiring manual review or expense entry">

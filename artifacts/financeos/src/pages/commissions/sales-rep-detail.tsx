@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from "react";
 import { useRoute, useLocation } from "wouter";
 import { CommissionLayout } from "@/components/commission/CommissionLayout";
-import { useCommissionEntity } from "@/lib/commission-context";
+import { parsePeriod, useCommissionEntity } from "@/lib/commission-context";
 import { api } from "@/lib/api";
 import type { CommissionRepresentative, CommissionRunLine } from "@/lib/api";
 import { formatCurrency } from "@/lib/format";
@@ -15,21 +15,22 @@ const STATUS_COLORS: Record<string, string> = {
   calculated: "bg-emerald-100 text-emerald-800", approved: "bg-green-100 text-green-800",
   locked: "bg-slate-100 text-slate-700", awaiting_payment: "bg-purple-100 text-purple-800",
   excluded: "bg-gray-100 text-gray-500", attributed: "bg-blue-100 text-blue-800",
+  house_no_commission: "bg-slate-100 text-slate-700",
 };
 const STATUS_LABELS: Record<string, string> = {
   needs_review: "Needs Review", needs_configuration: "Needs Config", calculated: "Calculated",
   approved: "Approved", locked: "Locked", awaiting_payment: "Awaiting Payment",
   excluded: "Excluded", attributed: "Attributed",
+  house_no_commission: "House — No Commission",
 };
 
 export default function CommissionSalesRepDetailPage() {
-  const { activeSlug } = useCommissionEntity();
+  const { activeSlug, activePeriod } = useCommissionEntity();
+  const periodParams = parsePeriod(activePeriod);
   const [, navigate]   = useLocation();
   const [match, params] = useRoute("/commissions/sales-reps/:repId");
   const repId = match ? params!.repId : null;
 
-  const currentMonth = new Date().toISOString().slice(0, 7);
-  const [month, setMonth] = useState(currentMonth);
   const [rep, setRep]     = useState<CommissionRepresentative | null>(null);
   const [lines, setLines] = useState<CommissionRunLine[]>([]);
   const [loading, setLoading] = useState(true);
@@ -39,10 +40,9 @@ export default function CommissionSalesRepDetailPage() {
     if (!repId) return;
     mounted.current = true;
     setLoading(true);
-    const [y, m] = month.split("-").map(Number);
     Promise.all([
       api.commissionRepresentatives(activeSlug),
-      api.commissionLines(activeSlug, { representativeId: repId, periodYear: y, periodMonth: m, limit: 500 }),
+      api.commissionLines(activeSlug, { representativeId: repId, limit: 500, ...periodParams }),
     ]).then(([repsRes, linesRes]) => {
       if (!mounted.current) return;
       const reps = Array.isArray(repsRes) ? (repsRes as CommissionRepresentative[]) : ((repsRes as { data?: CommissionRepresentative[] }).data ?? []);
@@ -52,7 +52,7 @@ export default function CommissionSalesRepDetailPage() {
       setLoading(false);
     }).catch(() => { if (mounted.current) setLoading(false); });
     return () => { mounted.current = false; };
-  }, [activeSlug, repId, month]);
+  }, [activeSlug, repId, activePeriod]);
 
   const invoiceTotal  = lines.reduce((a, l) => { const n = parseFloat(l.invoiceAmount ?? "0"); return a + (isNaN(n) ? 0 : n); }, 0);
   const commTotal     = lines.filter(l => l.lineStatus === "approved" || l.lineStatus === "locked").reduce((a, l) => { const n = parseFloat(l.commissionAmount ?? "0"); return a + (isNaN(n) ? 0 : n); }, 0);
@@ -63,13 +63,15 @@ export default function CommissionSalesRepDetailPage() {
   return (
     <CommissionLayout
       title={loading ? "Loading…" : (rep?.displayName ?? "Representative")}
-      subtitle={`${activeSlug} · ${month}`}
+      subtitle={`${activeSlug} · ${activePeriod ?? "All time"}`}
     >
       <div className="flex items-center gap-2">
-        <button onClick={() => navigate("/commissions/sales-reps")} className="text-xs text-gray-500 hover:text-gray-700">← Sales Reps</button>
-        <span className="text-gray-300">·</span>
-        <label className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Period</label>
-        <input type="month" className="border border-gray-200 rounded-md px-3 py-1.5 text-sm" value={month} max={new Date().toISOString().slice(0,7)} onChange={e => { if (e.target.value) setMonth(e.target.value); }} />
+        <button
+          onClick={() => navigate("/commissions/sales-reps")}
+          className="text-xs text-gray-500 hover:text-gray-700"
+        >
+          ← Sales Reps
+        </button>
       </div>
 
       <div className="grid grid-cols-3 gap-4">

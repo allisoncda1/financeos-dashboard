@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from "react";
 import { CommissionLayout } from "@/components/commission/CommissionLayout";
-import { useCommissionEntity } from "@/lib/commission-context";
+import { parsePeriod, useCommissionEntity } from "@/lib/commission-context";
 import { api } from "@/lib/api";
 import type { CommissionRunLine } from "@/lib/api";
 import { formatCurrency } from "@/lib/format";
@@ -9,7 +9,8 @@ function fmt(v: string | null | undefined) { if (v == null) return "—"; const 
 function sumLines(ls: CommissionRunLine[]) { return ls.reduce((a, l) => { const n = parseFloat(l.commissionAmount ?? "0"); return a + (isNaN(n) ? 0 : n); }, 0); }
 
 export default function CommissionPayoutsPage() {
-  const { activeSlug } = useCommissionEntity();
+  const { activeSlug, activePeriod } = useCommissionEntity();
+  const periodParams = parsePeriod(activePeriod);
   const [lines, setLines] = useState<CommissionRunLine[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -18,9 +19,10 @@ export default function CommissionPayoutsPage() {
   useEffect(() => {
     mounted.current = true;
     setLoading(true);
+    setError(null);
     Promise.all([
-      api.commissionLines(activeSlug, { lineStatus: "approved", limit: 500 }),
-      api.commissionLines(activeSlug, { lineStatus: "locked",   limit: 500 }),
+      api.commissionLines(activeSlug, { lineStatus: "approved", limit: 500, ...periodParams }),
+      api.commissionLines(activeSlug, { lineStatus: "locked", limit: 500, ...periodParams }),
     ])
       .then(([a, l]) => {
         if (!mounted.current) return;
@@ -31,7 +33,7 @@ export default function CommissionPayoutsPage() {
       })
       .catch(e => { if (mounted.current) { setError(String(e)); setLoading(false); } });
     return () => { mounted.current = false; };
-  }, [activeSlug]);
+  }, [activeSlug, activePeriod]);
 
   const byRep = new Map<string, { repName: string; lines: CommissionRunLine[] }>();
   for (const line of lines) {
