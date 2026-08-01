@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from "react";
+import { Link } from "wouter";
 import { useCommissionEntity, parsePeriod } from "@/lib/commission-context";
 import { api } from "@/lib/api";
 import type { CommissionRunLine, CommissionRepresentative } from "@/lib/api";
@@ -78,6 +79,12 @@ export function CommissionStatusTable() {
 
   const [statusFilter, setStatusFilter] = useState("");
   const [repFilter,    setRepFilter]    = useState("");
+  const [refreshKey, setRefreshKey] = useState(0);
+  const [assignmentLine, setAssignmentLine] =
+    useState<CommissionRunLine | null>(null);
+  const [selectedRepId, setSelectedRepId] = useState("");
+  const [assigning, setAssigning] = useState(false);
+  const [assignError, setAssignError] = useState<string | null>(null);
 
   const { data: repsData } = useData(
     () => api.commissionRepresentatives(activeSlug),
@@ -100,7 +107,33 @@ export function CommissionStatusTable() {
       .then((res) => { setLines(res.data ?? []); setTotal(res.total ?? 0); setLoading(false); })
       .catch(()   => setLoading(false));
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [activeSlug, activePeriod, statusFilter, repFilter]);
+  }, [activeSlug, activePeriod, statusFilter, repFilter, refreshKey]);
+
+  async function saveAssignment() {
+    if (!assignmentLine || !selectedRepId || assigning) return;
+
+    setAssigning(true);
+    setAssignError(null);
+
+    try {
+      await api.assignCommissionRepresentative(
+        activeSlug,
+        assignmentLine.id,
+        selectedRepId,
+      );
+      setAssignmentLine(null);
+      setSelectedRepId("");
+      setRefreshKey((value) => value + 1);
+    } catch (error) {
+      setAssignError(
+        error instanceof Error
+          ? error.message
+          : "Unable to assign this invoice.",
+      );
+    } finally {
+      setAssigning(false);
+    }
+  }
 
   return (
     <div className="space-y-4">
@@ -147,11 +180,22 @@ export function CommissionStatusTable() {
                   <th className="px-4 py-2.5 font-medium text-right">GP</th>
                   <th className="px-4 py-2.5 font-medium text-right">Commission</th>
                   <th className="px-4 py-2.5 font-medium">Status</th>
+                  <th className="px-4 py-2.5 font-medium text-right">
+                    Action
+                  </th>
                 </tr>
               </thead>
               <tbody>
                 {lines.map(line => {
                   const hist = isHistoricalInvoice(line.invoiceDate);
+                  const needsAssignment =
+                    !hist && !line.representativeId;
+                  const needsCalculation =
+                    !hist &&
+                    line.representativeId != null &&
+                    ["needs_configuration", "needs_review"].includes(
+                      line.lineStatus,
+                    );
                   return (
                     <tr key={line.id} className="border-b border-gray-50 hover:bg-gray-50 transition-colors">
                       <td className="px-4 py-2 text-gray-500">{line.invoiceDate ?? "—"}</td>
@@ -187,7 +231,41 @@ export function CommissionStatusTable() {
                         )}
                       </td>
                       <td className="px-4 py-2">
-                        <Pill status={line.lineStatus} invoiceDate={line.invoiceDate} />
+                        {needsAssignment ? (
+                          <span className="inline-block rounded bg-rose-100 px-2 py-0.5 text-[11px] font-semibold text-rose-700">
+                            Needs Assignment
+                          </span>
+                        ) : (
+                          <Pill
+                            status={line.lineStatus}
+                            invoiceDate={line.invoiceDate}
+                          />
+                        )}
+                      </td>
+
+                      <td className="px-4 py-2 text-right">
+                        {needsAssignment ? (
+                          <button
+                            type="button"
+                            className="text-xs font-semibold text-blue-600 hover:text-blue-800"
+                            onClick={() => {
+                              setAssignmentLine(line);
+                              setSelectedRepId("");
+                              setAssignError(null);
+                            }}
+                          >
+                            Assign →
+                          </button>
+                        ) : needsCalculation ? (
+                          <Link
+                            href={`/commissions/review/${line.id}`}
+                            className="text-xs font-semibold text-blue-600 hover:text-blue-800"
+                          >
+                            Review →
+                          </Link>
+                        ) : (
+                          <span className="text-gray-300">—</span>
+                        )}
                       </td>
                     </tr>
                   );
@@ -197,6 +275,68 @@ export function CommissionStatusTable() {
           </div>
         )}
       </div>
+
+      {assignmentLine && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 p-4"
+          role="dialog"
+          aria-modal="true"
+        >
+          <div className="w-full max-w-md rounded-2xl bg-white p-6 shadow-xl">
+            <p className="text-xs font-semibold uppercase text-gray-400">
+              Assign invoice
+            </p>
+            <h2 className="mt-1 text-lg font-semibold text-gray-900">
+              {assignmentLine.customerName ?? "Unknown customer"}
+            </h2>
+            <p className="mt-1 text-sm text-gray-500">
+              {assignmentLine.invoiceDate ?? "No date"} ·{" "}
+              {fmt(assignmentLine.invoiceAmount)}
+            </p>
+
+            <label className="mb-2 mt-5 block text-sm font-medium text-gray-700">
+              Sales representative
+            </label>
+            <select
+              className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm"
+              value={selectedRepId}
+              onChange={(event) => setSelectedRepId(event.target.value)}
+            >
+              <option value="">Select a representative…</option>
+              {reps.map((rep) => (
+                <option key={rep.id} value={rep.id}>
+                  {rep.displayName}
+                </option>
+              ))}
+            </select>
+
+            {assignError && (
+              <p className="mt-3 rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">
+                {assignError}
+              </p>
+            )}
+
+            <div className="mt-6 flex justify-end gap-3">
+              <button
+                type="button"
+                className="rounded-lg px-4 py-2 text-sm text-gray-600"
+                onClick={() => setAssignmentLine(null)}
+                disabled={assigning}
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white disabled:opacity-50"
+                onClick={saveAssignment}
+                disabled={!selectedRepId || assigning}
+              >
+                {assigning ? "Assigning…" : "Confirm assignment"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

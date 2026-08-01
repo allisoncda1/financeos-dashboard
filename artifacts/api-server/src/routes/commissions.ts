@@ -27,6 +27,7 @@ import {
   getCommissionLines,
   getCommissionLineSummary,
   createCommissionRepresentative,
+  assignRepresentativeToLine,
   getCommissionRepresentatives,
   getCommissionRepresentativeById,
   getCommissionRules,
@@ -683,9 +684,101 @@ router.get("/:slug/kpi-summary", requireAuth, async (req, res) => {
 });
 
 
+// PATCH /:slug/lines/:lineId/representative — explicit manual assignment
+router.patch(
+  "/:slug/lines/:lineId/representative",
+  requireAuth,
+  requirePermission("financials"),
+  async (req, res) => {
+    const slug = req.params["slug"] as string;
+    const lineId = req.params["lineId"] as string;
+    const representativeId = (
+      req.body as { representativeId?: unknown } | undefined
+    )?.representativeId;
+
+    if (!slugGuard(slug)) {
+      return res.status(404).json({ ok: false, error: "Invalid slug" });
+    }
+    if (!isValidUuid(lineId)) {
+      return res.status(400).json({ ok: false, error: "Invalid lineId" });
+    }
+    if (!isValidUuid(representativeId)) {
+      return res.status(400).json({
+        ok: false,
+        error: "representativeId must be a valid UUID",
+      });
+    }
+
+    try {
+      const entityId = await getCachedEntityId(slug);
+      if (!entityId) {
+        return res.status(404).json({ ok: false, error: "Entity not found" });
+      }
+
+      const data = await assignRepresentativeToLine(
+        lineId,
+        entityId,
+        representativeId,
+      );
+
+      return res.json({
+        ok: true,
+        data,
+        ts: new Date().toISOString(),
+      });
+    } catch (err: unknown) {
+      const code = (err as { code?: string }).code;
+
+      if (code === "LINE_NOT_FOUND") {
+        return res.status(404).json({
+          ok: false,
+          error: "Commission line not found for this entity",
+        });
+      }
+      if (code === "REP_NOT_FOUND") {
+        return res.status(404).json({
+          ok: false,
+          error: "Representative not found",
+        });
+      }
+      if (code === "INVALID_REP_TYPE") {
+        return res.status(400).json({
+          ok: false,
+          error: "Unsupported representative type",
+        });
+      }
+      if (code === "LINE_LOCKED") {
+        return res.status(409).json({
+          ok: false,
+          error: "Locked commission lines cannot be reassigned",
+        });
+      }
+
+      const log = (
+        req as unknown as {
+          log?: { error?(...args: unknown[]): void };
+        }
+      ).log;
+      log?.error?.(
+        { err },
+        "Failed to assign commission representative",
+      );
+
+      return res.status(500).json({
+        ok: false,
+        error: "Internal server error",
+      });
+    }
+  },
+);
+
 // POST /:slug/representatives — add external sales rep
-router.post("/:slug/representatives", slugGuard, requirePermission("control"), async (req, res) => {
-  const { slug } = req.params as { slug: string };
+router.post("/:slug/representatives", requireAuth, requirePermission("control"), async (req, res) => {
+  const slug = req.params["slug"] as string;
+  if (!slugGuard(slug)) {
+    return res.status(404).json({ ok: false, error: "Invalid slug" });
+  }
+
   const { displayName } = req.body as { displayName?: string };
 
   if (!displayName || typeof displayName !== "string" || !displayName.trim()) {
@@ -710,7 +803,7 @@ router.post("/:slug/representatives", slugGuard, requirePermission("control"), a
       return res.status(409).json({ error: "A representative with that name already exists", code: "DUPLICATE_SLUG" });
     }
     const log = (req as unknown as { log?: { error?(...a: unknown[]): void } }).log;
-    log?.error?.("POST /representatives error", err);
+    log?.error?.({ err }, "Failed to create commission representative");
     return res.status(500).json({ error: "Internal server error" });
   }
 });

@@ -210,19 +210,25 @@ export async function createCommissionRepresentative(input: {
   slug: string;
 }): Promise<{ id: string; displayName: string; slug: string }> {
   const id = crypto.randomUUID();
-  const now = new Date().toISOString();
-  const rows = await query(
-    `INSERT INTO commission_representatives
-       (id, display_name, slug, representative_type, payout_eligible, is_active, created_at, updated_at)
-     VALUES ($1, $2, $3, 'external_rep', true, true, $4, $4)
-     ON CONFLICT (slug) DO NOTHING
-     RETURNING id, display_name, slug`,
-    [id, input.displayName, input.slug, now]
-  );
-  if (!rows.length) {
+  const result = await getCommissionOpsDb().execute(sql`
+    INSERT INTO commission_representatives
+      (id, display_name, slug, representative_type, payout_eligible, is_active, created_at, updated_at)
+    VALUES
+      (${id}::uuid, ${input.displayName}, ${input.slug}, 'external_rep', true, true, now(), now())
+    ON CONFLICT (slug) DO NOTHING
+    RETURNING id, display_name, slug
+  `);
+
+  if (!result.rows.length) {
     throw Object.assign(new Error("duplicate_slug"), { code: "DUPLICATE_SLUG" });
   }
-  return { id: rows[0].id, displayName: rows[0].display_name, slug: rows[0].slug };
+
+  const row = result.rows[0] as Record<string, unknown>;
+  return {
+    id: row.id as string,
+    displayName: row.display_name as string,
+    slug: row.slug as string,
+  };
 }
 
 export async function getCommissionRepresentatives(): Promise<CommissionRepresentative[]> {
@@ -947,6 +953,83 @@ export async function lockCommissionPeriod(
     return "Cannot lock: pre-check failed";
   }
   return null;
+}
+
+export async function assignRepresentativeToLine(
+  lineId: string,
+  entityId: string,
+  representativeId: string,
+): Promise<CommissionRunLine> {
+  assertValidUuid(lineId, "lineId");
+  assertValidUuid(entityId, "entityId");
+  assertValidUuid(representativeId, "representativeId");
+
+  const db = getCommissionOpsDb();
+
+  return db.transaction(async (tx) => {
+    // 1. Lock the target line scoped to entity — reject if absent or already locked
+    const lineResult = await tx.execute(sql`
+      SELECT id, line_status
+      FROM commission_run_lines
+      WHERE id = ${lineId}::uuid
+        AND entity_id = ${entityId}::uuid
+      FOR UPDATE
+    `);
+    if (!lineResult.rows.length)
+      throw Object.assign(new Error("Line not found for entity"), { code: "LINE_NOT_FOUND" });
+    const existing = lineResult.rows[0] as { line_status: string };
+    if (existing.line_status === "locked")
+      throw Object.assign(new Error("Line is locked"), { code: "LINE_LOCKED" });
+
+    // 2. Verify representative exists and is an accepted type
+    const repResult = await tx.execute(sql`
+      SELECT id, representative_type
+      FROM commission_representatives
+      WHERE id = ${representativeId}::uuid
+    `);
+    if (!repResult.rows.length)
+      throw Object.assign(new Error("Representative not found"), { code: "REP_NOT_FOUND" });
+    const rep = repResult.rows[0] as { representative_type: string };
+    if (rep.representative_type !== "external_rep" && rep.representative_type !== "internal_house")
+      throw Object.assign(new Error("Invalid representative type"), { code: "INVALID_REP_TYPE" });
+
+    const isHouse      = rep.representative_type === "internal_house";
+    const lineStatus   = isHouse ? "house_no_commission" : "needs_configuration";
+    const commAmount   = isHouse ? 0 : null;
+    const exclusionRsn = isHouse ? "internal_house_account" : "commission_rule_missing";
+
+    // 3. Update — line_status guard catches concurrent locks; gross_profit and source fields preserved
+    const updated = await tx.execute(sql`
+      UPDATE commission_run_lines SET
+        representative_id        = ${representativeId}::uuid,
+        attribution_rule_id      = NULL,
+        attribution_match        = 'manual_assignment',
+        commission_rule_id       = NULL,
+        formula_type             = NULL,
+        calculation_basis        = NULL,
+        commission_rate          = NULL,
+        expenses_amount          = NULL,
+        expenses_explicitly_set  = false,
+        approved_at              = NULL,
+        approved_by              = NULL,
+        review_updated_by        = NULL,
+        review_updated_at        = NULL,
+        recalculated_at          = now(),
+        updated_at               = now(),
+        line_status              = ${lineStatus},
+        commission_amount        = ${commAmount},
+        payout_eligible          = false,
+        exclusion_reason         = ${exclusionRsn}
+      WHERE id          = ${lineId}::uuid
+        AND entity_id   = ${entityId}::uuid
+        AND line_status <> 'locked'
+      RETURNING *
+    `);
+    if (!updated.rows.length)
+      throw Object.assign(new Error("Line locked concurrently"), { code: "LINE_LOCKED" });
+
+    return mapRunLine(updated.rows[0] as Record<string, unknown>);
+  });
 }
 
 // ─── Internal mappers ─────────────────────────────────────────────────────────

@@ -42,6 +42,7 @@ vi.mock("../db/commissions", () => ({
   createCommissionRule:             vi.fn(),
   upsertCommissionLine:             vi.fn(),
   approveCommissionLine:            vi.fn(),
+  assignRepresentativeToLine:      vi.fn(),
   lockCommissionPeriod:             vi.fn(),
   isValidUuid:                      vi.fn((v: unknown) => typeof v === "string" && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(v)),
   assertValidUuid:                  vi.fn((v: unknown, _name: string) => v),
@@ -77,6 +78,7 @@ import {
   createCommissionRule,
   approveCommissionLine,
   lockCommissionPeriod,
+  assignRepresentativeToLine,
 } from "../db/commissions";
 import { ingestEntityInvoices, previewRuleApplication } from "../services/commissionEngine";
 import { getCachedEntityId } from "../services/entityCache";
@@ -164,6 +166,11 @@ beforeEach(() => {
   (getCommissionLineSummary as Mock).mockResolvedValue([]);
   (getCommissionRules as Mock).mockResolvedValue([]);
   (approveCommissionLine as Mock).mockResolvedValue(true);
+  (assignRepresentativeToLine as Mock).mockResolvedValue({
+    ...mockLine,
+    lineStatus: "needs_configuration",
+    commissionAmount: null,
+  });
   (lockCommissionPeriod as Mock).mockResolvedValue(null);
   (ingestEntityInvoices as Mock).mockResolvedValue({ entityId: ENTITY_ID, processed: 0, created: 0, updated: 0, sourceChanged: 0, skipped: 0, errors: [] });
   (previewRuleApplication as Mock).mockResolvedValue({ lines: [], affectedCount: 0, projectedTotal: null });
@@ -1418,5 +1425,166 @@ describe("P33: percentage_of_amount_paid — trigger gate precedes formula", () 
     expect(r.lineStatus).toBe("calculated");
     expect(r.commissionAmount).toBe("60.00");
     expect(r.calculationBasis).toBe("amount_paid");
+  });
+});
+
+// Assignment route tests exercise the HTTP contract with the DB helper mocked.
+// They are not presented as PostgreSQL transaction or concurrency tests.
+describe("PATCH /commissions/:slug/lines/:lineId/representative", () => {
+  const route = `/commissions/${SLUG}/lines/${LINE_ID}/representative`;
+  const body = { representativeId: REP_UUID };
+  const mockAssign = assignRepresentativeToLine as Mock;
+
+  function makeUnauthenticatedApp() {
+    const app = express();
+    app.use(express.json());
+    app.use((req, _res, next) => {
+      (req as unknown as Record<string, unknown>).session = {};
+      next();
+    });
+    app.use("/commissions", commissionsRouter);
+    return app;
+  }
+
+  it("returns 401 when unauthenticated", async () => {
+    const res = await request(makeUnauthenticatedApp())
+      .patch(route)
+      .send(body);
+
+    expect(res.status).toBe(401);
+    expect(mockAssign).not.toHaveBeenCalled();
+  });
+
+  it("returns 403 for readonly users", async () => {
+    const res = await request(makeReadonlyApp())
+      .patch(route)
+      .send(body);
+
+    expect(res.status).toBe(403);
+    expect(mockAssign).not.toHaveBeenCalled();
+  });
+
+  it("returns 404 for an invalid slug", async () => {
+    const res = await request(makeApp())
+      .patch(`/commissions/bad-slug!/lines/${LINE_ID}/representative`)
+      .send(body);
+
+    expect(res.status).toBe(404);
+    expect(mockAssign).not.toHaveBeenCalled();
+  });
+
+  it("accepts a valid mixed-case entity slug", async () => {
+    const res = await request(makeApp())
+      .patch(`/commissions/CarDealer_ai/lines/${LINE_ID}/representative`)
+      .send(body);
+
+    expect(res.status).toBe(200);
+    expect(getCachedEntityId).toHaveBeenCalledWith("CarDealer_ai");
+    expect(mockAssign).toHaveBeenCalledWith(LINE_ID, ENTITY_ID, REP_UUID);
+  });
+
+  it("returns 400 for an invalid line UUID", async () => {
+    const res = await request(makeApp())
+      .patch(`/commissions/${SLUG}/lines/not-a-uuid/representative`)
+      .send(body);
+
+    expect(res.status).toBe(400);
+    expect(mockAssign).not.toHaveBeenCalled();
+  });
+
+  it("returns 400 for an invalid representative UUID", async () => {
+    const res = await request(makeApp())
+      .patch(route)
+      .send({ representativeId: "not-a-uuid" });
+
+    expect(res.status).toBe(400);
+    expect(mockAssign).not.toHaveBeenCalled();
+  });
+
+  it("returns 404 when the entity cannot be resolved", async () => {
+    (getCachedEntityId as Mock).mockResolvedValue(null);
+
+    const res = await request(makeApp())
+      .patch(route)
+      .send(body);
+
+    expect(res.status).toBe(404);
+    expect(mockAssign).not.toHaveBeenCalled();
+  });
+
+  it("uses the entity resolved from the slug and returns the mapped line", async () => {
+    const mapped = {
+      ...mockLine,
+      representativeId: REP_UUID,
+      representativeDisplayName: "Jason",
+      lineStatus: "needs_configuration",
+      commissionAmount: null,
+    };
+    mockAssign.mockResolvedValue(mapped);
+
+    const res = await request(makeApp())
+      .patch(route)
+      .send(body);
+
+    expect(res.status).toBe(200);
+    expect(mockAssign).toHaveBeenCalledTimes(1);
+    expect(mockAssign).toHaveBeenCalledWith(LINE_ID, ENTITY_ID, REP_UUID);
+    expect(res.body).toMatchObject({
+      ok: true,
+      data: mapped,
+    });
+    expect(typeof res.body.ts).toBe("string");
+  });
+
+  it("never accepts entityId from the request body", async () => {
+    mockAssign.mockRejectedValue(
+      Object.assign(new Error("not found"), { code: "LINE_NOT_FOUND" }),
+    );
+
+    const res = await request(makeApp())
+      .patch(route)
+      .send({
+        representativeId: REP_UUID,
+        entityId: ENTITY2_ID,
+      });
+
+    expect(mockAssign).toHaveBeenCalledTimes(1);
+    expect(mockAssign).toHaveBeenCalledWith(LINE_ID, ENTITY_ID, REP_UUID);
+    expect(res.status).toBe(404);
+  });
+
+  it.each([
+    ["LINE_NOT_FOUND", 404],
+    ["REP_NOT_FOUND", 404],
+    ["INVALID_REP_TYPE", 400],
+    ["LINE_LOCKED", 409],
+  ])("maps %s to HTTP %s", async (code, status) => {
+    mockAssign.mockRejectedValue(
+      Object.assign(new Error(code), { code }),
+    );
+
+    const res = await request(makeApp())
+      .patch(route)
+      .send(body);
+
+    expect(res.status).toBe(status);
+  });
+
+  it("returns a sanitized 500 for an unexpected database error", async () => {
+    mockAssign.mockRejectedValue(
+      new Error("connection pool exhausted at secret-host"),
+    );
+
+    const res = await request(makeApp())
+      .patch(route)
+      .send(body);
+
+    expect(res.status).toBe(500);
+    expect(res.body).toEqual({
+      ok: false,
+      error: "Internal server error",
+    });
+    expect(JSON.stringify(res.body)).not.toContain("secret-host");
+    expect(JSON.stringify(res.body)).not.toContain("pool");
   });
 });

@@ -332,6 +332,25 @@ export const api = {
     getEnvelope<CommissionRepSummary[]>(`/commissions/${slug.toLowerCase()}/summary`),
   commissionRepresentatives: (slug: string) =>
     getEnvelope<CommissionRepresentative[]>(`/commissions/${slug.toLowerCase()}/representatives`),
+
+  assignCommissionRepresentative: (
+    slug: string,
+    lineId: string,
+    representativeId: string,
+  ) =>
+    patch<{ ok: boolean; data: CommissionRunLine }>(
+      `/commissions/${slug.toLowerCase()}/lines/${lineId}/representative`,
+      { representativeId },
+    ),
+
+  createCommissionRepresentative: (
+    slug: string,
+    body: { displayName: string; slug: string },
+  ) =>
+    postEnvelope<CommissionRepresentative>(
+      `/commissions/${slug.toLowerCase()}/representatives`,
+      body,
+    ),
   commissionRules: (slug: string) =>
     getEnvelope<CommissionRule[]>(`/commissions/${slug.toLowerCase()}/rules`),
   commissionRulePreview: (slug: string, body: CommissionRuleInput) =>
