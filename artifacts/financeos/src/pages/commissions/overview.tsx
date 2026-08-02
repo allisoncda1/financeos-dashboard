@@ -90,9 +90,9 @@ function NextPayoutCard({ month, approvedTotal, loading, needsAction }: {
 }
 
 export default function CommissionOverviewPage() {
-  const { activeSlug } = useCommissionEntity();
+  const { activeSlug, activePeriod } = useCommissionEntity();
   const currentMonth   = new Date().toISOString().slice(0, 7);
-  const [month, setMonth] = useState(currentMonth);
+  const month = activePeriod ?? currentMonth;
   const [kpi, setKpi]     = useState<CommissionKpiSummary | null>(null);
   const [loading, setLoading] = useState(true);
   const mounted = useRef(true);
@@ -112,13 +112,7 @@ export default function CommissionOverviewPage() {
     <CommissionLayout title="Commission Overview" subtitle="Attribution, calculation and approval for all commission-eligible invoices">
       <div className="flex items-center gap-2">
         <label className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Period</label>
-        <input
-          type="month"
-          className="border border-gray-200 rounded-md px-3 py-1.5 text-sm"
-          value={month}
-          max={currentMonth}
-          onChange={e => { if (e.target.value) setMonth(e.target.value); }}
-        />
+        
       </div>
 
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">

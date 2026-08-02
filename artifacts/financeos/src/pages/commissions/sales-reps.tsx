@@ -115,9 +115,9 @@ function AddRepModal({ slug, onClose, onAdded }: { slug: string; onClose: () => 
 }
 
 export default function CommissionSalesRepsPage() {
-  const { activeSlug } = useCommissionEntity();
+  const { activeSlug, activePeriod } = useCommissionEntity();
   const currentMonth = new Date().toISOString().slice(0, 7);
-  const [month, setMonth]       = useState(currentMonth);
+  const month = activePeriod ?? currentMonth;
   const [reps, setReps]         = useState<CommissionRepresentative[]>([]);
   const [loading, setLoading]   = useState(true);
   const [showModal, setShowModal] = useState(false);
@@ -151,7 +151,7 @@ export default function CommissionSalesRepsPage() {
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-2">
           <label className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Period</label>
-          <input type="month" className="border border-gray-200 rounded-md px-3 py-1.5 text-sm" value={month} max={new Date().toISOString().slice(0,7)} onChange={e => { if (e.target.value) setMonth(e.target.value); }} />
+          
         </div>
         <button onClick={() => setShowModal(true)} className="flex items-center gap-1.5 bg-blue-600 text-white text-sm font-semibold px-4 py-2 rounded-lg hover:bg-blue-700">
           <UserPlus className="w-4 h-4" /> Add Sales Rep

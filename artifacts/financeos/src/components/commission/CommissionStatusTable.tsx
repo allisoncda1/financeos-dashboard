@@ -196,6 +196,8 @@ export function CommissionStatusTable() {
                     ["needs_configuration", "needs_review"].includes(
                       line.lineStatus,
                     );
+                  const canReassign =
+                    !hist && line.lineStatus !== "locked";
                   return (
                     <tr key={line.id} className="border-b border-gray-50 hover:bg-gray-50 transition-colors">
                       <td className="px-4 py-2 text-gray-500">{line.invoiceDate ?? "—"}</td>
@@ -244,28 +246,48 @@ export function CommissionStatusTable() {
                       </td>
 
                       <td className="px-4 py-2 text-right">
-                        {needsAssignment ? (
-                          <button
-                            type="button"
-                            className="text-xs font-semibold text-blue-600 hover:text-blue-800"
-                            onClick={() => {
-                              setAssignmentLine(line);
-                              setSelectedRepId("");
-                              setAssignError(null);
-                            }}
-                          >
-                            Assign →
-                          </button>
-                        ) : needsCalculation ? (
-                          <Link
-                            href={`/commissions/review/${line.id}`}
-                            className="text-xs font-semibold text-blue-600 hover:text-blue-800"
-                          >
-                            Review →
-                          </Link>
-                        ) : (
-                          <span className="text-gray-300">—</span>
-                        )}
+                        <div className="flex justify-end gap-3">
+                          {needsAssignment ? (
+                            <button
+                              type="button"
+                              className="text-xs font-semibold text-blue-600"
+                              onClick={() => {
+                                setAssignmentLine(line);
+                                setSelectedRepId("");
+                                setAssignError(null);
+                              }}
+                            >
+                              Assign →
+                            </button>
+                          ) : canReassign ? (
+                            <button
+                              type="button"
+                              className="text-xs font-semibold text-gray-500 hover:text-blue-700"
+                              onClick={() => {
+                                setAssignmentLine(line);
+                                setSelectedRepId(line.representativeId ?? "");
+                                setAssignError(null);
+                              }}
+                            >
+                              Change rep
+                            </button>
+                          ) : null}
+
+                          {needsCalculation && (
+                            <Link
+                              href={`/commissions/review/${line.id}`}
+                              className="text-xs font-semibold text-blue-600"
+                            >
+                              Review →
+                            </Link>
+                          )}
+
+                          {!needsAssignment &&
+                            !canReassign &&
+                            !needsCalculation && (
+                              <span className="text-gray-300">—</span>
+                            )}
+                        </div>
                       </td>
                     </tr>
                   );
