@@ -38,6 +38,8 @@ import {
 } from "../services/consentService.js";
 import { getCachedEntityId } from "../services/entityCache.js";
 import { fetchInstitutionMeta } from "../services/institutionMetaService.js";
+import { getCategoryMap, verifyTransactionEntity, upsertCategory } from "../db/bankingCategories.js";
+import { getAllAccounts } from "../db/accounts.js";
 
 // ─── Permission helpers ───────────────────────────────────────────────────────
 
@@ -988,6 +990,111 @@ router.get(
     } catch (err) {
       req.log.error({ err }, "[plaid] get-transactions failed");
       res.status(500).json({ ok: false, error: "Failed to fetch transactions", ts: ts() });
+    }
+  },
+);
+
+
+// ─── GET /api/plaid/transaction-categories ───────────────────────────────────
+// Returns FinanceOS category metadata keyed by plaid_transaction_id.
+// Read access: requireAuth + canViewBanking. Maximum 200 txIds.
+router.get(
+  "/plaid/transaction-categories",
+  requireAuth,
+  async (req, res) => {
+    if (!canViewBanking(req.session.user!))
+      return res.status(403).json({ ok: false, error: "Banking access required", ts: ts() });
+    let entitySlug: string;
+    try { entitySlug = validateEntitySlug(req.query["entitySlug"]); }
+    catch { return res.status(400).json({ ok: false, error: "entitySlug required and must be a valid entity", ts: ts() }); }
+    const raw  = req.query["txIds"];
+    const txIds = typeof raw === "string" ? raw.split(",").filter(Boolean) : [];
+    if (txIds.length > 200)
+      return res.status(400).json({ ok: false, error: "txIds exceeds maximum of 200", ts: ts() });
+    try {
+      const data = await getCategoryMap(entitySlug, txIds);
+      return res.json({ ok: true, data, ts: ts() });
+    } catch (err) {
+      req.log.error({ err }, "[plaid] get-transaction-categories failed");
+      return res.status(500).json({ ok: false, error: "Failed to fetch categories", ts: ts() });
+    }
+  },
+);
+
+// ─── PATCH /api/plaid/transactions/:txId/category ────────────────────────────
+// Sets or updates the FinanceOS category for one transaction.
+// Write access: requireAuth + requirePermission("banking").
+// Never modifies bank_transactions. Rejects cross-entity writes.
+// COA account verified against Core — client-provided name/type are ignored.
+router.patch(
+  "/plaid/transactions/:txId/category",
+  requireAuth,
+  requirePermission("banking"),
+  async (req, res) => {
+    const rawTxId = req.params["txId"];
+    const txId = (typeof rawTxId === "string" ? rawTxId : "").trim();
+    if (!txId)
+      return res.status(400).json({ ok: false, error: "txId is required", ts: ts() });
+    const body = req.body as Record<string, unknown>;
+    let entitySlug: string;
+    try { entitySlug = validateEntitySlug(body["entitySlug"]); }
+    catch { return res.status(400).json({ ok: false, error: "entitySlug required and must be a valid entity", ts: ts() }); }
+    const coaAccountId = typeof body["coaAccountId"] === "string" ? body["coaAccountId"].trim() : "";
+    if (!coaAccountId)
+      return res.status(400).json({ ok: false, error: "coaAccountId is required", ts: ts() });
+    const note = typeof body["note"] === "string" ? body["note"].trim() || null : null;
+
+    // 1. Resolve entity UUID
+    let entityId: string;
+    try {
+      const resolved = await getCachedEntityId(entitySlug);
+      if (!resolved)
+        return res.status(404).json({ ok: false, error: "Entity not found", ts: ts() });
+      entityId = resolved;
+    } catch (err) {
+      req.log.error({ err }, "[plaid] category entity-resolution failed");
+      return res.status(503).json({ ok: false, error: "Failed to resolve entity", ts: ts() });
+    }
+
+    // 2. Verify transaction belongs to entity — before any write
+    const txCheck = await verifyTransactionEntity(txId, entitySlug).catch((err) => {
+      req.log.error({ err }, "[plaid] category transaction-check failed");
+      return "error" as const;
+    });
+    if (txCheck === "error")        return res.status(500).json({ ok: false, error: "Failed to verify transaction", ts: ts() });
+    if (txCheck === "not_found")    return res.status(404).json({ ok: false, error: "Transaction not found", ts: ts() });
+    if (txCheck === "wrong_entity") return res.status(403).json({ ok: false, error: "Transaction does not belong to this entity", ts: ts() });
+
+    // 3. Verify COA account against authoritative Core — ignore client-provided name/type
+    let coaName: string | null;
+    let coaType: string | null;
+    try {
+      const accounts = await getAllAccounts(entityId);
+      const acct = accounts.find((a) => a.id === coaAccountId);
+      if (!acct)
+        return res.status(400).json({ ok: false, error: "Chart of Accounts account not found for this entity", ts: ts() });
+      coaName = acct.name ?? null;
+      coaType = acct.accountType ?? null;
+    } catch (err) {
+      req.log.error({ err }, "[plaid] category coa-lookup failed");
+      return res.status(503).json({ ok: false, error: "Failed to verify Chart of Accounts account", ts: ts() });
+    }
+
+    // 4. Upsert — only after both ownership checks pass
+    try {
+      const saved = await upsertCategory({
+        plaidTransactionId: txId,
+        entitySlug,
+        coaAccountId,
+        coaAccountName: coaName,
+        coaAccountType: coaType,
+        categorizedBy:  req.session.user!.id,
+        note,
+      });
+      return res.json({ ok: true, data: saved, ts: ts() });
+    } catch (err) {
+      req.log.error({ err }, "[plaid] upsert-category failed");
+      return res.status(500).json({ ok: false, error: "Failed to save category", ts: ts() });
     }
   },
 );

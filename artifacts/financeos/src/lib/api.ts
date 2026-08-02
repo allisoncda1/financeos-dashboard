@@ -202,6 +202,22 @@ async function postForBlob(path: string, body: unknown): Promise<DownloadedFile>
   return { blob, filename };
 }
 
+
+export interface BankingTransactionCategory {
+  id: string;
+  plaidTransactionId: string;
+  entitySlug: string;
+  coaAccountId: string;
+  coaAccountName: string | null;
+  coaAccountType: string | null;
+  categorizedBy: string;
+  note: string | null;
+  updatedAt: string;
+}
+
+export type BankingTransactionCategoryMap =
+  Record<string, BankingTransactionCategory>;
+
 export const api = {
   model:            ()           => getSourced<DashboardData>("/model"),
   entityFinancials: (s: string)  => getSourced<FinancialsData>(`/model/${s}/financials`),
@@ -302,6 +318,30 @@ export const api = {
     return getAccountingSourced<AccountingInvoice[]>(`/accounting/${slug}/invoices${qs}`);
   },
   accountingAccounts:     (slug: string) => getSourced<AccountingAccount[]>(`/accounting/${slug}/accounts`),
+  bankingTransactionCategories: (
+    entitySlug: string,
+    transactionIds: string[],
+  ): Promise<BankingTransactionCategoryMap> => {
+    if (transactionIds.length === 0) return Promise.resolve({});
+    const query = new URLSearchParams({
+      entitySlug,
+      txIds: transactionIds.join(","),
+    });
+    return get<BankingTransactionCategoryMap>(
+      `/plaid/transaction-categories?${query.toString()}`,
+    );
+  },
+
+  saveBankingTransactionCategory: (
+    entitySlug: string,
+    transactionId: string,
+    body: { coaAccountId: string; note?: string | null },
+  ): Promise<BankingTransactionCategory> =>
+    patch<BankingTransactionCategory>(
+      `/plaid/transactions/${encodeURIComponent(transactionId)}/category`,
+      { entitySlug, ...body },
+    ),
+
   accountingTransactions: (slug: string, from?: string | null, to?: string | null) => {
     const qs = buildPeriodQS(from, to);
     return getAccountingSourced<AccountingTransaction[]>(`/accounting/${slug}/transactions${qs}`);

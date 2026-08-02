@@ -6,12 +6,14 @@
  * another account's records cannot appear regardless of API response shape.
  */
 
-import { useState, useCallback, useEffect } from "react";
+import { useState, useCallback, useEffect, useMemo } from "react";
 import { useParams, Link } from "wouter";
 import { AccountingLayout } from "@/components/accounting/AccountingLayout";
 import { useAccountingEntity } from "@/lib/accounting-context";
 import { formatCurrency } from "@/lib/format";
 import { institutionColor, formatRelativeTime } from "@/lib/banking-utils";
+import { api } from "@/lib/api";
+import type { AccountingAccount, BankingTransactionCategoryMap } from "@/lib/api";
 
 // ─── API helpers ──────────────────────────────────────────────────────────────
 
@@ -105,7 +107,15 @@ function InstitutionAvatar({
   );
 }
 
-function TransactionRow({ txn }: { txn: BankTransaction }) {
+function TransactionRow({
+  txn,
+  category,
+  onEdit,
+}: {
+  txn: BankTransaction;
+  category: import('@/lib/api').BankingTransactionCategory | undefined;
+  onEdit: (tx: BankTransaction) => void;
+}) {
   const isDebit = txn.amount != null && txn.amount > 0;
   return (
     <tr className="hover:bg-gray-50/50">
@@ -120,6 +130,18 @@ function TransactionRow({ txn }: { txn: BankTransaction }) {
           ?.replace(/_/g, " ")
           .toLowerCase()
           .replace(/\b\w/g, (c) => c.toUpperCase()) ?? "—"}
+      </td>
+      <td className="px-5 py-3 text-xs">
+        <button
+          onClick={() => onEdit(txn)}
+          className={`inline-flex items-center px-2 py-0.5 rounded-full font-medium ring-1 ${
+            category
+              ? "bg-blue-50 text-blue-700 ring-blue-200 hover:bg-blue-100"
+              : "bg-gray-50 text-gray-500 ring-gray-200 hover:bg-gray-100"
+          }`}
+        >
+          {category ? (category.coaAccountName ?? category.coaAccountId) : "Uncategorized"}
+        </button>
       </td>
       <td className="px-5 py-3 text-gray-500 text-xs capitalize">
         {txn.paymentChannel ?? "—"}
@@ -154,6 +176,16 @@ export default function BankingAccountPage() {
 
   const [account, setAccount] = useState<PlaidAccount | null>(null);
   const [transactions, setTransactions] = useState<BankTransaction[]>([]);
+  const [coaAccounts, setCoaAccounts] = useState<AccountingAccount[]>([]);
+  const [categoryMap, setCategoryMap] = useState<BankingTransactionCategoryMap>({});
+  const [editingTxId, setEditingTxId] = useState<string | null>(null);
+  const [selectedCoaId, setSelectedCoaId] = useState("");
+  const [noteInput, setNoteInput] = useState("");
+  const [saving, setSaving] = useState(false);
+  const [saveError, setSaveError] = useState<string | null>(null);
+  const [statusFilter, setStatusFilter] = useState<"all" | "uncategorized" | "categorized">("all");
+  const [coaFilter, setCoaFilter] = useState("");
+
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -162,20 +194,30 @@ export default function BankingAccountPage() {
     setLoading(true);
     setError(null);
     try {
-      const [accountsData, txData] = await Promise.all([
+      const [accountsData, txData, coaData] = await Promise.all([
         apiGet<PlaidAccount[]>(
           `/plaid/accounts?entitySlug=${encodeURIComponent(activeSlug)}`,
         ),
         apiGet<{ transactions: BankTransaction[]; pagination: unknown }>(
           `/plaid/transactions?entitySlug=${encodeURIComponent(activeSlug)}&accountId=${encodeURIComponent(accountId)}&limit=100`,
         ),
+        api.accountingAccounts(activeSlug),
       ]);
       setAccount(accountsData.find((a) => a.plaidAccountId === accountId) ?? null);
       // Client-side double-filter: API already scopes by accountId; enforce
       // here so no other account's records can render regardless of shape.
-      setTransactions(txData.transactions.filter((t) => t.accountId === accountId));
+      const filtered = txData.transactions.filter((t) => t.accountId === accountId);
+      setCoaAccounts(coaData.data);
+      setTransactions(filtered);
+      const catMap = await api.bankingTransactionCategories(
+        activeSlug,
+        filtered.map((t) => t.id),
+      );
+      setCategoryMap(catMap);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to load account");
+      setCoaAccounts([]);
+      setCategoryMap({});
     } finally {
       setLoading(false);
     }
@@ -184,6 +226,85 @@ export default function BankingAccountPage() {
   useEffect(() => {
     void loadAll();
   }, [loadAll]);
+
+  const openEditor = useCallback(
+    (tx: BankTransaction) => {
+      const existing = categoryMap[tx.id];
+      setSelectedCoaId(existing?.coaAccountId ?? "");
+      setNoteInput(existing?.note ?? "");
+      setSaveError(null);
+      setEditingTxId(tx.id);
+    },
+    [categoryMap],
+  );
+
+  const closeEditor = useCallback(() => {
+    setEditingTxId(null);
+    setSelectedCoaId("");
+    setNoteInput("");
+    setSaveError(null);
+  }, []);
+
+  const handleSave = useCallback(async () => {
+    if (!activeSlug || !editingTxId || !selectedCoaId || saving) return;
+
+    setSaving(true);
+    setSaveError(null);
+
+    try {
+      const saved = await api.saveBankingTransactionCategory(
+        activeSlug,
+        editingTxId,
+        {
+          coaAccountId: selectedCoaId,
+          note: noteInput.trim() || null,
+        },
+      );
+
+      setCategoryMap((current) => ({
+        ...current,
+        [editingTxId]: saved,
+      }));
+      closeEditor();
+    } catch {
+      setSaveError("Unable to save this category. Please try again.");
+    } finally {
+      setSaving(false);
+    }
+  }, [
+    activeSlug,
+    editingTxId,
+    selectedCoaId,
+    noteInput,
+    saving,
+    closeEditor,
+  ]);
+
+
+
+  const uncategorizedCount = useMemo(
+    () => transactions.filter((t) => !categoryMap[t.id]).length,
+    [transactions, categoryMap],
+  );
+
+  const availableCoaCategories = useMemo(() => {
+    const seen = new Map<string, string>();
+    for (const t of transactions) {
+      const cat = categoryMap[t.id];
+      if (cat) seen.set(cat.coaAccountId, cat.coaAccountName ?? cat.coaAccountId);
+    }
+    return Array.from(seen.entries()).map(([id, name]) => ({ id, name }));
+  }, [transactions, categoryMap]);
+
+  const visibleTransactions = useMemo(() => {
+    return transactions.filter((t) => {
+      const cat = categoryMap[t.id];
+      if (statusFilter === "uncategorized" && cat) return false;
+      if (statusFilter === "categorized" && !cat) return false;
+      if (coaFilter && cat?.coaAccountId !== coaFilter) return false;
+      return true;
+    });
+  }, [transactions, categoryMap, statusFilter, coaFilter]);
 
   const instName = account?.institutionName ?? "Bank";
 
@@ -295,10 +416,39 @@ export default function BankingAccountPage() {
                   </div>
                 ) : (
                   <div className="overflow-x-auto">
-                    <table className="w-full text-sm">
+                    <div className="flex flex-wrap items-center gap-3 px-5 py-3 border-b border-gray-100">
+                  <span className="text-xs text-gray-500">
+                    {uncategorizedCount > 0
+                      ? `${uncategorizedCount} uncategorized`
+                      : "All categorized"}
+                  </span>
+                  <span className="text-xs text-gray-400">
+                    {visibleTransactions.length} of {transactions.length} transactions
+                  </span>
+                  <select
+                    className="ml-auto text-xs rounded-lg border border-gray-200 px-2 py-1"
+                    value={statusFilter}
+                    onChange={(e) => setStatusFilter(e.target.value as "all" | "uncategorized" | "categorized")}
+                  >
+                    <option value="all">All transactions</option>
+                    <option value="uncategorized">Uncategorized</option>
+                    <option value="categorized">Categorized</option>
+                  </select>
+                  <select
+                    className="text-xs rounded-lg border border-gray-200 px-2 py-1"
+                    value={coaFilter}
+                    onChange={(e) => setCoaFilter(e.target.value)}
+                  >
+                    <option value="">All categories</option>
+                    {availableCoaCategories.map((c) => (
+                      <option key={c.id} value={c.id}>{c.name}</option>
+                    ))}
+                  </select>
+                </div>
+                <table className="w-full text-sm">
                       <thead>
                         <tr className="border-b border-gray-100">
-                          {(["Date", "Merchant / Name", "Category", "Channel", "Amount", "Status"] as const).map(
+                          {(["Date", "Merchant / Name", "Plaid Category", "FinanceOS Category", "Channel", "Amount", "Status"] as const).map(
                             (h) => (
                               <th
                                 key={h}
@@ -314,8 +464,22 @@ export default function BankingAccountPage() {
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-gray-50">
-                        {transactions.map((txn) => (
-                          <TransactionRow key={txn.id} txn={txn} />
+                        {visibleTransactions.length === 0 ? (
+                          <tr>
+                            <td
+                              colSpan={7}
+                              className="px-5 py-8 text-center text-sm text-gray-500"
+                            >
+                              No transactions match these filters.
+                            </td>
+                          </tr>
+                        ) : visibleTransactions.map((txn) => (
+                          <TransactionRow
+                            key={txn.id}
+                            txn={txn}
+                            category={categoryMap[txn.id]}
+                            onEdit={openEditor}
+                          />
                         ))}
                       </tbody>
                     </table>
@@ -326,6 +490,70 @@ export default function BankingAccountPage() {
           </>
         )}
       </div>
+
+      {editingTxId !== null && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
+          <div className="bg-white rounded-xl shadow-xl w-full max-w-md mx-4 p-6">
+            <h2 className="text-base font-semibold text-gray-900 mb-4">
+              Set FinanceOS Category
+            </h2>
+            <div className="space-y-4">
+              <div>
+                <label className="block text-xs font-medium text-gray-700 mb-1">
+                  Account
+                </label>
+                <select
+                  className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm"
+                  value={selectedCoaId}
+                  onChange={(e) => setSelectedCoaId(e.target.value)}
+                  disabled={saving}
+                >
+                  <option value="">Select an account…</option>
+                  {coaAccounts.map((a) => (
+                    <option key={a.id} value={a.id}>
+                      {a.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-gray-700 mb-1">
+                  Note{" "}
+                  <span className="text-gray-400 font-normal">(optional)</span>
+                </label>
+                <input
+                  type="text"
+                  className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm"
+                  value={noteInput}
+                  onChange={(e) => setNoteInput(e.target.value)}
+                  disabled={saving}
+                  placeholder="Add a note…"
+                />
+              </div>
+              {saveError !== null && (
+                <p className="text-xs text-red-600">{saveError}</p>
+              )}
+            </div>
+            <div className="flex justify-end gap-2 mt-6">
+              <button
+                className="px-4 py-2 text-sm rounded-lg border border-gray-200 text-gray-700 hover:bg-gray-50 disabled:opacity-50"
+                onClick={closeEditor}
+                disabled={saving}
+              >
+                Cancel
+              </button>
+              <button
+                className="px-4 py-2 text-sm rounded-lg bg-blue-600 text-white font-medium hover:bg-blue-700 disabled:opacity-50"
+                onClick={() => void handleSave()}
+                disabled={saving || !selectedCoaId}
+              >
+                {saving ? "Saving…" : "Save"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
     </AccountingLayout>
   );
 }
