@@ -40,7 +40,10 @@ import { getCachedEntityId } from "../services/entityCache.js";
 import { fetchInstitutionMeta } from "../services/institutionMetaService.js";
 import { getCategoryMap, verifyTransactionEntity, upsertCategory } from "../db/bankingCategories.js";
 import { getAllAccounts } from "../db/accounts.js";
-import { getRecentTransactions } from "../db/transactions.js";
+import {
+  getRecentTransactions,
+  getQboRawObjectsByIds,
+} from "../db/transactions.js";
 
 // ─── Permission helpers ───────────────────────────────────────────────────────
 
@@ -1212,6 +1215,7 @@ router.get(
       let amountMatchAnyDate = 0;
       let dateAndAmountMatchAnyAccount = 0;
       let sourceAccountAndAmountMatchAnyDate = 0;
+      const uniqueQboMatchIds: string[] = [];
 
       const byAccount = new Map<
         string,
@@ -1383,6 +1387,10 @@ router.get(
 
         if (candidatesWithin3Days.length === 1) {
           uniqueWithin3Days += 1;
+          const uniqueQboId = String(
+            candidatesWithin3Days[0]?.qboId ?? "",
+          );
+          if (uniqueQboId) uniqueQboMatchIds.push(uniqueQboId);
         } else if (candidatesWithin3Days.length > 1) {
           ambiguousWithin3Days += 1;
         } else {
@@ -1403,6 +1411,106 @@ router.get(
         byAccount.set(plaidAccountId, accountSummary);
       }
 
+      const qboRawObjects = await getQboRawObjectsByIds(
+        entityId,
+        uniqueQboMatchIds,
+      );
+
+      const rawByQboId = new Map<string, typeof qboRawObjects>();
+      for (const raw of qboRawObjects) {
+        const existing = rawByQboId.get(raw.qboId) ?? [];
+        existing.push(raw);
+        rawByQboId.set(raw.qboId, existing);
+      }
+
+      let rawObjectFound = 0;
+      let rawObjectMissing = 0;
+      let rawObjectAmbiguous = 0;
+      let categorizedLineCount = 0;
+      let classLineCount = 0;
+      let splitMatchCount = 0;
+
+      for (const qboId of uniqueQboMatchIds) {
+        const rawMatches = rawByQboId.get(qboId) ?? [];
+
+        if (rawMatches.length === 0) {
+          rawObjectMissing += 1;
+          continue;
+        }
+
+        if (rawMatches.length > 1) {
+          rawObjectAmbiguous += 1;
+          continue;
+        }
+
+        rawObjectFound += 1;
+
+        const payload = rawMatches[0]?.payload;
+        if (
+          !payload ||
+          typeof payload !== "object" ||
+          Array.isArray(payload)
+        ) {
+          continue;
+        }
+
+        const lines = (
+          payload as Record<string, unknown>
+        )["Line"];
+
+        if (!Array.isArray(lines)) continue;
+
+        let categorizedLinesForMatch = 0;
+
+        for (const rawLine of lines) {
+          if (
+            !rawLine ||
+            typeof rawLine !== "object" ||
+            Array.isArray(rawLine)
+          ) {
+            continue;
+          }
+
+          const line = rawLine as Record<string, unknown>;
+
+          for (const [key, rawDetail] of Object.entries(line)) {
+            if (
+              !key.endsWith("LineDetail") ||
+              !rawDetail ||
+              typeof rawDetail !== "object" ||
+              Array.isArray(rawDetail)
+            ) {
+              continue;
+            }
+
+            const detail = rawDetail as Record<string, unknown>;
+            const accountRef = detail["AccountRef"];
+            const classRef = detail["ClassRef"];
+
+            if (
+              accountRef &&
+              typeof accountRef === "object" &&
+              !Array.isArray(accountRef)
+            ) {
+              categorizedLineCount += 1;
+              categorizedLinesForMatch += 1;
+            }
+
+            if (
+              classRef &&
+              typeof classRef === "object" &&
+              !Array.isArray(classRef)
+            ) {
+              classLineCount += 1;
+            }
+          }
+        }
+
+        if (categorizedLinesForMatch > 1) {
+          splitMatchCount += 1;
+        }
+      }
+
       res.json({
         ok: true,
         data: {
@@ -1420,6 +1528,12 @@ router.get(
           amountMatchAnyDate,
           dateAndAmountMatchAnyAccount,
           sourceAccountAndAmountMatchAnyDate,
+          rawObjectFound,
+          rawObjectMissing,
+          rawObjectAmbiguous,
+          categorizedLineCount,
+          classLineCount,
+          splitMatchCount,
           accounts: Array.from(byAccount.values()),
         },
         ts: ts(),

@@ -1,6 +1,6 @@
-import { eq, and, gte, lte, lt, desc, min, max, count } from "drizzle-orm";
+import { eq, and, gte, lte, lt, desc, min, max, count, inArray } from "drizzle-orm";
 import { db } from "./connection";
-import { transactions } from "@workspace/db";
+import { transactions, qboRaw } from "@workspace/db";
 
 export type { Transaction } from "@workspace/db";
 
@@ -40,6 +40,32 @@ export async function getRecentTransactions(
     .limit(limit);
 
   return rows.map((r) => ({ ...r, amount: parseAmount(r.amount) }));
+}
+
+export async function getQboRawObjectsByIds(
+  entityId: string,
+  qboIds: string[],
+) {
+  const uniqueIds = Array.from(
+    new Set(qboIds.map((id) => id.trim()).filter(Boolean)),
+  );
+
+  if (uniqueIds.length === 0) return [];
+
+  return db
+    .select({
+      objectType: qboRaw.objectType,
+      qboId: qboRaw.qboId,
+      payload: qboRaw.payload,
+    })
+    .from(qboRaw)
+    .where(
+      and(
+        eq(qboRaw.entityId, entityId),
+        eq(qboRaw.isDeleted, false),
+        inArray(qboRaw.qboId, uniqueIds),
+      ),
+    );
 }
 
 export type PriorPeriodTransactionMeta = {

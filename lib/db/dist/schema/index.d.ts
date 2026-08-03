@@ -10,6 +10,7 @@ export * from "./invoices";
 export * from "./bills";
 export * from "./accounts";
 export * from "./transactions";
+export * from "./qbo";
 export * from "./customers";
 export * from "./vendors";
 export * from "./alerts";
