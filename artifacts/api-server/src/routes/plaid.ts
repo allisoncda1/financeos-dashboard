@@ -44,6 +44,7 @@ import {
   getRecentTransactions,
   getQboRawObjectsByIds,
 } from "../db/transactions.js";
+import { extractQboHistoricalLines } from "../db/qboHistoricalImport.js";
 
 // ─── Permission helpers ───────────────────────────────────────────────────────
 
@@ -1216,6 +1217,11 @@ router.get(
       let dateAndAmountMatchAnyAccount = 0;
       let sourceAccountAndAmountMatchAnyDate = 0;
       const uniqueQboMatchIds: string[] = [];
+      const uniqueQboMatches: Array<{
+        plaidTransactionId: string;
+        qboId: string;
+        dateDeltaDays: number;
+      }> = [];
 
       const byAccount = new Map<
         string,
@@ -1390,7 +1396,32 @@ router.get(
           const uniqueQboId = String(
             candidatesWithin3Days[0]?.qboId ?? "",
           );
-          if (uniqueQboId) uniqueQboMatchIds.push(uniqueQboId);
+          if (uniqueQboId) {
+            uniqueQboMatchIds.push(uniqueQboId);
+
+            const uniqueQboDate = dateOnly(
+              candidatesWithin3Days[0]?.transactionDate,
+            );
+            const uniqueQboDay = Date.parse(
+              `${uniqueQboDate}T00:00:00Z`,
+            );
+            const dateDeltaDays =
+              Number.isFinite(plaidDay) &&
+              Number.isFinite(uniqueQboDay)
+                ? Math.round(
+                    Math.abs(uniqueQboDay - plaidDay) /
+                      86_400_000,
+                  )
+                : 0;
+
+            uniqueQboMatches.push({
+              plaidTransactionId: String(
+                row["plaid_transaction_id"] ?? "",
+              ),
+              qboId: uniqueQboId,
+              dateDeltaDays,
+            });
+          }
         } else if (candidatesWithin3Days.length > 1) {
           ambiguousWithin3Days += 1;
         } else {
@@ -1511,6 +1542,75 @@ router.get(
         }
       }
 
+      const manuallyCategorized = await getCategoryMap(
+        entitySlug,
+        uniqueQboMatches.map(
+          (match) => match.plaidTransactionId,
+        ),
+      );
+
+      let readyMatchCount = 0;
+      let readyLineCount = 0;
+      let readySplitMatchCount = 0;
+      let readyClassLineCount = 0;
+      let manualCategoryExcluded = 0;
+      let noCategorizedLinesExcluded = 0;
+      let ambiguousRawObjectExcluded = 0;
+      let missingRawObjectExcluded = 0;
+
+      for (const match of uniqueQboMatches) {
+        if (manuallyCategorized[match.plaidTransactionId]) {
+          manualCategoryExcluded += 1;
+          continue;
+        }
+
+        const rawMatches = rawByQboId.get(match.qboId) ?? [];
+
+        if (rawMatches.length === 0) {
+          missingRawObjectExcluded += 1;
+          continue;
+        }
+
+        if (rawMatches.length > 1) {
+          ambiguousRawObjectExcluded += 1;
+          continue;
+        }
+
+        const lines = extractQboHistoricalLines(
+          rawMatches[0]?.payload,
+        );
+
+        if (lines.length === 0) {
+          noCategorizedLinesExcluded += 1;
+          continue;
+        }
+
+        readyMatchCount += 1;
+        readyLineCount += lines.length;
+
+        if (lines.length > 1) {
+          readySplitMatchCount += 1;
+        }
+
+        readyClassLineCount += lines.filter(
+          (line) => line.qboClassId !== null,
+        ).length;
+      }
+
+      const importPlan = {
+        dryRun: true,
+        candidateMatchCount: uniqueQboMatches.length,
+        readyMatchCount,
+        readyLineCount,
+        readySplitMatchCount,
+        readyClassLineCount,
+        manualCategoryExcluded,
+        noCategorizedLinesExcluded,
+        ambiguousRawObjectExcluded,
+        missingRawObjectExcluded,
+        writesPerformed: 0,
+      };
+
       res.json({
         ok: true,
         data: {
@@ -1534,6 +1634,7 @@ router.get(
           categorizedLineCount,
           classLineCount,
           splitMatchCount,
+          importPlan,
           accounts: Array.from(byAccount.values()),
         },
         ts: ts(),
