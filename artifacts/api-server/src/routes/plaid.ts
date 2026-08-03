@@ -1192,6 +1192,9 @@ router.get(
       let ambiguous = 0;
       let unmatched = 0;
       let unmappedAccount = 0;
+      let uniqueWithin3Days = 0;
+      let ambiguousWithin3Days = 0;
+      let unmatchedWithin3Days = 0;
 
       const byAccount = new Map<
         string,
@@ -1271,6 +1274,58 @@ router.get(
           );
         });
 
+        const plaidDay = Date.parse(`${plaidDate}T00:00:00Z`);
+
+        const candidatesWithin3Days = qboTransactions.filter((transaction) => {
+          const qboAmount =
+            transaction.amount == null
+              ? Number.NaN
+              : Math.abs(Number(transaction.amount));
+
+          const qboSourceAccount = String(
+            transaction.accountName ?? "",
+          )
+            .trim()
+            .toLowerCase();
+
+          const plaidAccountType = String(
+            row["plaid_account_type"] ?? "",
+          ).toLowerCase();
+
+          const sourceAccountMatches =
+            mask && mask !== "0000"
+              ? qboSourceAccount.includes(mask)
+              : (
+                  plaidAccountType === "credit" &&
+                  qboSourceAccount.includes("mercury") &&
+                  qboSourceAccount.includes("credit")
+                );
+
+          const qboDate = String(
+            transaction.transactionDate ?? "",
+          ).slice(0, 10);
+          const qboDay = Date.parse(`${qboDate}T00:00:00Z`);
+          const dayDifference =
+            Number.isFinite(plaidDay) && Number.isFinite(qboDay)
+              ? Math.abs(qboDay - plaidDay) / 86_400_000
+              : Number.POSITIVE_INFINITY;
+
+          return (
+            sourceAccountMatches &&
+            dayDifference <= 3 &&
+            Number.isFinite(qboAmount) &&
+            Math.abs(qboAmount - plaidAmount) < 0.005
+          );
+        });
+
+        if (candidatesWithin3Days.length === 1) {
+          uniqueWithin3Days += 1;
+        } else if (candidatesWithin3Days.length > 1) {
+          ambiguousWithin3Days += 1;
+        } else {
+          unmatchedWithin3Days += 1;
+        }
+
         if (candidates.length === 1) {
           exact += 1;
           accountSummary.exact += 1;
@@ -1296,6 +1351,9 @@ router.get(
           ambiguous,
           unmatched,
           unmappedAccount,
+          uniqueWithin3Days,
+          ambiguousWithin3Days,
+          unmatchedWithin3Days,
           accounts: Array.from(byAccount.values()),
         },
         ts: ts(),
