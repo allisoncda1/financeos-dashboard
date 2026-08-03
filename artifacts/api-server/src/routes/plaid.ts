@@ -1188,6 +1188,20 @@ router.get(
         );
       }
 
+      function dateOnly(value: unknown): string {
+        if (value instanceof Date) {
+          return value.toISOString().slice(0, 10);
+        }
+
+        const raw = String(value ?? "").trim();
+        if (!raw) return "";
+
+        const parsed = new Date(raw);
+        return Number.isNaN(parsed.getTime())
+          ? raw.slice(0, 10)
+          : parsed.toISOString().slice(0, 10);
+      }
+
       let exact = 0;
       let ambiguous = 0;
       let unmatched = 0;
@@ -1240,7 +1254,7 @@ router.get(
           continue;
         }
 
-        const plaidDate = String(row["date"] ?? "").slice(0, 10);
+        const plaidDate = dateOnly(row["date"]);
         const plaidAmount = Math.abs(Number(row["amount"] ?? 0));
 
         const candidates = qboTransactions.filter((transaction) => {
@@ -1270,7 +1284,7 @@ router.get(
 
           return (
             sourceAccountMatches &&
-            String(transaction.transactionDate ?? "").slice(0, 10) ===
+            dateOnly(transaction.transactionDate) ===
               plaidDate &&
             Number.isFinite(qboAmount) &&
             Math.abs(qboAmount - plaidAmount) < 0.005
@@ -1298,7 +1312,7 @@ router.get(
         if (
           amountCandidates.some(
             (transaction) =>
-              String(transaction.transactionDate ?? "").slice(0, 10) ===
+              dateOnly(transaction.transactionDate) ===
               plaidDate,
           )
         ) {
