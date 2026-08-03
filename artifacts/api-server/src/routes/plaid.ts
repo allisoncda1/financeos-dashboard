@@ -1243,8 +1243,18 @@ router.get(
               ? Number.NaN
               : Math.abs(Number(transaction.amount));
 
+          const qboSourceAccount = String(
+            transaction.accountName ?? "",
+          )
+            .trim()
+            .toLowerCase();
+
+          const mappedAccountName = String(mapping.name ?? "")
+            .trim()
+            .toLowerCase();
+
           return (
-            transaction.accountId === mapping.id &&
+            qboSourceAccount === mappedAccountName &&
             String(transaction.transactionDate ?? "").slice(0, 10) ===
               plaidDate &&
             Number.isFinite(qboAmount) &&
