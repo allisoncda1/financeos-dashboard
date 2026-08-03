@@ -102,6 +102,58 @@ function rowToSafeAccount(row: Record<string, unknown>): SafeAccount {
 
 // ─── Internal sync function ───────────────────────────────────────────────────
 
+async function updatePlaidItemWebhook(
+  plaidItemId: string,
+): Promise<string> {
+  const configuredWebhook = (process.env["PLAID_WEBHOOK_URL"] ?? "").trim();
+
+  if (!configuredWebhook) {
+    throw new Error("PLAID_WEBHOOK_URL is not configured");
+  }
+
+  let parsedWebhook: URL;
+  try {
+    parsedWebhook = new URL(configuredWebhook);
+  } catch {
+    throw new Error("PLAID_WEBHOOK_URL is invalid");
+  }
+
+  if (parsedWebhook.protocol !== "https:") {
+    throw new Error("PLAID_WEBHOOK_URL must use HTTPS");
+  }
+
+  const itemResult = await query<{
+    access_token_encrypted: string;
+    access_token_iv: string;
+    access_token_tag: string;
+  }>(
+    `SELECT access_token_encrypted, access_token_iv, access_token_tag
+     FROM plaid_items
+     WHERE plaid_item_id = $1
+       AND status = 'active'
+     LIMIT 1`,
+    [plaidItemId],
+  );
+
+  const item = itemResult.rows[0];
+  if (!item) {
+    throw new Error("Active Plaid item not found");
+  }
+
+  const accessToken = decryptAccessToken(
+    item.access_token_encrypted,
+    item.access_token_iv,
+    item.access_token_tag,
+  );
+
+  await plaidClient.itemWebhookUpdate({
+    access_token: accessToken,
+    webhook: configuredWebhook,
+  });
+
+  return parsedWebhook.pathname;
+}
+
 async function syncTransactionsForItem(plaidItemId: string): Promise<{
   added: number;
   modified: number;
@@ -827,8 +879,18 @@ router.post(
     }
 
     try {
+      const webhookPath = await updatePlaidItemWebhook(plaidItemId);
       const summary = await syncTransactionsForItem(plaidItemId);
-      res.json({ ok: true, data: { plaidItemId, ...summary }, ts: ts() });
+      res.json({
+        ok: true,
+        data: {
+          plaidItemId,
+          webhookUpdated: true,
+          webhookPath,
+          ...summary,
+        },
+        ts: ts(),
+      });
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
       req.log.error({ err, plaidItemId }, "[plaid] manual sync failed");
