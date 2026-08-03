@@ -1249,12 +1249,21 @@ router.get(
             .trim()
             .toLowerCase();
 
-          const mappedAccountName = String(mapping.name ?? "")
-            .trim()
-            .toLowerCase();
+          const plaidAccountType = String(
+            row["plaid_account_type"] ?? "",
+          ).toLowerCase();
+
+          const sourceAccountMatches =
+            mask && mask !== "0000"
+              ? qboSourceAccount.includes(mask)
+              : (
+                  plaidAccountType === "credit" &&
+                  qboSourceAccount.includes("mercury") &&
+                  qboSourceAccount.includes("credit")
+                );
 
           return (
-            qboSourceAccount === mappedAccountName &&
+            sourceAccountMatches &&
             String(transaction.transactionDate ?? "").slice(0, 10) ===
               plaidDate &&
             Number.isFinite(qboAmount) &&
