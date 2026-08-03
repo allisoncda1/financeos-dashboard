@@ -1075,10 +1075,12 @@ router.all(
   ],
   requireAuth,
   async (req, res) => {
+    const requestPath =
+      req.originalUrl.split("?")[0] ?? "";
     const isPreviewPath =
-      req.path === "/plaid/qbo-match-preview";
+      requestPath.endsWith("/plaid/qbo-match-preview");
     const isImportPath =
-      req.path === "/plaid/qbo-history-import";
+      requestPath.endsWith("/plaid/qbo-history-import");
     const executeImport =
       isImportPath && req.method === "POST";
 
