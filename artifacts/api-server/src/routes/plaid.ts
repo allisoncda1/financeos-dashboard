@@ -1195,6 +1195,9 @@ router.get(
       let uniqueWithin3Days = 0;
       let ambiguousWithin3Days = 0;
       let unmatchedWithin3Days = 0;
+      let amountMatchAnyDate = 0;
+      let dateAndAmountMatchAnyAccount = 0;
+      let sourceAccountAndAmountMatchAnyDate = 0;
 
       const byAccount = new Map<
         string,
@@ -1275,6 +1278,52 @@ router.get(
         });
 
         const plaidDay = Date.parse(`${plaidDate}T00:00:00Z`);
+        const plaidAccountType = String(
+          row["plaid_account_type"] ?? "",
+        ).toLowerCase();
+
+        const amountCandidates = qboTransactions.filter((transaction) => {
+          if (transaction.amount == null) return false;
+          const qboAmount = Math.abs(Number(transaction.amount));
+          return (
+            Number.isFinite(qboAmount) &&
+            Math.abs(qboAmount - plaidAmount) < 0.005
+          );
+        });
+
+        if (amountCandidates.length > 0) {
+          amountMatchAnyDate += 1;
+        }
+
+        if (
+          amountCandidates.some(
+            (transaction) =>
+              String(transaction.transactionDate ?? "").slice(0, 10) ===
+              plaidDate,
+          )
+        ) {
+          dateAndAmountMatchAnyAccount += 1;
+        }
+
+        if (
+          amountCandidates.some((transaction) => {
+            const qboSourceAccount = String(
+              transaction.accountName ?? "",
+            )
+              .trim()
+              .toLowerCase();
+
+            return mask && mask !== "0000"
+              ? qboSourceAccount.includes(mask)
+              : (
+                  plaidAccountType === "credit" &&
+                  qboSourceAccount.includes("mercury") &&
+                  qboSourceAccount.includes("credit")
+                );
+          })
+        ) {
+          sourceAccountAndAmountMatchAnyDate += 1;
+        }
 
         const candidatesWithin3Days = qboTransactions.filter((transaction) => {
           const qboAmount =
@@ -1354,6 +1403,9 @@ router.get(
           uniqueWithin3Days,
           ambiguousWithin3Days,
           unmatchedWithin3Days,
+          amountMatchAnyDate,
+          dateAndAmountMatchAnyAccount,
+          sourceAccountAndAmountMatchAnyDate,
           accounts: Array.from(byAccount.values()),
         },
         ts: ts(),
