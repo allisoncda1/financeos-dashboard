@@ -52,12 +52,16 @@ vi.mock("../db/bankingCategories",   () => ({
   getCategoryMap: vi.fn(), verifyTransactionEntity: vi.fn(), upsertCategory: vi.fn(),
 }));
 vi.mock("../db/accounts", () => ({ getAllAccounts: vi.fn() }));
+vi.mock("../db/bankingQboHistory", () => ({
+  importHistoricalQboMatches: vi.fn(),
+}));
 vi.mock("../db/transactions", () => ({ getRecentTransactions: vi.fn() }));
 
 // ── Imports after mocks ───────────────────────────────────────────────────────
 import { getCachedEntityId }                                       from "../services/entityCache";
 import { getCategoryMap, verifyTransactionEntity, upsertCategory } from "../db/bankingCategories";
 import { getAllAccounts }                                           from "../db/accounts";
+import { importHistoricalQboMatches } from "../db/bankingQboHistory";
 import plaidRouter                                                 from "../routes/plaid";
 
 const mockGetEntityId = getCachedEntityId          as ReturnType<typeof vi.fn>;
@@ -242,5 +246,54 @@ describe("PATCH /plaid/transactions/:txId/category", () => {
     expect(res.body).not.toHaveProperty("reconciled");
     const call = mockUpsert.mock.calls[0][0] as Record<string,unknown>;
     expect(call).not.toHaveProperty("reconciled");
+  });
+});
+
+
+describe("QBO history import security", () => {
+  const importUrl =
+    "/api/plaid/qbo-history-import" +
+    "?entitySlug=CarDealer_ai&from=2025-01-01";
+
+  it("rejects import without the explicit confirmation phrase", async () => {
+    setAuth({
+      id: "admin-1",
+      email: "admin@example.com",
+      role: "admin",
+    });
+
+    const response = await supertest(app)
+      .post(importUrl)
+      .send({});
+
+    expect(response.status).toBe(400);
+    expect(response.body.error).toBe(
+      "Explicit import confirmation required",
+    );
+    expect(importHistoricalQboMatches).not.toHaveBeenCalled();
+  });
+
+  it("rejects a non-admin and non-CFO user", async () => {
+    setAuth({
+      id: "user-1",
+      email: "user@example.com",
+      role: "user",
+    });
+
+    const response = await supertest(app)
+      .post(importUrl)
+      .send({ confirm: "IMPORT_QBO_HISTORY" });
+
+    expect(response.status).toBe(403);
+    expect(response.body.error).toBe(
+      "Only admin or CFO can import QBO history",
+    );
+    expect(importHistoricalQboMatches).not.toHaveBeenCalled();
+
+    setAuth({
+      id: "user-uuid-001",
+      email: "test@example.com",
+      role: "admin",
+    });
   });
 });

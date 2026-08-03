@@ -45,6 +45,10 @@ import {
   getQboRawObjectsByIds,
 } from "../db/transactions.js";
 import { extractQboHistoricalLines } from "../db/qboHistoricalImport.js";
+import {
+  importHistoricalQboMatches,
+  type HistoricalQboMatchInput,
+} from "../db/bankingQboHistory.js";
 
 // ─── Permission helpers ───────────────────────────────────────────────────────
 
@@ -1064,10 +1068,53 @@ router.get(
 
 // ─── GET /api/plaid/qbo-match-preview ───────────────────────────────────────
 // Read-only deterministic preview. Never writes categories or reconciliation.
-router.get(
-  "/plaid/qbo-match-preview",
+router.all(
+  [
+    "/plaid/qbo-match-preview",
+    "/plaid/qbo-history-import",
+  ],
   requireAuth,
   async (req, res) => {
+    const isPreviewPath =
+      req.path === "/plaid/qbo-match-preview";
+    const isImportPath =
+      req.path === "/plaid/qbo-history-import";
+    const executeImport =
+      isImportPath && req.method === "POST";
+
+    if (
+      (isPreviewPath && req.method !== "GET") ||
+      (isImportPath && req.method !== "POST")
+    ) {
+      res.status(405).json({
+        ok: false,
+        error: "Method not allowed",
+        ts: ts(),
+      });
+      return;
+    }
+
+    if (executeImport && !canManageBanking(req.session.user!)) {
+      res.status(403).json({
+        ok: false,
+        error: "Only admin or CFO can import QBO history",
+        ts: ts(),
+      });
+      return;
+    }
+
+    if (executeImport) {
+      const body = req.body as Record<string, unknown>;
+
+      if (body["confirm"] !== "IMPORT_QBO_HISTORY") {
+        res.status(400).json({
+          ok: false,
+          error: "Explicit import confirmation required",
+          ts: ts(),
+        });
+        return;
+      }
+    }
     if (!canViewBanking(req.session.user!)) {
       res.status(403).json({
         ok: false,
@@ -1549,6 +1596,7 @@ router.get(
         ),
       );
 
+      const readyImports: HistoricalQboMatchInput[] = [];
       let readyMatchCount = 0;
       let readyLineCount = 0;
       let readySplitMatchCount = 0;
@@ -1585,6 +1633,20 @@ router.get(
           continue;
         }
 
+        readyImports.push({
+          plaidTransactionId: match.plaidTransactionId,
+          qboId: match.qboId,
+          qboObjectType: String(
+            rawMatches[0]?.objectType ?? "Unknown",
+          ),
+          dateDeltaDays: match.dateDeltaDays,
+          confidence:
+            match.dateDeltaDays === 0
+              ? 1
+              : 1 - match.dateDeltaDays * 0.02,
+          lines,
+        });
+
         readyMatchCount += 1;
         readyLineCount += lines.length;
 
@@ -1611,11 +1673,25 @@ router.get(
         writesPerformed: 0,
       };
 
+      let importResult = null;
+
+      if (executeImport) {
+        importResult = await importHistoricalQboMatches({
+          entitySlug,
+          importedBy: req.session.user!.id,
+          matches: readyImports,
+        });
+
+        importPlan.writesPerformed =
+          importResult.importedMatchCount;
+      }
+
       res.json({
         ok: true,
         data: {
           entitySlug,
           from,
+          importResult,
           totalPlaidTransactions: plaidResult.rows.length,
           totalQboTransactions: qboTransactions.length,
           exact,
