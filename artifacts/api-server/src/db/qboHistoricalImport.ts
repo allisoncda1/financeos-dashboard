@@ -40,6 +40,60 @@ function amount(value: unknown): number | null {
   return Number.isFinite(parsed) ? parsed : null;
 }
 
+export interface QboMatchCandidate {
+  plaidTransactionId: string;
+  qboId: string;
+  dateDeltaDays: number;
+}
+
+export interface QboMatchAllocation {
+  matches: QboMatchCandidate[];
+  duplicateClaimsExcluded: number;
+  ambiguousClaimsExcluded: number;
+}
+
+export function allocateUniqueQboMatches(
+  candidates: QboMatchCandidate[],
+): QboMatchAllocation {
+  const claimsByQboId = new Map<
+    string,
+    QboMatchCandidate[]
+  >();
+
+  for (const candidate of candidates) {
+    const claims = claimsByQboId.get(candidate.qboId) ?? [];
+    claims.push(candidate);
+    claimsByQboId.set(candidate.qboId, claims);
+  }
+
+  const matches: QboMatchCandidate[] = [];
+  let duplicateClaimsExcluded = 0;
+  let ambiguousClaimsExcluded = 0;
+
+  for (const claims of claimsByQboId.values()) {
+    const minimumDelta = Math.min(
+      ...claims.map((claim) => claim.dateDeltaDays),
+    );
+    const bestClaims = claims.filter(
+      (claim) => claim.dateDeltaDays === minimumDelta,
+    );
+
+    if (bestClaims.length !== 1) {
+      ambiguousClaimsExcluded += claims.length;
+      continue;
+    }
+
+    matches.push(bestClaims[0]!);
+    duplicateClaimsExcluded += claims.length - 1;
+  }
+
+  return {
+    matches,
+    duplicateClaimsExcluded,
+    ambiguousClaimsExcluded,
+  };
+}
+
 export function extractQboHistoricalLines(
   payload: unknown,
 ): QboHistoricalLine[] {

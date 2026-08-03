@@ -44,7 +44,10 @@ import {
   getRecentTransactions,
   getQboRawObjectsByIds,
 } from "../db/transactions.js";
-import { extractQboHistoricalLines } from "../db/qboHistoricalImport.js";
+import {
+  allocateUniqueQboMatches,
+  extractQboHistoricalLines,
+} from "../db/qboHistoricalImport.js";
 import {
   importHistoricalQboMatches,
   type HistoricalQboMatchInput,
@@ -1491,6 +1494,21 @@ router.all(
         byAccount.set(plaidAccountId, accountSummary);
       }
 
+      const qboAllocation = allocateUniqueQboMatches(
+        uniqueQboMatches,
+      );
+
+      uniqueQboMatches.splice(
+        0,
+        uniqueQboMatches.length,
+        ...qboAllocation.matches,
+      );
+      uniqueQboMatchIds.splice(
+        0,
+        uniqueQboMatchIds.length,
+        ...qboAllocation.matches.map((match) => match.qboId),
+      );
+
       const qboRawObjects = await getQboRawObjectsByIds(
         entityId,
         uniqueQboMatchIds,
@@ -1664,6 +1682,10 @@ router.all(
       const importPlan = {
         dryRun: true,
         candidateMatchCount: uniqueQboMatches.length,
+        duplicateQboClaimsExcluded:
+          qboAllocation.duplicateClaimsExcluded,
+        ambiguousQboClaimsExcluded:
+          qboAllocation.ambiguousClaimsExcluded,
         readyMatchCount,
         readyLineCount,
         readySplitMatchCount,

@@ -1,5 +1,8 @@
 import { describe, expect, it } from "vitest";
-import { extractQboHistoricalLines } from "../db/qboHistoricalImport";
+import {
+  allocateUniqueQboMatches,
+  extractQboHistoricalLines,
+} from "../db/qboHistoricalImport";
 
 describe("extractQboHistoricalLines", () => {
   it("returns no lines for malformed payloads", () => {
@@ -112,5 +115,52 @@ describe("extractQboHistoricalLines", () => {
     expect(result[0]?.qboClassName)
       .toBe("  Exact QBO Class  ");
     expect(result[0]?.lineAmount).toBe(10);
+  });
+});
+
+
+describe("allocateUniqueQboMatches", () => {
+  it("keeps only the closest Plaid claim for each QBO object", () => {
+    const result = allocateUniqueQboMatches([
+      {
+        plaidTransactionId: "plaid-late",
+        qboId: "qbo-1",
+        dateDeltaDays: 2,
+      },
+      {
+        plaidTransactionId: "plaid-exact",
+        qboId: "qbo-1",
+        dateDeltaDays: 0,
+      },
+    ]);
+
+    expect(result.matches).toEqual([
+      {
+        plaidTransactionId: "plaid-exact",
+        qboId: "qbo-1",
+        dateDeltaDays: 0,
+      },
+    ]);
+    expect(result.duplicateClaimsExcluded).toBe(1);
+    expect(result.ambiguousClaimsExcluded).toBe(0);
+  });
+
+  it("excludes every tied claim instead of choosing arbitrarily", () => {
+    const result = allocateUniqueQboMatches([
+      {
+        plaidTransactionId: "plaid-a",
+        qboId: "qbo-1",
+        dateDeltaDays: 0,
+      },
+      {
+        plaidTransactionId: "plaid-b",
+        qboId: "qbo-1",
+        dateDeltaDays: 0,
+      },
+    ]);
+
+    expect(result.matches).toEqual([]);
+    expect(result.duplicateClaimsExcluded).toBe(0);
+    expect(result.ambiguousClaimsExcluded).toBe(2);
   });
 });
