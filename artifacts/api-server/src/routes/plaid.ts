@@ -40,6 +40,7 @@ import { getCachedEntityId } from "../services/entityCache.js";
 import { fetchInstitutionMeta } from "../services/institutionMetaService.js";
 import { getCategoryMap, verifyTransactionEntity, upsertCategory } from "../db/bankingCategories.js";
 import { getAllAccounts } from "../db/accounts.js";
+import { getRecentTransactions } from "../db/transactions.js";
 
 // ─── Permission helpers ───────────────────────────────────────────────────────
 
@@ -1052,6 +1053,244 @@ router.get(
     } catch (err) {
       req.log.error({ err }, "[plaid] get-transactions failed");
       res.status(500).json({ ok: false, error: "Failed to fetch transactions", ts: ts() });
+    }
+  },
+);
+
+
+// ─── GET /api/plaid/qbo-match-preview ───────────────────────────────────────
+// Read-only deterministic preview. Never writes categories or reconciliation.
+router.get(
+  "/plaid/qbo-match-preview",
+  requireAuth,
+  async (req, res) => {
+    if (!canViewBanking(req.session.user!)) {
+      res.status(403).json({
+        ok: false,
+        error: "Banking access required",
+        ts: ts(),
+      });
+      return;
+    }
+
+    let entitySlug: string;
+    try {
+      entitySlug = validateEntitySlug(req.query["entitySlug"]);
+    } catch {
+      res.status(400).json({
+        ok: false,
+        error: "entitySlug required and must be valid",
+        ts: ts(),
+      });
+      return;
+    }
+
+    const from =
+      typeof req.query["from"] === "string"
+        ? req.query["from"]
+        : "2025-01-01";
+
+    try {
+      const entityId = await getCachedEntityId(entitySlug);
+      if (!entityId) {
+        res.status(404).json({
+          ok: false,
+          error: "Entity not found",
+          ts: ts(),
+        });
+        return;
+      }
+
+      const plaidResult = await query<Record<string, unknown>>(
+        `SELECT
+           bt.plaid_transaction_id,
+           bt.plaid_account_id,
+           bt.date,
+           bt.amount,
+           bt.name,
+           bt.merchant_name,
+           pa.name AS plaid_account_name,
+           pa.mask AS plaid_account_mask,
+           pa.type AS plaid_account_type
+         FROM bank_transactions bt
+         JOIN plaid_accounts pa
+           ON pa.plaid_account_id = bt.plaid_account_id
+          AND pa.entity_slug = bt.entity_slug
+         JOIN plaid_items pi
+           ON pi.plaid_item_id = pa.plaid_item_id
+          AND pi.entity_slug = pa.entity_slug
+         WHERE bt.entity_slug = $1
+           AND bt.date >= $2
+           AND pi.institution_name = 'Mercury'
+           AND pa.status = 'active'
+         ORDER BY bt.date, bt.plaid_transaction_id`,
+        [entitySlug, from],
+      );
+
+      const [qboAccounts, qboTransactions] = await Promise.all([
+        getAllAccounts(entityId),
+        getRecentTransactions(entityId, 10_000, from, null),
+      ]);
+
+      const eligibleQboAccounts = qboAccounts.filter((account) =>
+        ["Bank", "Credit Card"].includes(account.accountType ?? ""),
+      );
+
+      function mappedQboAccount(
+        plaidName: string,
+        plaidMask: string,
+        plaidType: string,
+      ) {
+        const lowerName = plaidName.toLowerCase();
+
+        let candidates = eligibleQboAccounts.filter((account) => {
+          const qboName = (account.name ?? "").toLowerCase();
+
+          if (plaidMask && plaidMask !== "0000") {
+            return qboName.includes(plaidMask);
+          }
+
+          if (
+            plaidType === "credit" ||
+            lowerName.includes("credit")
+          ) {
+            return (
+              qboName.includes("mercury") &&
+              qboName.includes("credit")
+            );
+          }
+
+          return false;
+        });
+
+        if (candidates.length !== 1) return null;
+        return candidates[0];
+      }
+
+      const accountMappings = new Map<
+        string,
+        { id: string; name: string | null } | null
+      >();
+
+      for (const row of plaidResult.rows) {
+        const plaidAccountId = String(row["plaid_account_id"] ?? "");
+        if (accountMappings.has(plaidAccountId)) continue;
+
+        const match = mappedQboAccount(
+          String(row["plaid_account_name"] ?? ""),
+          String(row["plaid_account_mask"] ?? ""),
+          String(row["plaid_account_type"] ?? ""),
+        );
+
+        accountMappings.set(
+          plaidAccountId,
+          match ? { id: match.id, name: match.name } : null,
+        );
+      }
+
+      let exact = 0;
+      let ambiguous = 0;
+      let unmatched = 0;
+      let unmappedAccount = 0;
+
+      const byAccount = new Map<
+        string,
+        {
+          plaidAccountName: string;
+          mask: string;
+          qboAccountName: string | null;
+          total: number;
+          exact: number;
+          ambiguous: number;
+          unmatched: number;
+          unmappedAccount: number;
+        }
+      >();
+
+      for (const row of plaidResult.rows) {
+        const plaidAccountId = String(row["plaid_account_id"] ?? "");
+        const plaidAccountName = String(row["plaid_account_name"] ?? "");
+        const mask = String(row["plaid_account_mask"] ?? "");
+        const mapping = accountMappings.get(plaidAccountId) ?? null;
+
+        const accountSummary =
+          byAccount.get(plaidAccountId) ?? {
+            plaidAccountName,
+            mask,
+            qboAccountName: mapping?.name ?? null,
+            total: 0,
+            exact: 0,
+            ambiguous: 0,
+            unmatched: 0,
+            unmappedAccount: 0,
+          };
+
+        accountSummary.total += 1;
+
+        if (!mapping) {
+          unmappedAccount += 1;
+          accountSummary.unmappedAccount += 1;
+          byAccount.set(plaidAccountId, accountSummary);
+          continue;
+        }
+
+        const plaidDate = String(row["date"] ?? "").slice(0, 10);
+        const plaidAmount = Math.abs(Number(row["amount"] ?? 0));
+
+        const candidates = qboTransactions.filter((transaction) => {
+          const qboAmount =
+            transaction.amount == null
+              ? Number.NaN
+              : Math.abs(Number(transaction.amount));
+
+          return (
+            transaction.accountId === mapping.id &&
+            String(transaction.transactionDate ?? "").slice(0, 10) ===
+              plaidDate &&
+            Number.isFinite(qboAmount) &&
+            Math.abs(qboAmount - plaidAmount) < 0.005
+          );
+        });
+
+        if (candidates.length === 1) {
+          exact += 1;
+          accountSummary.exact += 1;
+        } else if (candidates.length > 1) {
+          ambiguous += 1;
+          accountSummary.ambiguous += 1;
+        } else {
+          unmatched += 1;
+          accountSummary.unmatched += 1;
+        }
+
+        byAccount.set(plaidAccountId, accountSummary);
+      }
+
+      res.json({
+        ok: true,
+        data: {
+          entitySlug,
+          from,
+          totalPlaidTransactions: plaidResult.rows.length,
+          totalQboTransactions: qboTransactions.length,
+          exact,
+          ambiguous,
+          unmatched,
+          unmappedAccount,
+          accounts: Array.from(byAccount.values()),
+        },
+        ts: ts(),
+      });
+    } catch (err) {
+      req.log.error(
+        { err, entitySlug },
+        "[plaid] QBO match preview failed",
+      );
+      res.status(500).json({
+        ok: false,
+        error: "Failed to build QBO match preview",
+        ts: ts(),
+      });
     }
   },
 );

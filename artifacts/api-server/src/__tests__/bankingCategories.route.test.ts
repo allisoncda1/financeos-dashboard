@@ -52,6 +52,7 @@ vi.mock("../db/bankingCategories",   () => ({
   getCategoryMap: vi.fn(), verifyTransactionEntity: vi.fn(), upsertCategory: vi.fn(),
 }));
 vi.mock("../db/accounts", () => ({ getAllAccounts: vi.fn() }));
+vi.mock("../db/transactions", () => ({ getRecentTransactions: vi.fn() }));
 
 // ── Imports after mocks ───────────────────────────────────────────────────────
 import { getCachedEntityId }                                       from "../services/entityCache";
