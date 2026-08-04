@@ -48,6 +48,9 @@ export interface HistoricalQboCategoryLine {
   coaAccountId: string | null;
   coaAccountName: string | null;
   coaAccountType: string | null;
+  coaAccountFullyQualifiedName: string | null;
+  coaAccountSubtype: string | null;
+  coaAccountClassification: string | null;
   qboClassId: string | null;
   qboClassName: string | null;
   lineAmount: number | null;
@@ -105,7 +108,10 @@ export async function getHistoricalQboCategoryMap(
          l.qbo_class_id,
          l.qbo_class_name,
          l.line_amount,
-         l.memo
+         l.memo,
+         l.coa_account_fully_qualified_name,
+         l.coa_account_subtype,
+         l.coa_account_classification
        FROM bank_transaction_qbo_matches m
        LEFT JOIN bank_transaction_qbo_lines l
          ON l.match_id = m.id
@@ -182,6 +188,18 @@ export async function getHistoricalQboCategoryMap(
               : null,
           memo:
             row["memo"] == null ? null : String(row["memo"]),
+          coaAccountFullyQualifiedName:
+            row["coa_account_fully_qualified_name"] == null
+              ? null
+              : String(row["coa_account_fully_qualified_name"]),
+          coaAccountSubtype:
+            row["coa_account_subtype"] == null
+              ? null
+              : String(row["coa_account_subtype"]),
+          coaAccountClassification:
+            row["coa_account_classification"] == null
+              ? null
+              : String(row["coa_account_classification"]),
         });
       }
     }
@@ -333,15 +351,21 @@ export async function importHistoricalQboMatches(params: {
           `INSERT INTO bank_transaction_qbo_lines
              (match_id, line_index, coa_account_id,
               coa_account_name, coa_account_type,
+              coa_account_fully_qualified_name,
+              coa_account_subtype,
+              coa_account_classification,
               qbo_class_id, qbo_class_name, line_amount,
               memo, raw_line)
-           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10::jsonb)`,
+           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13::jsonb)`,
           [
             matchId,
             line.lineIndex,
             line.coaAccountId,
             line.coaAccountName,
             line.coaAccountType,
+            line.coaAccountFullyQualifiedName ?? null,
+            line.coaAccountSubtype ?? null,
+            line.coaAccountClassification ?? null,
             line.qboClassId,
             line.qboClassName,
             line.lineAmount,

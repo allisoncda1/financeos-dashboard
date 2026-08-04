@@ -1645,9 +1645,23 @@ router.all(
           continue;
         }
 
-        const lines = extractQboHistoricalLines(
+        const rawLines = extractQboHistoricalLines(
           rawMatches[0]?.payload,
         );
+        const lines = rawLines.map((line) => {
+          const acct = qboAccounts.find(
+            (a) => String(a.qboId) === line.coaAccountId,
+          );
+          if (!acct) return line;
+          return {
+            ...line,
+            coaAccountName:               acct.name,
+            coaAccountType:               acct.accountType ?? null,
+            coaAccountFullyQualifiedName: acct.fullyQualifiedName ?? null,
+            coaAccountSubtype:            acct.accountSubtype ?? null,
+            coaAccountClassification:     acct.classification ?? null,
+          };
+        });
 
         if (lines.length === 0) {
           noCategorizedLinesExcluded += 1;
@@ -1811,6 +1825,47 @@ router.get(
         entitySlug,
         transactionIds,
       );
+
+      const entityId = await getCachedEntityId(entitySlug);
+
+      if (entityId) {
+        const qboAccounts = await getAllAccounts(entityId);
+
+        const accountByQboId = new Map(
+          qboAccounts
+            .filter((account) => account.qboId != null)
+            .map((account) => [String(account.qboId), account] as const),
+        );
+
+        for (const category of Object.values(data)) {
+          category.lines = category.lines.map((line) => {
+            if (!line.coaAccountId) return line;
+
+            const account = accountByQboId.get(line.coaAccountId);
+            if (!account) return line;
+
+            return {
+              ...line,
+              coaAccountName:
+                line.coaAccountName ?? account.name ?? null,
+              coaAccountType:
+                line.coaAccountType ?? account.accountType ?? null,
+              coaAccountFullyQualifiedName:
+                line.coaAccountFullyQualifiedName ??
+                account.fullyQualifiedName ??
+                null,
+              coaAccountSubtype:
+                line.coaAccountSubtype ??
+                account.accountSubtype ??
+                null,
+              coaAccountClassification:
+                line.coaAccountClassification ??
+                account.classification ??
+                null,
+            };
+          });
+        }
+      }
 
       res.json({ ok: true, data, ts: ts() });
     } catch (err) {

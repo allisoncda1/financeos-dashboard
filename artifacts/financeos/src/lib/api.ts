@@ -223,6 +223,9 @@ export interface HistoricalQboCategoryLine {
   coaAccountId: string | null;
   coaAccountName: string | null;
   coaAccountType: string | null;
+  coaAccountFullyQualifiedName: string | null;
+  coaAccountSubtype: string | null;
+  coaAccountClassification: string | null;
   qboClassId: string | null;
   qboClassName: string | null;
   lineAmount: number | null;

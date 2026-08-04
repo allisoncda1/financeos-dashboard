@@ -155,7 +155,11 @@ function TransactionRow({
             <>
               {historicalCategory.lines.map((line) => (
                 <span key={line.lineIndex}>
-                  {line.coaAccountName ?? line.coaAccountId ?? "QBO category"}
+                  {line.coaAccountFullyQualifiedName ?? line.coaAccountName ?? line.coaAccountId ?? "QBO category"}
+                  {line.coaAccountClassification ?? line.coaAccountType
+                    ? ` · ${line.coaAccountClassification ?? line.coaAccountType}`
+                    : ""}
+                  {line.coaAccountSubtype ? ` (${line.coaAccountSubtype})` : ""}
                   {line.qboClassName ? ` · ${line.qboClassName}` : ""}
                   {historicalCategory.lines.length > 1 && line.lineAmount != null
                     ? ` · ${formatCurrency(Math.abs(line.lineAmount))}`

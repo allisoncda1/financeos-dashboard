@@ -12,7 +12,10 @@ export interface QboHistoricalLine {
   detailType: string;
   coaAccountId: string;
   coaAccountName: string | null;
-  coaAccountType: null;
+  coaAccountType: string | null;
+  coaAccountFullyQualifiedName: string | null;
+  coaAccountSubtype: string | null;
+  coaAccountClassification: string | null;
   qboClassId: string | null;
   qboClassName: string | null;
   lineAmount: number | null;
@@ -129,6 +132,9 @@ export function extractQboHistoricalLines(
         coaAccountId,
         coaAccountName: text(accountRef["name"]),
         coaAccountType: null,
+        coaAccountFullyQualifiedName: null,
+        coaAccountSubtype: null,
+        coaAccountClassification: null,
         qboClassId: classRef ? text(classRef["value"]) : null,
         qboClassName: classRef ? text(classRef["name"]) : null,
         lineAmount: amount(line["Amount"] ?? detail["Amount"]),
