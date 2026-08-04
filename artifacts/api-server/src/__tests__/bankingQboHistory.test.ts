@@ -11,7 +11,10 @@ vi.mock("pg", () => ({
   Pool: vi.fn(() => ({ connect: mocks.connect })),
 }));
 
-import { importHistoricalQboMatches } from "../db/bankingQboHistory";
+import {
+  getHistoricalQboCategoryMap,
+  importHistoricalQboMatches,
+} from "../db/bankingQboHistory";
 
 const line = {
   lineIndex: 0,
@@ -150,5 +153,103 @@ describe("importHistoricalQboMatches", () => {
     ).rejects.toThrow("duplicate plaidTransactionId");
 
     expect(mocks.connect).not.toHaveBeenCalled();
+  });
+});
+
+
+describe("getHistoricalQboCategoryMap", () => {
+  it("returns an empty map without opening a connection", async () => {
+    await expect(
+      getHistoricalQboCategoryMap("CarDealer_ai", []),
+    ).resolves.toEqual({});
+
+    expect(mocks.connect).not.toHaveBeenCalled();
+  });
+
+  it("returns exact QBO account, class and split-line data", async () => {
+    mocks.query.mockResolvedValueOnce({
+      rows: [
+        {
+          plaid_transaction_id: "plaid-tx-1",
+          qbo_id: "qbo-123",
+          qbo_object_type: "Purchase",
+          match_method: "account_date_amount_3d",
+          date_delta_days: 1,
+          confidence: "0.9500",
+          review_status: "matched",
+          source: "qbo_history",
+          line_index: 0,
+          coa_account_id: "acct-1",
+          coa_account_name: "Advertising & Marketing",
+          coa_account_type: "Expense",
+          qbo_class_id: "class-1",
+          qbo_class_name: "CarDealer.ai",
+          line_amount: "75.25",
+          memo: "Campaign",
+        },
+        {
+          plaid_transaction_id: "plaid-tx-1",
+          qbo_id: "qbo-123",
+          qbo_object_type: "Purchase",
+          match_method: "account_date_amount_3d",
+          date_delta_days: 1,
+          confidence: "0.9500",
+          review_status: "matched",
+          source: "qbo_history",
+          line_index: 1,
+          coa_account_id: "acct-2",
+          coa_account_name: "Software & Subscriptions",
+          coa_account_type: "Expense",
+          qbo_class_id: null,
+          qbo_class_name: null,
+          line_amount: "50.00",
+          memo: null,
+        },
+      ],
+    });
+
+    const result = await getHistoricalQboCategoryMap(
+      "CarDealer_ai",
+      ["plaid-tx-1", "plaid-tx-1"],
+    );
+
+    expect(result["plaid-tx-1"]).toEqual({
+      plaidTransactionId: "plaid-tx-1",
+      qboId: "qbo-123",
+      qboObjectType: "Purchase",
+      matchMethod: "account_date_amount_3d",
+      dateDeltaDays: 1,
+      confidence: 0.95,
+      reviewStatus: "matched",
+      source: "qbo_history",
+      lines: [
+        {
+          lineIndex: 0,
+          coaAccountId: "acct-1",
+          coaAccountName: "Advertising & Marketing",
+          coaAccountType: "Expense",
+          qboClassId: "class-1",
+          qboClassName: "CarDealer.ai",
+          lineAmount: 75.25,
+          memo: "Campaign",
+        },
+        {
+          lineIndex: 1,
+          coaAccountId: "acct-2",
+          coaAccountName: "Software & Subscriptions",
+          coaAccountType: "Expense",
+          qboClassId: null,
+          qboClassName: null,
+          lineAmount: 50,
+          memo: null,
+        },
+      ],
+    });
+
+    expect(mocks.query).toHaveBeenCalledWith(
+      expect.stringContaining("bank_transaction_qbo_matches"),
+      ["CarDealer_ai", ["plaid-tx-1"]],
+    );
+    expect(mocks.release).toHaveBeenCalledOnce();
   });
 });

@@ -13,7 +13,12 @@ import { useAccountingEntity } from "@/lib/accounting-context";
 import { formatCurrency } from "@/lib/format";
 import { institutionColor, formatRelativeTime } from "@/lib/banking-utils";
 import { api } from "@/lib/api";
-import type { AccountingAccount, BankingTransactionCategoryMap } from "@/lib/api";
+import type {
+  AccountingAccount,
+  BankingTransactionCategoryMap,
+  HistoricalQboCategory,
+  HistoricalQboCategoryMap,
+} from "@/lib/api";
 
 // ─── API helpers ──────────────────────────────────────────────────────────────
 
@@ -110,10 +115,12 @@ function InstitutionAvatar({
 function TransactionRow({
   txn,
   category,
+  historicalCategory,
   onEdit,
 }: {
   txn: BankTransaction;
-  category: import('@/lib/api').BankingTransactionCategory | undefined;
+  category: import("@/lib/api").BankingTransactionCategory | undefined;
+  historicalCategory: HistoricalQboCategory | undefined;
   onEdit: (tx: BankTransaction) => void;
 }) {
   const isDebit = txn.amount != null && txn.amount > 0;
@@ -134,13 +141,34 @@ function TransactionRow({
       <td className="px-5 py-3 text-xs">
         <button
           onClick={() => onEdit(txn)}
-          className={`inline-flex items-center px-2 py-0.5 rounded-full font-medium ring-1 ${
+          className={`inline-flex flex-col items-start rounded-lg px-2 py-1 text-left font-medium ring-1 transition-colors ${
             category
               ? "bg-blue-50 text-blue-700 ring-blue-200 hover:bg-blue-100"
-              : "bg-gray-50 text-gray-500 ring-gray-200 hover:bg-gray-100"
+              : historicalCategory
+                ? "bg-violet-50 text-violet-700 ring-violet-200 hover:bg-violet-100"
+                : "bg-gray-50 text-gray-500 ring-gray-200 hover:bg-gray-100"
           }`}
         >
-          {category ? (category.coaAccountName ?? category.coaAccountId) : "Uncategorized"}
+          {category ? (
+            <span>{category.coaAccountName ?? category.coaAccountId}</span>
+          ) : historicalCategory ? (
+            <>
+              {historicalCategory.lines.map((line) => (
+                <span key={line.lineIndex}>
+                  {line.coaAccountName ?? line.coaAccountId ?? "QBO category"}
+                  {line.qboClassName ? ` · ${line.qboClassName}` : ""}
+                  {historicalCategory.lines.length > 1 && line.lineAmount != null
+                    ? ` · ${formatCurrency(Math.abs(line.lineAmount))}`
+                    : ""}
+                </span>
+              ))}
+              <span className="mt-0.5 text-[10px] font-normal text-violet-500">
+                Imported from QuickBooks
+              </span>
+            </>
+          ) : (
+            <span>Uncategorized</span>
+          )}
         </button>
       </td>
       <td className="px-5 py-3 text-gray-500 text-xs capitalize">
@@ -178,6 +206,8 @@ export default function BankingAccountPage() {
   const [transactions, setTransactions] = useState<BankTransaction[]>([]);
   const [coaAccounts, setCoaAccounts] = useState<AccountingAccount[]>([]);
   const [categoryMap, setCategoryMap] = useState<BankingTransactionCategoryMap>({});
+  const [historicalCategoryMap, setHistoricalCategoryMap] =
+    useState<HistoricalQboCategoryMap>({});
   const [editingTxId, setEditingTxId] = useState<string | null>(null);
   const [selectedCoaId, setSelectedCoaId] = useState("");
   const [noteInput, setNoteInput] = useState("");
@@ -209,15 +239,20 @@ export default function BankingAccountPage() {
       const filtered = txData.transactions.filter((t) => t.accountId === accountId);
       setCoaAccounts(coaData.data);
       setTransactions(filtered);
-      const catMap = await api.bankingTransactionCategories(
-        activeSlug,
-        filtered.map((t) => t.id),
-      );
+      const transactionIds = filtered.map((t) => t.id);
+      const [catMap, qboHistoryMap] = await Promise.all([
+        api.bankingTransactionCategories(activeSlug, transactionIds),
+        api.bankingQboHistoryCategories(activeSlug, transactionIds),
+      ]);
       setCategoryMap(catMap);
+      setHistoricalCategoryMap(qboHistoryMap);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to load account");
+      setAccount(null);
+      setTransactions([]);
       setCoaAccounts([]);
       setCategoryMap({});
+      setHistoricalCategoryMap({});
     } finally {
       setLoading(false);
     }
@@ -283,28 +318,60 @@ export default function BankingAccountPage() {
 
 
   const uncategorizedCount = useMemo(
-    () => transactions.filter((t) => !categoryMap[t.id]).length,
-    [transactions, categoryMap],
+    () =>
+      transactions.filter(
+        (t) => !categoryMap[t.id] && !historicalCategoryMap[t.id],
+      ).length,
+    [transactions, categoryMap, historicalCategoryMap],
   );
 
   const availableCoaCategories = useMemo(() => {
     const seen = new Map<string, string>();
     for (const t of transactions) {
       const cat = categoryMap[t.id];
-      if (cat) seen.set(cat.coaAccountId, cat.coaAccountName ?? cat.coaAccountId);
+      if (cat) {
+        seen.set(cat.coaAccountId, cat.coaAccountName ?? cat.coaAccountId);
+        continue;
+      }
+      for (const line of historicalCategoryMap[t.id]?.lines ?? []) {
+        if (line.coaAccountId) {
+          seen.set(
+            line.coaAccountId,
+            line.coaAccountName ?? line.coaAccountId,
+          );
+        }
+      }
     }
     return Array.from(seen.entries()).map(([id, name]) => ({ id, name }));
-  }, [transactions, categoryMap]);
+  }, [transactions, categoryMap, historicalCategoryMap]);
 
   const visibleTransactions = useMemo(() => {
     return transactions.filter((t) => {
       const cat = categoryMap[t.id];
-      if (statusFilter === "uncategorized" && cat) return false;
-      if (statusFilter === "categorized" && !cat) return false;
-      if (coaFilter && cat?.coaAccountId !== coaFilter) return false;
+      const historical = historicalCategoryMap[t.id];
+      const isCategorized = Boolean(cat || historical);
+
+      if (statusFilter === "uncategorized" && isCategorized) return false;
+      if (statusFilter === "categorized" && !isCategorized) return false;
+
+      if (coaFilter) {
+        const manualMatches = cat?.coaAccountId === coaFilter;
+        const historicalMatches =
+          !cat &&
+          historical?.lines.some(
+            (line) => line.coaAccountId === coaFilter,
+          );
+        if (!manualMatches && !historicalMatches) return false;
+      }
       return true;
     });
-  }, [transactions, categoryMap, statusFilter, coaFilter]);
+  }, [
+    transactions,
+    categoryMap,
+    historicalCategoryMap,
+    statusFilter,
+    coaFilter,
+  ]);
 
   const instName = account?.institutionName ?? "Bank";
 
@@ -478,6 +545,11 @@ export default function BankingAccountPage() {
                             key={txn.id}
                             txn={txn}
                             category={categoryMap[txn.id]}
+                            historicalCategory={
+                              categoryMap[txn.id]
+                                ? undefined
+                                : historicalCategoryMap[txn.id]
+                            }
                             onEdit={openEditor}
                           />
                         ))}

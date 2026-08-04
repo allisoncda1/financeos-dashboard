@@ -53,6 +53,7 @@ vi.mock("../db/bankingCategories",   () => ({
 }));
 vi.mock("../db/accounts", () => ({ getAllAccounts: vi.fn() }));
 vi.mock("../db/bankingQboHistory", () => ({
+  getHistoricalQboCategoryMap: vi.fn(),
   importHistoricalQboMatches: vi.fn(),
 }));
 vi.mock("../db/transactions", () => ({ getRecentTransactions: vi.fn() }));

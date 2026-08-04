@@ -49,6 +49,7 @@ import {
   extractQboHistoricalLines,
 } from "../db/qboHistoricalImport.js";
 import {
+  getHistoricalQboCategoryMap,
   importHistoricalQboMatches,
   type HistoricalQboMatchInput,
 } from "../db/bankingQboHistory.js";
@@ -1753,6 +1754,78 @@ router.all(
   },
 );
 
+
+// ─── GET /api/plaid/qbo-history-categories ─────────────────────────────────
+// Historical QBO suggestions only. Manual FinanceOS categories remain
+// authoritative and must be overlaid first by API consumers.
+router.get(
+  "/plaid/qbo-history-categories",
+  requireAuth,
+  async (req, res) => {
+    if (!canViewBanking(req.session.user!)) {
+      res.status(403).json({
+        ok: false,
+        error: "Banking access required",
+        ts: ts(),
+      });
+      return;
+    }
+
+    let entitySlug: string;
+    try {
+      entitySlug = validateEntitySlug(req.query["entitySlug"]);
+    } catch {
+      res.status(400).json({
+        ok: false,
+        error: "entitySlug required and must be valid",
+        ts: ts(),
+      });
+      return;
+    }
+
+    const rawIds =
+      typeof req.query["txIds"] === "string"
+        ? req.query["txIds"]
+        : "";
+
+    const transactionIds = Array.from(
+      new Set(
+        rawIds
+          .split(",")
+          .map((id) => id.trim())
+          .filter(Boolean),
+      ),
+    );
+
+    if (transactionIds.length > 200) {
+      res.status(400).json({
+        ok: false,
+        error: "Maximum 200 transaction IDs",
+        ts: ts(),
+      });
+      return;
+    }
+
+    try {
+      const data = await getHistoricalQboCategoryMap(
+        entitySlug,
+        transactionIds,
+      );
+
+      res.json({ ok: true, data, ts: ts() });
+    } catch (err) {
+      req.log.error(
+        { err },
+        "[plaid] get-qbo-history-categories failed",
+      );
+      res.status(500).json({
+        ok: false,
+        error: "Failed to load QBO history categories",
+        ts: ts(),
+      });
+    }
+  },
+);
 
 // ─── GET /api/plaid/transaction-categories ───────────────────────────────────
 // Returns FinanceOS category metadata keyed by plaid_transaction_id.

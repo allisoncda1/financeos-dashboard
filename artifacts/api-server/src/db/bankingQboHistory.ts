@@ -43,6 +43,155 @@ export interface HistoricalQboImportResult {
   manualCategoryExcluded: number;
 }
 
+export interface HistoricalQboCategoryLine {
+  lineIndex: number;
+  coaAccountId: string | null;
+  coaAccountName: string | null;
+  coaAccountType: string | null;
+  qboClassId: string | null;
+  qboClassName: string | null;
+  lineAmount: number | null;
+  memo: string | null;
+}
+
+export interface HistoricalQboCategory {
+  plaidTransactionId: string;
+  qboId: string;
+  qboObjectType: string;
+  matchMethod: string;
+  dateDeltaDays: number;
+  confidence: number;
+  reviewStatus: string;
+  source: "qbo_history";
+  lines: HistoricalQboCategoryLine[];
+}
+
+export type HistoricalQboCategoryMap =
+  Record<string, HistoricalQboCategory>;
+
+export async function getHistoricalQboCategoryMap(
+  entitySlug: string,
+  transactionIds: string[],
+): Promise<HistoricalQboCategoryMap> {
+  const uniqueIds = Array.from(
+    new Set(transactionIds.map((id) => id.trim()).filter(Boolean)),
+  );
+
+  if (uniqueIds.length === 0) return {};
+
+  if (!pool) {
+    throw new Error(
+      "DATABASE_URL not configured — QBO history unavailable",
+    );
+  }
+
+  const client = await pool.connect();
+
+  try {
+    const result = await client.query(
+      `SELECT
+         m.plaid_transaction_id,
+         m.qbo_id,
+         m.qbo_object_type,
+         m.match_method,
+         m.date_delta_days,
+         m.confidence,
+         m.review_status,
+         m.source,
+         l.line_index,
+         l.coa_account_id,
+         l.coa_account_name,
+         l.coa_account_type,
+         l.qbo_class_id,
+         l.qbo_class_name,
+         l.line_amount,
+         l.memo
+       FROM bank_transaction_qbo_matches m
+       LEFT JOIN bank_transaction_qbo_lines l
+         ON l.match_id = m.id
+       WHERE m.entity_slug = $1
+         AND m.plaid_transaction_id = ANY($2::text[])
+         AND m.source = 'qbo_history'
+         AND m.review_status IN ('matched', 'approved')
+       ORDER BY m.plaid_transaction_id, l.line_index`,
+      [entitySlug, uniqueIds],
+    );
+
+    const categoryMap: HistoricalQboCategoryMap = {};
+
+    for (
+      const row of result.rows as Array<Record<string, unknown>>
+    ) {
+      const plaidTransactionId = String(
+        row["plaid_transaction_id"] ?? "",
+      );
+      if (!plaidTransactionId) continue;
+
+      let category = categoryMap[plaidTransactionId];
+
+      if (!category) {
+        category = {
+          plaidTransactionId,
+          qboId: String(row["qbo_id"] ?? ""),
+          qboObjectType: String(row["qbo_object_type"] ?? ""),
+          matchMethod: String(row["match_method"] ?? ""),
+          dateDeltaDays: Number(row["date_delta_days"] ?? 0),
+          confidence: Number(row["confidence"] ?? 0),
+          reviewStatus: String(row["review_status"] ?? ""),
+          source: "qbo_history",
+          lines: [],
+        };
+        categoryMap[plaidTransactionId] = category;
+      }
+
+      if (
+        row["line_index"] !== null &&
+        row["line_index"] !== undefined
+      ) {
+        const rawAmount = row["line_amount"];
+        const parsedAmount =
+          rawAmount === null || rawAmount === undefined
+            ? null
+            : Number(rawAmount);
+
+        category.lines.push({
+          lineIndex: Number(row["line_index"]),
+          coaAccountId:
+            row["coa_account_id"] == null
+              ? null
+              : String(row["coa_account_id"]),
+          coaAccountName:
+            row["coa_account_name"] == null
+              ? null
+              : String(row["coa_account_name"]),
+          coaAccountType:
+            row["coa_account_type"] == null
+              ? null
+              : String(row["coa_account_type"]),
+          qboClassId:
+            row["qbo_class_id"] == null
+              ? null
+              : String(row["qbo_class_id"]),
+          qboClassName:
+            row["qbo_class_name"] == null
+              ? null
+              : String(row["qbo_class_name"]),
+          lineAmount:
+            parsedAmount !== null && Number.isFinite(parsedAmount)
+              ? parsedAmount
+              : null,
+          memo:
+            row["memo"] == null ? null : String(row["memo"]),
+        });
+      }
+    }
+
+    return categoryMap;
+  } finally {
+    client.release();
+  }
+}
+
 export async function importHistoricalQboMatches(params: {
   entitySlug: string;
   importedBy: string;

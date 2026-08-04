@@ -218,6 +218,32 @@ export interface BankingTransactionCategory {
 export type BankingTransactionCategoryMap =
   Record<string, BankingTransactionCategory>;
 
+export interface HistoricalQboCategoryLine {
+  lineIndex: number;
+  coaAccountId: string | null;
+  coaAccountName: string | null;
+  coaAccountType: string | null;
+  qboClassId: string | null;
+  qboClassName: string | null;
+  lineAmount: number | null;
+  memo: string | null;
+}
+
+export interface HistoricalQboCategory {
+  plaidTransactionId: string;
+  qboId: string;
+  qboObjectType: string;
+  matchMethod: string;
+  dateDeltaDays: number;
+  confidence: number;
+  reviewStatus: string;
+  source: "qbo_history";
+  lines: HistoricalQboCategoryLine[];
+}
+
+export type HistoricalQboCategoryMap =
+  Record<string, HistoricalQboCategory>;
+
 export const api = {
   model:            ()           => getSourced<DashboardData>("/model"),
   entityFinancials: (s: string)  => getSourced<FinancialsData>(`/model/${s}/financials`),
@@ -318,6 +344,22 @@ export const api = {
     return getAccountingSourced<AccountingInvoice[]>(`/accounting/${slug}/invoices${qs}`);
   },
   accountingAccounts:     (slug: string) => getSourced<AccountingAccount[]>(`/accounting/${slug}/accounts`),
+  bankingQboHistoryCategories: (
+    entitySlug: string,
+    transactionIds: string[],
+  ): Promise<HistoricalQboCategoryMap> => {
+    if (transactionIds.length === 0) return Promise.resolve({});
+
+    const query = new URLSearchParams({
+      entitySlug,
+      txIds: transactionIds.join(","),
+    });
+
+    return get<HistoricalQboCategoryMap>(
+      `/plaid/qbo-history-categories?${query.toString()}`,
+    );
+  },
+
   bankingTransactionCategories: (
     entitySlug: string,
     transactionIds: string[],
