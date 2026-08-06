@@ -125,7 +125,7 @@ const TEMPLATES: Template[] = [
 const TEMPLATE_MAP = Object.fromEntries(TEMPLATES.map((t) => [t.id, t])) as Record<TemplateId, Template>;
 
 const PERIODS = [
-  "Jun 2026 (Latest)", "May 2026", "Apr 2026", "Mar 2026", "Feb 2026", "Jan 2026",
+  "Jul 2026 (Latest)", "Jun 2026", "May 2026", "Apr 2026", "Mar 2026", "Feb 2026", "Jan 2026",
   "Q2 2026 (YTD)", "Q1 2026", "FY 2025",
 ];
 
@@ -133,7 +133,7 @@ const PERIODS = [
 
 export default function ReportCenterPage() {
   const [selectedTemplate, setSelectedTemplate] = useState<TemplateId>("monthly-close");
-  const [period, setPeriod]             = useState("Jun 2026 (Latest)");
+  const [period, setPeriod]             = useState("Jul 2026 (Latest)");
   const [selectedEntities, setSelectedEntities] = useState<string[]>([...ENTITY_SLUGS]);
   const [format, setFormat]             = useState<"json" | "pdf" | "excel" | "html">("json");
   const [previewOpen, setPreviewOpen]   = useState(false);
