@@ -179,8 +179,20 @@ function nmPct(entry: MonthlyPL | null): number | null {
   return (entry.net_income / entry.revenue) * 100;
 }
 
-function curAndPrv(pl: MonthlyPL[] | undefined): { cur: MonthlyPL | null; prv: MonthlyPL | null } {
+function periodToTargetMonth(period: string): string | null {
+  const m = period.match(/^([A-Za-z]+)\s+(\d{4})/);
+  if (!m) return null;
+  const monthIdx = new Date(`${m![1]} 1, ${m![2]}`).getMonth() + 1;
+  if (isNaN(monthIdx)) return null;
+  return `${m![2]}-${String(monthIdx).padStart(2, "0")}`;
+}
+
+function curAndPrv(pl: MonthlyPL[] | undefined, targetMonth?: string | null): { cur: MonthlyPL | null; prv: MonthlyPL | null } {
   if (!pl || pl.length === 0) return { cur: null, prv: null };
+  if (targetMonth) {
+    const idx = pl.findIndex((x) => x.month === targetMonth);
+    if (idx >= 0) return { cur: pl[idx] ?? null, prv: idx >= 1 ? (pl[idx - 1] ?? null) : null };
+  }
   return { cur: pl[pl.length - 1] ?? null, prv: pl.length >= 2 ? (pl[pl.length - 2] ?? null) : null };
 }
 
@@ -239,7 +251,7 @@ function trSub(...cells: string[]): string { return `<tr class="subtotal">${cell
 // ─── Narrative generators ─────────────────────────────────────────────────────
 
 function narrativeExecSummary(m: EntityMetrics, fin: FinancialsData, period: string): string[] {
-  const { cur, prv } = curAndPrv(fin.monthly_pl);
+  const { cur, prv } = curAndPrv(fin.monthly_pl, periodToTargetMonth(period));
   const revPct = cur && prv ? chgPct(cur.revenue, prv.revenue) : null;
   const curGM = gmPct(cur);
   const prvGM = gmPct(prv);
@@ -272,7 +284,7 @@ function narrativeExecSummary(m: EntityMetrics, fin: FinancialsData, period: str
 }
 
 function narrativeExecInsights(m: EntityMetrics, fin: FinancialsData, alerts: Alert[], period: string): string[] {
-  const { cur, prv } = curAndPrv(fin.monthly_pl);
+  const { cur, prv } = curAndPrv(fin.monthly_pl, periodToTargetMonth(period));
   const pl = fin.monthly_pl ?? [];
   const monthName = cur ? fmtMonthName(cur.month) : period;
 
@@ -374,7 +386,7 @@ function narrativeBS(bs: BalanceSheet | undefined): string[] {
 
 function buildExecSummaryPage(report: BuiltReport, entities: { slug: string; m: EntityMetrics; fin: FinancialsData }[], headerFn: HeaderFn): string {
   const first = entities[0]!;
-  const { cur, prv } = curAndPrv(first.fin.monthly_pl);
+  const { cur, prv } = curAndPrv(first.fin.monthly_pl, periodToTargetMonth(report.period));
   const curGM = gmPct(cur);
   const curNM = nmPct(cur);
   const prvGM = gmPct(prv);
@@ -544,7 +556,7 @@ function buildPortfolioPage(report: BuiltReport, entities: { slug: string; m: En
 function buildPerformanceHighlights(report: BuiltReport, entities: { slug: string; m: EntityMetrics; fin: FinancialsData }[], headerFn: HeaderFn): string {
   const first = entities[0]!;
   const pl = first.fin.monthly_pl ?? [];
-  const { cur, prv } = curAndPrv(pl);
+  const { cur, prv } = curAndPrv(pl, periodToTargetMonth(report.period));
   const monthName = cur ? fmtMonthName(cur.month) : report.period;
   const cashHistory = first.fin.cash_history ?? [];
 
@@ -576,7 +588,7 @@ function buildPerformanceHighlights(report: BuiltReport, entities: { slug: strin
 
 function buildFinancialPerformance(report: BuiltReport, entities: { slug: string; m: EntityMetrics; fin: FinancialsData }[], headerFn: HeaderFn): string {
   const first = entities[0]!;
-  const { cur, prv } = curAndPrv(first.fin.monthly_pl);
+  const { cur, prv } = curAndPrv(first.fin.monthly_pl, periodToTargetMonth(report.period));
   const curGM = gmPct(cur);
   const prvGM = gmPct(prv);
   const curNM = nmPct(cur);
@@ -612,7 +624,7 @@ function buildFinancialPerformance(report: BuiltReport, entities: { slug: string
 
 function buildPLPage(report: BuiltReport, entities: { slug: string; m: EntityMetrics; fin: FinancialsData }[], headerFn: HeaderFn): string {
   const first = entities[0]!;
-  const { cur, prv } = curAndPrv(first.fin.monthly_pl);
+  const { cur, prv } = curAndPrv(first.fin.monthly_pl, periodToTargetMonth(report.period));
   const ytd = first.fin.ytd_summary;
   const hasPrv = prv != null;
   const hasYTD = ytd != null;
@@ -707,7 +719,7 @@ function buildBSPage(report: BuiltReport, entities: { slug: string; m: EntityMet
 
 function buildCashPage(report: BuiltReport, entities: { slug: string; m: EntityMetrics; fin: FinancialsData }[], headerFn: HeaderFn): string {
   const first = entities[0]!;
-  const { cur } = curAndPrv(first.fin.monthly_pl);
+  const { cur } = curAndPrv(first.fin.monthly_pl, periodToTargetMonth(report.period));
   const monthName = cur ? fmtMonthName(cur.month) : report.period;
   const cashHistory = first.fin.cash_history ?? [];
   const isNeg = first.m.cash_on_hand < 0;
@@ -838,7 +850,7 @@ function buildARPage(report: BuiltReport, entities: { slug: string; m: EntityMet
 function buildCostPage(report: BuiltReport, entities: { slug: string; m: EntityMetrics; fin: FinancialsData }[], headerFn: HeaderFn): string {
   const first = entities[0]!;
   const pl = first.fin.monthly_pl ?? [];
-  const { cur, prv } = curAndPrv(pl);
+  const { cur, prv } = curAndPrv(pl, periodToTargetMonth(report.period));
 
   const opexChart = svgSimpleBars(pl.map((x) => ({ label: fmtMonthShortLocal(x.month), value: x.opex })), { width: 370, height: 155, color: "#f59e0b", title: "Monthly Operating Expenses" });
   const cogsChart = svgSimpleBars(pl.map((x) => ({ label: fmtMonthShortLocal(x.month), value: x.cogs })), { width: 370, height: 155, color: "#6366f1", title: "Monthly Cost of Revenue" });
@@ -864,7 +876,7 @@ function buildCostPage(report: BuiltReport, entities: { slug: string; m: EntityM
 function buildManagementInsightsPage(report: BuiltReport, entities: { slug: string; m: EntityMetrics; fin: FinancialsData }[], alerts: Alert[], headerFn: HeaderFn): string {
   const first = entities[0]!;
   const m = first.m;
-  const { cur, prv } = curAndPrv(first.fin.monthly_pl);
+  const { cur, prv } = curAndPrv(first.fin.monthly_pl, periodToTargetMonth(report.period));
   const monthName = cur ? fmtMonthName(cur.month) : report.period;
   const panels: string[] = [];
 
