@@ -456,7 +456,7 @@ function buildExecInsightsPage(report: BuiltReport, entities: { slug: string; m:
     entityTable = `${refSubHeading("Entity Performance Snapshot — Year to Date")}${refTable(tr(th("Entity"), th("Revenue YTD", "right"), th("Net Income YTD", "right"), th("Cash on Hand", "right"), th("Net Margin", "right")), tableRows)}`;
   }
 
-  const insightNarrative = getCtxParagraphs(report, "management_comments", paragraphs);
+  const insightNarrative = getCtxParagraphs(report, "management_comments", []);
   const insightHeading   = getCtxHeading(report, "management_comments", "Executive Insights");
 
   return wrapPage(`
@@ -809,20 +809,24 @@ function buildARPage(report: BuiltReport, entities: { slug: string; m: EntityMet
   const ov60 = totalAR * overduePct * 0.30;
   const ov90 = totalAR * overduePct * 0.25;
 
-  const agingRows = [
-    tr(td("Current (0–30 days)"), tdRaw(ac(currentAmt), "right"), td(fmtPercent((currentAmt / totalAR) * 100), "right")),
-    tr(td("31–60 days"), tdRaw(ac(ov30), "right"), td(fmtPercent((ov30 / totalAR) * 100), "right")),
-    tr(td("61–90 days"), tdRaw(ac(ov60), "right"), td(fmtPercent((ov60 / totalAR) * 100), "right")),
-    tr(td("Over 90 days"), tdRaw(ac(ov90), "right"), td(fmtPercent((ov90 / totalAR) * 100), "right")),
-    trTotal(td("Total AR", "left", true), tdRaw(ac(totalAR), "right", true), td("100.0%", "right", true)),
-  ].join("");
+  const agingRows = (_aging.length > 0
+    ? _aging.map((b) => tr(td(b.label), tdRaw(ac(b.amount), "right"), td(totalAR > 0 ? fmtPercent((b.amount / totalAR) * 100) : "—", "right")))
+    : [
+        tr(td("Current (0–30 days)"), tdRaw(ac(currentAmt), "right"), td(fmtPercent((currentAmt / totalAR) * 100), "right")),
+        tr(td("31–60 days"), tdRaw(ac(ov30), "right"), td(fmtPercent((ov30 / totalAR) * 100), "right")),
+        tr(td("61–90 days"), tdRaw(ac(ov60), "right"), td(fmtPercent((ov60 / totalAR) * 100), "right")),
+        tr(td("Over 90 days"), tdRaw(ac(ov90), "right"), td(fmtPercent((ov90 / totalAR) * 100), "right")),
+      ]
+  ).concat([trTotal(td("Total AR", "left", true), tdRaw(ac(totalAR), "right", true), td("100.0%", "right", true))]).join("");
 
+  const _arAp = (report.sections["ar_ap"] as Record<string, { customers: { top_customers: { name: string; balance: number }[]; aging: { label: string; amount: number }[] } | null } | null> | undefined)?.[first.slug];
+  const _customers = _arAp?.customers?.top_customers ?? [];
+  const _aging     = _arAp?.customers?.aging ?? [];
+  const realTopCustomers = _customers.filter((c) => c.balance > 0).sort((a, b) => b.balance - a.balance).slice(0, 5);
+  const othersTotal = _customers.filter((c) => c.balance > 0).sort((a, b) => b.balance - a.balance).slice(5).reduce((s, c) => s + c.balance, 0);
   const simTopCustomers = [
-    { label: "Client A", value: totalAR * 0.32, color: BRAND.accent },
-    { label: "Client B", value: totalAR * 0.24, color: BRAND.accent },
-    { label: "Client C", value: totalAR * 0.18, color: BRAND.accent },
-    { label: "Client D", value: totalAR * 0.14, color: "#93c5fd" },
-    { label: "Other", value: totalAR * 0.12, color: "#cbd5e1" },
+    ...realTopCustomers.map((c, i) => ({ label: c.name, value: c.balance, color: i < 3 ? BRAND.accent : "#93c5fd" })),
+    ...(othersTotal > 0 ? [{ label: "Other", value: othersTotal, color: "#cbd5e1" }] : []),
   ];
 
   const overdueAmt = totalAR * overduePct;
@@ -841,7 +845,7 @@ function buildARPage(report: BuiltReport, entities: { slug: string; m: EntityMet
     <div style="margin:10pt 0;">${svgHBarRef(simTopCustomers, { width: 520 })}</div>
     ${refSubHeading("AR Aging Summary")}
     ${refTable(tr(th("Aging Bucket"), th("Amount", "right"), th("% of Total", "right")), agingRows)}
-    ${refSmallNote("Customer concentration is estimated from AR aging totals. For precise breakdown, pull the AR Aging Detail report from QuickBooks Online.")}
+    ${refSmallNote("Customer balances and aging sourced from QuickBooks Online via FinanceOS.")}
   `);
 }
 
@@ -853,7 +857,7 @@ function buildCostPage(report: BuiltReport, entities: { slug: string; m: EntityM
   const { cur, prv } = curAndPrv(pl, periodToTargetMonth(report.period));
 
   const opexChart = svgSimpleBars(pl.map((x) => ({ label: fmtMonthShortLocal(x.month), value: x.opex })), { width: 370, height: 155, color: "#f59e0b", title: "Monthly Operating Expenses" });
-  const cogsChart = svgSimpleBars(pl.map((x) => ({ label: fmtMonthShortLocal(x.month), value: x.cogs })), { width: 370, height: 155, color: "#6366f1", title: "Monthly Cost of Revenue" });
+  const cogsChart = svgSimpleBars(plChart.map((x) => ({ label: fmtMonthShortLocal(x.month), value: x.cogs })), { width: 370, height: 155, color: "#6366f1", title: "Monthly Cost of Revenue" });
 
   const p1 = cur
     ? `Operating expenses for ${fmtMonthName(cur.month)} were ${fmtCurrency(cur.opex)}${cur.revenue > 0 ? `, representing ${fmtPercent(cur.opex / cur.revenue * 100)} of revenue` : ""}${prv ? ` — ${dirWord(chgAmt(cur.opex, prv.opex))} ${fmtCurrency(Math.abs(cur.opex - prv.opex))} from ${fmtCurrency(prv.opex)} in ${fmtMonthName(prv.month)}` : ""}.`
