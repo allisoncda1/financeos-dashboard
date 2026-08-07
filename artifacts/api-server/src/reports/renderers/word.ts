@@ -73,7 +73,7 @@ function tHeader(texts: string[], colW: number[]): TableRow {
         alignment: i === 0 ? AlignmentType.LEFT : AlignmentType.RIGHT,
       })],
     })
-  ));
+  )});
 }
 
 function tRow(cells: string[], colW: number[], isAlt = false, bold = false): TableRow {
