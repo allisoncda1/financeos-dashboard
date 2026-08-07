@@ -556,11 +556,13 @@ function buildPortfolioPage(report: BuiltReport, entities: { slug: string; m: En
 function buildPerformanceHighlights(report: BuiltReport, entities: { slug: string; m: EntityMetrics; fin: FinancialsData }[], headerFn: HeaderFn): string {
   const first = entities[0]!;
   const pl = first.fin.monthly_pl ?? [];
-  const { cur, prv } = curAndPrv(pl, periodToTargetMonth(report.period));
+  const _tm5 = periodToTargetMonth(report.period);
+  const plChart = _tm5 ? pl.filter((x) => x.month <= _tm5) : pl;
+  const { cur, prv } = curAndPrv(pl, _tm5);
   const monthName = cur ? fmtMonthName(cur.month) : report.period;
   const cashHistory = first.fin.cash_history ?? [];
 
-  const revChart = svgSimpleBars(pl.map((x) => ({ label: fmtMonthShortLocal(x.month), value: x.revenue })), { width: 370, height: 155, color: BRAND.accent, title: "Monthly Revenue" });
+  const revChart = svgSimpleBars(plChart.map((x) => ({ label: fmtMonthShortLocal(x.month), value: x.revenue })), { width: 370, height: 155, color: BRAND.accent, title: "Monthly Revenue" });
   const cashChart = svgLineRef(cashHistory.length > 0 ? cashHistory : pl.map((x, i) => ({ label: fmtMonthShortLocal(x.month), value: first.m.cash_on_hand + (i - pl.length + 1) * 10_000 })), { width: 370, height: 155, color: first.m.cash_on_hand < 0 ? "#ef4444" : BRAND.accent, title: "Cash Balance" });
   const niChart = svgSimpleBars(pl.map((x) => ({ label: fmtMonthShortLocal(x.month), value: x.net_income })), { width: 370, height: 155, color: cur?.net_income != null && cur.net_income < 0 ? "#ef4444" : "#10b981", title: "Monthly Net Income" });
   const marginChart = svgLineRef(pl.map((x) => ({ label: fmtMonthShortLocal(x.month), value: x.revenue > 0 ? (x.net_income / x.revenue) * 100 : 0 })), { width: 370, height: 155, color: BRAND.accent, title: "Net Margin %", yFormat: "percent" });
@@ -855,9 +857,11 @@ function buildARPage(report: BuiltReport, entities: { slug: string; m: EntityMet
 function buildCostPage(report: BuiltReport, entities: { slug: string; m: EntityMetrics; fin: FinancialsData }[], headerFn: HeaderFn): string {
   const first = entities[0]!;
   const pl = first.fin.monthly_pl ?? [];
-  const { cur, prv } = curAndPrv(pl, periodToTargetMonth(report.period));
+  const _tmC = periodToTargetMonth(report.period);
+  const plChart = _tmC ? pl.filter((x) => x.month <= _tmC) : pl;
+  const { cur, prv } = curAndPrv(pl, _tmC);
 
-  const opexChart = svgSimpleBars(pl.map((x) => ({ label: fmtMonthShortLocal(x.month), value: x.opex })), { width: 370, height: 155, color: "#f59e0b", title: "Monthly Operating Expenses" });
+  const opexChart = svgSimpleBars(plChart.map((x) => ({ label: fmtMonthShortLocal(x.month), value: x.opex })), { width: 370, height: 155, color: "#f59e0b", title: "Monthly Operating Expenses" });
   const cogsChart = svgSimpleBars(plChart.map((x) => ({ label: fmtMonthShortLocal(x.month), value: x.cogs })), { width: 370, height: 155, color: "#6366f1", title: "Monthly Cost of Revenue" });
 
   const p1 = cur
