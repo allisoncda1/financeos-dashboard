@@ -285,6 +285,7 @@ router.post("/reports/generate", requirePermission("reports"), async (req, res) 
       html:  "text/html; charset=utf-8",
       pdf:   "application/pdf",
       excel: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+      word: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
     };
 
     res.setHeader("Content-Type", contentTypeByFormat[format] ?? "application/octet-stream");

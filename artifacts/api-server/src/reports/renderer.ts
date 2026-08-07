@@ -11,6 +11,7 @@ import type { BuiltReport } from "./builder";
 import { HtmlRenderer } from "./renderers/html";
 import { PdfRenderer } from "./renderers/pdf";
 import { ExcelRenderer } from "./renderers/excel";
+import { WordRenderer } from "./renderers/word.js";
 
 export interface Renderer {
   format: string;
@@ -29,6 +30,7 @@ const RENDERERS: Record<string, Renderer> = {
   html: HtmlRenderer,
   pdf: PdfRenderer,
   excel: ExcelRenderer,
+  word: WordRenderer,
 };
 
 export function getRenderer(format: string): Renderer {
