@@ -596,6 +596,8 @@ function buildFinancialPerformance(report: BuiltReport, entities: { slug: string
   const curNM = nmPct(cur);
   const gmDelta = curGM != null && prvGM != null ? curGM - prvGM : null;
   const pl = first.fin.monthly_pl ?? [];
+  const _tmFP = periodToTargetMonth(report.period);
+  const plChart = _tmFP ? pl.filter((x) => x.month <= _tmFP) : pl;
 
   const kpis = refKpiRow([
     { label: "Monthly Revenue", value: fmtCurrency(cur?.revenue ?? first.m.revenue_ytd), ...kpiChange(chgAmt(cur?.revenue ?? 0, prv?.revenue), chgPct(cur?.revenue ?? 0, prv?.revenue)) },
@@ -604,11 +606,11 @@ function buildFinancialPerformance(report: BuiltReport, entities: { slug: string
     { label: "Net Margin", value: curNM != null ? `${fmtPercent(Math.abs(curNM))}${curNM < 0 ? " (loss)" : ""}` : "—", change: "", changeClass: "neu" },
   ]);
 
-  const groupedChart = pl.length >= 2
-    ? svgGroupedBars(pl.map((x) => fmtMonthShortLocal(x.month)), [
-        { label: "Revenue", color: BRAND.accent, values: pl.map((x) => x.revenue) },
-        { label: "Gross Profit", color: "#10b981", values: pl.map((x) => x.gross_profit) },
-        { label: "Net Income", color: "#6366f1", values: pl.map((x) => x.net_income) },
+  const groupedChart = plChart.length >= 2
+    ? svgGroupedBars(plChart.map((x) => fmtMonthShortLocal(x.month)), [
+        { label: "Revenue", color: BRAND.accent, values: plChart.map((x) => x.revenue) },
+        { label: "Gross Profit", color: "#10b981", values: plChart.map((x) => x.gross_profit) },
+        { label: "Net Income", color: "#6366f1", values: plChart.map((x) => x.net_income) },
       ], { width: 520, height: 200, title: "Revenue, Gross Profit, and Net Income — Monthly" })
     : "";
 
@@ -837,7 +839,7 @@ function buildARPage(report: BuiltReport, entities: { slug: string; m: EntityMet
     (m.ar_overdue_pct > 25 ? " The elevated overdue rate presents a material collection risk." : " The overdue rate is within manageable range and should be monitored.");
 
   const p2 = m.dso_days != null
-    ? `Days Sales Outstanding (DSO) is ${m.dso_days} days${m.dso_days_standard != null ? `, ${m.dso_days - m.dso_days_standard > 0 ? `${m.dso_days - m.dso_days_standard} days above` : `${Math.abs(m.dso_days - m.dso_days_standard)} days below`} the ${m.dso_days_standard}-day standard` : ""}.`
+    ? `Days Sales Outstanding (DSO) is ${m.dso_days} days${m.dso_days_standard != null ? `, ${m.dso_days - m.dso_days_standard > 0 ? `${Math.round(m.dso_days - m.dso_days_standard)} days above` : `${Math.round(Math.abs(m.dso_days - m.dso_days_standard))} days below`} the ${Math.round(m.dso_days_standard)}-day standard` : ""}.`
     : "";
 
   return wrapPage(`
