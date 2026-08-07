@@ -135,7 +135,7 @@ export default function ReportCenterPage() {
   const [selectedTemplate, setSelectedTemplate] = useState<TemplateId>("monthly-close");
   const [period, setPeriod]             = useState("Jul 2026 (Latest)");
   const [selectedEntities, setSelectedEntities] = useState<string[]>([...ENTITY_SLUGS]);
-  const [format, setFormat]             = useState<"json" | "pdf" | "excel" | "html">("json");
+  const [format, setFormat]             = useState<"json" | "pdf" | "excel" | "html" | "word">("json");
   const [previewOpen, setPreviewOpen]   = useState(false);
   const [resultOpen, setResultOpen]     = useState(false);
   const [historyRefreshKey, setHistoryRefreshKey] = useState(0);
@@ -196,7 +196,7 @@ export default function ReportCenterPage() {
     }
   }, [selectedTemplate, selectedEntities, period, navigate]);
 
-  const handleDownload = async (downloadFormat: "pdf" | "excel" | "html") => {
+  const handleDownload = async (downloadFormat: "pdf" | "excel" | "html" | "word") => {
     try {
       await download({
         template: selectedTemplate,
@@ -476,6 +476,7 @@ export default function ReportCenterPage() {
                     { id: "pdf" as const, label: "PDF", icon: FileText },
                     { id: "excel" as const, label: "Excel", icon: FileSpreadsheet },
                     { id: "html" as const, label: "HTML", icon: FileText },
+                    { id: "word" as const, label: "Word", icon: FileText },
                   ]).map(({ id, label, icon: Icon }) => (
                     <button
                       key={id}

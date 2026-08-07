@@ -213,11 +213,11 @@ router.post("/reports/generate", requirePermission("reports"), async (req, res) 
     return;
   }
   const format = body.format;
-  if (format !== "json" && format !== "pdf" && format !== "excel" && format !== "html") {
+  if (format !== "json" && format !== "pdf" && format !== "excel" && format !== "html" && format !== "word") {
     res.status(400).json({ ok: false, error: '`format` must be one of "json", "pdf", "excel", "html"', ts: new Date().toISOString() });
     return;
   }
-  const fileExtension = format === "excel" ? "xlsx" : format;
+  const fileExtension = format === "excel" ? "xlsx" : format === "word" ? "docx" : format;
 
   let entities: EntitySlug[] | "all";
   if (body.entities === "all") {
@@ -285,6 +285,7 @@ router.post("/reports/generate", requirePermission("reports"), async (req, res) 
       html:  "text/html; charset=utf-8",
       pdf:   "application/pdf",
       excel: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+      word: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
       word: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
     };
 

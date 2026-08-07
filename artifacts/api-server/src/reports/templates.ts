@@ -25,7 +25,7 @@ export type ReportSection = {
   includeEntities: boolean;
 };
 
-export type ReportOutputFormat = "json" | "pdf" | "excel" | "html";
+export type ReportOutputFormat = "json" | "pdf" | "excel" | "html" | "word";
 
 export type ReportTemplate = {
   id: string;
