@@ -89,7 +89,7 @@ function tRow(cells: string[], colW: number[], isAlt = false, bold = false): Tab
         alignment: i === 0 ? AlignmentType.LEFT : AlignmentType.RIGHT,
       })],
     })
-  ));
+  )});
 }
 
 function tTotal(cells: string[], colW: number[]): TableRow {
@@ -104,7 +104,7 @@ function tTotal(cells: string[], colW: number[]): TableRow {
         alignment: i === 0 ? AlignmentType.LEFT : AlignmentType.RIGHT,
       })],
     })
-  ));
+  )});
 }
 
 export const WordRenderer: Renderer = {
