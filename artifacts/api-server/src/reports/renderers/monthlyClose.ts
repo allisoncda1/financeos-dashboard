@@ -804,6 +804,10 @@ function buildARPage(report: BuiltReport, entities: { slug: string; m: EntityMet
   const m = first.m;
   const totalAR = m.open_ar;
   const overduePct = m.ar_overdue_pct / 100;
+  const _arAp = (report.sections["ar_ap"] as Record<string, { customers: { top_customers: { name: string; balance: number }[]; aging: { label: string; amount: number }[] } | null } | null> | undefined)?.[first.slug];
+  const _customers = _arAp?.customers?.top_customers ?? [];
+  const _aging     = _arAp?.customers?.aging ?? [];
+
   const currentAmt = totalAR * (1 - overduePct);
   const ov30 = totalAR * overduePct * 0.45;
   const ov60 = totalAR * overduePct * 0.30;
@@ -819,9 +823,6 @@ function buildARPage(report: BuiltReport, entities: { slug: string; m: EntityMet
       ]
   ).concat([trTotal(td("Total AR", "left", true), tdRaw(ac(totalAR), "right", true), td("100.0%", "right", true))]).join("");
 
-  const _arAp = (report.sections["ar_ap"] as Record<string, { customers: { top_customers: { name: string; balance: number }[]; aging: { label: string; amount: number }[] } | null } | null> | undefined)?.[first.slug];
-  const _customers = _arAp?.customers?.top_customers ?? [];
-  const _aging     = _arAp?.customers?.aging ?? [];
   const realTopCustomers = _customers.filter((c) => c.balance > 0).sort((a, b) => b.balance - a.balance).slice(0, 5);
   const othersTotal = _customers.filter((c) => c.balance > 0).sort((a, b) => b.balance - a.balance).slice(5).reduce((s, c) => s + c.balance, 0);
   const simTopCustomers = [
