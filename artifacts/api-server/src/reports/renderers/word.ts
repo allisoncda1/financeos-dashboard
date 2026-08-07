@@ -25,8 +25,8 @@ function fmtMonth(m: string): string {
 function fmtUsd(n: number | null | undefined): string {
   if (n == null || isNaN(n)) return "-";
   const abs = Math.abs(n);
-  const f = abs.toLocaleString("en-US", { minimumFractionDigits: 0, maximumFractionDigits: 0 });
-  return n < 0 ? "($" + f + ")" : "$" + f;
+  const ff = abs.toLocaleString("en-US", { minimumFractionDigits: 0, maximumFractionDigits: 0 });
+  return n < 0 ? "($" + ff + ")" : "$" + ff;
 }
 
 function fmtPct(n: number | null | undefined): string {
@@ -62,56 +62,49 @@ function kpiRow(label: string, value: string, sub?: string): Paragraph {
 }
 
 function tHeader(texts: string[], colW: number[]): TableRow {
-  return new TableRow({
-    tableHeader: true,
-    children: texts.map((text, i) =>
-      new TableCell({
-        width: { size: colW[i] ?? 1500, type: WidthType.DXA },
-        shading: { type: ShadingType.SOLID, color: NAVY, fill: NAVY },
-        borders: noBorder(),
-        margins: { top: 80, bottom: 80, left: 120, right: 120 },
-        children: [new Paragraph({
-          children: [new TextRun({ text, font: FONT, bold: true, color: WHITE, size: 16 })],
-          alignment: i === 0 ? AlignmentType.LEFT : AlignmentType.RIGHT,
-        })],
-      })
-    ),
-  });
+  return new TableRow({ tableHeader: true, children: texts.map((text, i) =>
+    new TableCell({
+      width: { size: colW[i] ?? 1500, type: WidthType.DXA },
+      shading: { type: ShadingType.SOLID, color: NAVY, fill: NAVY },
+      borders: noBorder(),
+      margins: { top: 80, bottom: 80, left: 120, right: 120 },
+      children: [new Paragraph({
+        children: [new TextRun({ text, font: FONT, bold: true, color: WHITE, size: 16 })],
+        alignment: i === 0 ? AlignmentType.LEFT : AlignmentType.RIGHT,
+      })],
+    })
+  ));
 }
 
 function tRow(cells: string[], colW: number[], isAlt = false, bold = false): TableRow {
   const fill = isAlt ? "f0eeff" : WHITE;
-  return new TableRow({
-    children: cells.map((text, i) =>
-      new TableCell({
-        width: { size: colW[i] ?? 1500, type: WidthType.DXA },
-        shading: { type: ShadingType.SOLID, color: fill, fill },
-        borders: thinBorder(),
-        margins: { top: 60, bottom: 60, left: 120, right: 120 },
-        children: [new Paragraph({
-          children: [new TextRun({ text, font: FONT, bold, size: 17, color: NAVY })],
-          alignment: i === 0 ? AlignmentType.LEFT : AlignmentType.RIGHT,
-        })],
-      })
-    ),
-  });
+  return new TableRow({ children: cells.map((text, i) =>
+    new TableCell({
+      width: { size: colW[i] ?? 1500, type: WidthType.DXA },
+      shading: { type: ShadingType.SOLID, color: fill, fill },
+      borders: thinBorder(),
+      margins: { top: 60, bottom: 60, left: 120, right: 120 },
+      children: [new Paragraph({
+        children: [new TextRun({ text, font: FONT, bold, size: 17, color: NAVY })],
+        alignment: i === 0 ? AlignmentType.LEFT : AlignmentType.RIGHT,
+      })],
+    })
+  ));
 }
 
-function tTotalRow(cells: string[], colW: number[]): TableRow {
-  return new TableRow({
-    children: cells.map((text, i) =>
-      new TableCell({
-        width: { size: colW[i] ?? 1500, type: WidthType.DXA },
-        shading: { type: ShadingType.SOLID, color: "e9e4ff", fill: "e9e4ff" },
-        borders: thinBorder(),
-        margins: { top: 80, bottom: 80, left: 120, right: 120 },
-        children: [new Paragraph({
-          children: [new TextRun({ text, font: FONT, bold: true, size: 17, color: NAVY })],
-          alignment: i === 0 ? AlignmentType.LEFT : AlignmentType.RIGHT,
-        })],
-      })
-    ),
-  });
+function tTotal(cells: string[], colW: number[]): TableRow {
+  return new TableRow({ children: cells.map((text, i) =>
+    new TableCell({
+      width: { size: colW[i] ?? 1500, type: WidthType.DXA },
+      shading: { type: ShadingType.SOLID, color: "e9e4ff", fill: "e9e4ff" },
+      borders: thinBorder(),
+      margins: { top: 80, bottom: 80, left: 120, right: 120 },
+      children: [new Paragraph({
+        children: [new TextRun({ text, font: FONT, bold: true, size: 17, color: NAVY })],
+        alignment: i === 0 ? AlignmentType.LEFT : AlignmentType.RIGHT,
+      })],
+    })
+  ));
 }
 
 export const WordRenderer: Renderer = {
@@ -119,8 +112,7 @@ export const WordRenderer: Renderer = {
   async render(report: BuiltReport): Promise<Buffer> {
     const els: (Paragraph | Table)[] = [];
     const targetMonth = periodToTargetMonth(report.period);
-    const entityName = report.branding.mode === "single" && report.branding.primaryEntity
-      ? report.branding.primaryEntity.name : "Portfolio";
+    const entityName = report.branding.mode === "single" && report.branding.primaryEntity ? report.branding.primaryEntity.name : "Portfolio";
 
     els.push(
       new Paragraph({ children: [new TextRun({ text: "", font: FONT, size: 24 })], spacing: { before: convertInchesToTwip(0.8) } }),
@@ -142,13 +134,11 @@ export const WordRenderer: Renderer = {
     if (last12.length > 0) {
       const cur = last12[last12.length - 1]!;
       const prev = last12[last12.length - 2];
-
       els.push(sectionTitle("Financial Highlights - " + fmtMonth(cur.month)));
       els.push(kpiRow("Revenue", fmtUsd(cur.revenue), prev ? "vs " + fmtUsd(prev.revenue) + " prior month" : undefined));
       els.push(kpiRow("Gross Profit", fmtUsd(cur.gross_profit), cur.revenue ? fmtPct(cur.gross_profit / cur.revenue * 100) + " margin" : undefined));
       els.push(kpiRow("Net Income", fmtUsd(cur.net_income), cur.revenue ? fmtPct(cur.net_income / cur.revenue * 100) + " margin" : undefined));
       els.push(new Paragraph({ text: "", spacing: { after: 200 } }));
-
       els.push(sectionTitle("Monthly P&L Summary"));
       const colW = [1600, 1300, 1300, 1300, 1300, 1300];
       const plRows = last12.map((m, i) => {
@@ -156,10 +146,8 @@ export const WordRenderer: Renderer = {
         const nm = m.revenue ? (m.net_income / m.revenue) * 100 : null;
         return tRow([fmtMonth(m.month), fmtUsd(m.revenue), fmtUsd(m.gross_profit), fmtPct(gm), fmtUsd(m.net_income), fmtPct(nm)], colW, i % 2 === 1, m.month === cur.month);
       });
-      els.push(
-        new Table({ width: { size: 8800, type: WidthType.DXA }, rows: [tHeader(["Month", "Revenue", "Gross Profit", "Gross Margin", "Net Income", "Net Margin"], colW), ...plRows], borders: noBorder() }),
-        new Paragraph({ text: "", spacing: { after: 120 } }),
-      );
+      els.push(new Table({ width: { size: 8800, type: WidthType.DXA }, rows: [tHeader(["Month", "Revenue", "Gross Profit", "Gross Margin", "Net Income", "Net Margin"], colW), ...plRows], borders: noBorder() }));
+      els.push(new Paragraph({ text: "", spacing: { after: 120 } }));
     }
 
     const arAp = report.sections["ar_ap"] as Record<string, { customers: unknown }> | undefined;
@@ -171,20 +159,16 @@ export const WordRenderer: Renderer = {
       els.push(sectionTitle("AR Aging Summary"));
       const colW = [4000, 2400];
       const total = aging.reduce((s, r) => s + r.amount, 0);
-      els.push(
-        new Table({ width: { size: 6400, type: WidthType.DXA }, rows: [tHeader(["Aging Bucket", "Amount"], colW), ...aging.map((r, i) => tRow([r.label, fmtUsd(r.amount)], colW, i % 2 === 1)), tTotalRow(["Total AR", fmtUsd(total)], colW)], borders: noBorder() }),
-        new Paragraph({ text: "", spacing: { after: 120 } }),
-      );
+      els.push(new Table({ width: { size: 6400, type: WidthType.DXA }, rows: [tHeader(["Aging Bucket", "Amount"], colW), ...aging.map((r, i) => tRow([r.label, fmtUsd(r.amount)], colW, i % 2 === 1)), tTotal(["Total AR", fmtUsd(total)], colW)], borders: noBorder() }));
+      els.push(new Paragraph({ text: "", spacing: { after: 120 } }));
     }
 
     const topCustomers = arData?.top_customers ?? [];
     if (topCustomers.length > 0) {
       els.push(sectionTitle("Top Customers by AR Balance"));
       const colW = [4500, 2400];
-      els.push(
-        new Table({ width: { size: 6900, type: WidthType.DXA }, rows: [tHeader(["Customer", "Balance"], colW), ...topCustomers.slice(0, 10).map((c, i) => tRow([c.name, fmtUsd(c.balance)], colW, i % 2 === 1))], borders: noBorder() }),
-        new Paragraph({ text: "", spacing: { after: 120 } }),
-      );
+      els.push(new Table({ width: { size: 6900, type: WidthType.DXA }, rows: [tHeader(["Customer", "Balance"], colW), ...topCustomers.slice(0, 10).map((c, i) => tRow([c.name, fmtUsd(c.balance)], colW, i % 2 === 1))], borders: noBorder() }));
+      els.push(new Paragraph({ text: "", spacing: { after: 120 } }));
     }
 
     els.push(
