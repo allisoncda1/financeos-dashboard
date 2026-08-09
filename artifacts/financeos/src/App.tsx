@@ -26,6 +26,8 @@ import IntegrityPage from "@/pages/control/integrity";
 import SettingsPage from "@/pages/control/settings";
 import UsersAccessPage from "@/pages/control/users";
 import InviteAcceptPage from "@/pages/invite-accept";
+import ForgotPasswordPage from "@/pages/forgot-password";
+import ResetPasswordPage from "@/pages/reset-password";
 import ValidationPage from "@/pages/control/validation";
 import OperationsPage from "@/pages/operations";
 import ReportsPage from "@/pages/reports";
@@ -302,6 +304,8 @@ function Router() {
   return (
     <Switch>
       <Route path="/login" component={LoginPage} />
+      <Route path="/forgot-password" component={ForgotPasswordPage} />
+      <Route path="/reset-password" component={ResetPasswordPage} />
       <Route path="/mfa/setup" component={MfaSetupPage} />
       <Route path="/mfa/challenge" component={MfaChallengePage} />
       <Route path="/privacy" component={PrivacyPage} />

@@ -16,4 +16,5 @@
 - [FinanceOS health score single source](financeos-health-score-single-source.md) — score computed once in api-server lib/health.ts, injected at getEntityMetrics+snapshots; UI reads metrics.health_score, never recomputes; server formula has no AP term (briefing does, mock-only).
 - [FinanceOS alerts come from Core](financeos-alerts-core-source.md) — Dashboard READS alerts from Core `alerts` table (entity_id NULL=portfolio); RulesEngine still calcs for AI/reports only; normalizeSource PRESERVES `db` (treated healthy like live), only unknown→live.
 - [FinanceOS two health scores](financeos-two-health-scores.md) — dashboard Company Health (lib/healthScore) is intentionally richer/different from the compact briefing.ts badge; do not reconcile them.
+- [FinanceOS Resend email](financeos-resend-email.md) — API key secret is named `Resend`; onboarding@resend.dev sender only delivers to the Resend account owner until a domain is verified.
 - [Budget V1.1 manual merge](budget-v11-manual-merge.md) — remote budget code assumes one DB + mixed-case slugs; budgets go to ops DB via opsDb, rename schema exports, lower-case slug lookups.

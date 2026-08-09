@@ -103,6 +103,12 @@ export default function LoginPage() {
               {submitting ? <Loader2 className="w-4 h-4 animate-spin" /> : "Sign in"}
             </Button>
           </form>
+
+          <p className="mt-4 text-center text-[12px] text-gray-500">
+            <a href="/forgot-password" className="text-gray-700 underline underline-offset-2">
+              Forgot password?
+            </a>
+          </p>
         </div>
       </div>
     </div>
