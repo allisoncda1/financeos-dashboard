@@ -7,7 +7,24 @@ import { useCommissionEntity } from "@/lib/commission-context";
 import type { EntitySlug } from "@/lib/entities";
 import { useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { Zap } from "lucide-react";
+import { RefreshCw } from "lucide-react";
+import { api } from "@/lib/api";
+
+// Build last 12 months as options
+function buildMonthOptions() {
+  const options = [];
+  const now = new Date();
+  for (let i = 0; i < 12; i++) {
+    const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+    const year = d.getFullYear();
+    const month = d.getMonth() + 1;
+    const label = d.toLocaleString("default", { month: "long", year: "numeric" });
+    const value = `${year}-${String(month).padStart(2, "0")}`;
+    options.push({ value, label });
+  }
+  return options;
+}
+const MONTH_OPTIONS = buildMonthOptions();
 
 type CommissionLayoutProps = {
   title: string;
@@ -18,6 +35,28 @@ type CommissionLayoutProps = {
 export function CommissionLayout({ title, subtitle, children }: CommissionLayoutProps) {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const { activeSlug, setActiveSlug } = useCommissionEntity();
+  const [selectedMonth, setSelectedMonth] = useState(MONTH_OPTIONS[0].value);
+  const [syncing, setSyncing] = useState(false);
+  const [syncResult, setSyncResult] = useState<string | null>(null);
+
+  async function handleSync() {
+    setSyncing(true);
+    setSyncResult(null);
+    try {
+      const [year, month] = selectedMonth.split("-").map(Number);
+      const fromDate = `${year}-${String(month).padStart(2, "0")}-01`;
+      const lastDay = new Date(year, month, 0).getDate();
+      const toDate = `${year}-${String(month).padStart(2, "0")}-${String(lastDay).padStart(2, "0")}`;
+      const res = await api.ingestCommissions(activeSlug, { fromDate, toDate }) as { data: { processed: number; created: number; updated: number } };
+      const d = res.data;
+      setSyncResult(`Done — ${d.processed} processed, ${d.created} created, ${d.updated} updated`);
+      window.location.reload();
+    } catch {
+      setSyncResult("Sync failed — check console");
+    } finally {
+      setSyncing(false);
+    }
+  }
 
   return (
     <div className="flex h-screen w-full bg-slate-50 overflow-hidden font-sans">
@@ -70,24 +109,30 @@ export function CommissionLayout({ title, subtitle, children }: CommissionLayout
                 </SelectContent>
               </Select>
 
-              <Select disabled>
-                <SelectTrigger
-                  className="w-[130px] h-8 text-xs font-medium bg-gray-50 border-gray-200 text-gray-400 cursor-not-allowed"
-                  title="Period selection not yet implemented"
-                >
-                  <SelectValue placeholder="Period" />
+              <Select value={selectedMonth} onValueChange={setSelectedMonth}>
+                <SelectTrigger className="w-[160px] h-8 text-xs font-medium bg-white border-gray-200 shadow-sm focus:ring-emerald-500 focus:border-emerald-500">
+                  <SelectValue />
                 </SelectTrigger>
+                <SelectContent>
+                  {MONTH_OPTIONS.map(o => (
+                    <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>
+                  ))}
+                </SelectContent>
               </Select>
 
               <button
-                data-testid="button-calculate-commissions"
-                disabled
-                title="Commission engine not yet implemented"
-                className="flex items-center gap-2 px-4 h-8 bg-gray-300 text-gray-500 rounded-lg shadow-sm text-[12px] font-semibold cursor-not-allowed"
+                data-testid="button-sync-invoices"
+                onClick={handleSync}
+                disabled={syncing}
+                className="flex items-center gap-2 px-4 h-8 bg-emerald-600 hover:bg-emerald-700 disabled:bg-emerald-400 text-white rounded-lg shadow-sm text-[12px] font-semibold transition-colors"
               >
-                <Zap className="w-3.5 h-3.5" />
-                Calculate Commissions
+                <RefreshCw className={`w-3.5 h-3.5 ${syncing ? "animate-spin" : ""}`} />
+                {syncing ? "Syncing…" : "Sync Invoices"}
               </button>
+
+              {syncResult && (
+                <span className="text-[11px] text-emerald-700 font-medium">{syncResult}</span>
+              )}
             </div>
           </div>
         </div>
