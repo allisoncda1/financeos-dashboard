@@ -4,12 +4,24 @@ on:
   pull_request:
     paths:
       - "artifacts/api-server/src/db/commissions.ts"
+      - "artifacts/api-server/src/db/commissionDocuments.ts"
       - "artifacts/api-server/src/db/ops-connection.ts"
       - "artifacts/api-server/src/db/migrations/commission_*.sql"
       - "artifacts/api-server/src/services/commissionEngine.ts"
+      - "artifacts/api-server/src/services/expenseAllocation.ts"
+      - "artifacts/api-server/src/services/pdfExtraction.ts"
+      - "artifacts/api-server/src/services/commissionDocumentStorage.ts"
+      - "artifacts/api-server/src/services/documentProcessing.ts"
+      - "artifacts/api-server/src/ai/**"
       - "artifacts/api-server/src/routes/commissions.ts"
+      - "artifacts/api-server/src/routes/commissionDocuments.ts"
       - "artifacts/api-server/src/__tests__/commissions.route.test.ts"
+      - "artifacts/api-server/src/__tests__/commissionDocuments.route.test.ts"
+      - "artifacts/api-server/src/__tests__/documentProcessing.test.ts"
+      - "artifacts/api-server/src/__tests__/expenseAllocation.test.ts"
+      - "artifacts/api-server/src/__tests__/documentExtractionValidation.test.ts"
       - "artifacts/api-server/scripts/test-commissions-pg.ts"
+      - "artifacts/api-server/scripts/test-commission-documents-pg.ts"
       - "artifacts/api-server/tsconfig.commissions.json"
       - "artifacts/api-server/package.json"
       - "pnpm-lock.yaml"
@@ -78,7 +90,14 @@ jobs:
 
       - name: Unit tests (vitest — commission suite only, no database required)
         working-directory: artifacts/api-server
-        run: pnpm exec vitest run src/__tests__/commissions.route.test.ts --reporter=verbose
+        run: |
+          pnpm exec vitest run \
+            src/__tests__/commissions.route.test.ts \
+            src/__tests__/commissionDocuments.route.test.ts \
+            src/__tests__/documentProcessing.test.ts \
+            src/__tests__/expenseAllocation.test.ts \
+            src/__tests__/documentExtractionValidation.test.ts \
+            --reporter=verbose
 
       - name: Wait for PostgreSQL service
         run: |
@@ -96,11 +115,22 @@ jobs:
         env:
           GITHUB_ACTIONS: "true"
 
+      - name: Commission Documents PostgreSQL integration tests
+        working-directory: artifacts/api-server
+        shell: bash
+        run: |
+          set -o pipefail
+          pnpm test:commission-documents:pg 2>&1 | tee /tmp/pg-documents-integration-output.txt
+        env:
+          GITHUB_ACTIONS: "true"
+
       - name: Upload integration test output
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: pg-integration-output
-          path: /tmp/pg-integration-output.txt
+          path: |
+            /tmp/pg-integration-output.txt
+            /tmp/pg-documents-integration-output.txt
           if-no-files-found: warn
           retention-days: 14

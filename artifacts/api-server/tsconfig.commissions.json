@@ -21,6 +21,11 @@
     "src/routes/commissions.ts",
     "src/routes/commissionDocuments.ts",
     "src/__tests__/commissions.route.test.ts",
-    "scripts/test-commissions-pg.ts"
+    "src/__tests__/expenseAllocation.test.ts",
+    "src/__tests__/commissionDocuments.route.test.ts",
+    "src/__tests__/documentProcessing.test.ts",
+    "src/__tests__/documentExtractionValidation.test.ts",
+    "scripts/test-commissions-pg.ts",
+    "scripts/test-commission-documents-pg.ts"
   ]
 }
