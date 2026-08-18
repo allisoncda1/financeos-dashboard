@@ -124,12 +124,13 @@ vi.mock("@/components/layout/GlobalHeader", () => ({
 }));
 
 describe("Commission pages — honest not-implemented states", () => {
+  // "calculations", "plans", and "sales-reps" shipped live in PR #45 and no
+  // longer render a stub notice — see the "wired to real APIs" describe block
+  // below for their regression coverage. "clients" and "reports" remain
+  // genuine not-implemented stubs.
   const COMMISSION_PAGES: Array<[string, string]> = [
-    ["calculations", "commission-calculations-unavailable"],
     ["clients", "commission-clients-unavailable"],
-    ["plans", "commission-plans-unavailable"],
     ["reports", "commission-reports-unavailable"],
-    ["sales-reps", "commission-sales-reps-unavailable"],
   ];
 
   for (const [page, testId] of COMMISSION_PAGES) {
@@ -139,29 +140,56 @@ describe("Commission pages — honest not-implemented states", () => {
       expect(screen.getByTestId(testId)).toBeTruthy();
     });
   }
+});
 
-  it("commissions/invoices delegates to CommissionStatusTable (which is itself a stub)", async () => {
-    const { default: Page } = await import("../commissions/invoices");
-    render(<Page />);
-    expect(screen.getByTestId("commission-status-table-unavailable")).toBeTruthy();
+// ─── 3b. Commission pages shipped live in PR #45 — must call real APIs, ──────
+//         never regress back to a stub notice.
+describe("Commission pages — wired to real APIs (PR #45), not stubs", () => {
+  const LIVE_PAGES: Array<[string, string, string]> = [
+    ["calculations", "commission-calculations-unavailable", "api.commissionLines"],
+    ["plans", "commission-plans-unavailable", "api.commissionRules"],
+    ["sales-reps", "commission-sales-reps-unavailable", "api.commissionRepresentatives"],
+  ];
+
+  for (const [page, staleTestId, apiCall] of LIVE_PAGES) {
+    it(`commissions/${page} source calls ${apiCall} and no longer renders a stub notice`, () => {
+      const content = src(`pages/commissions/${page}.tsx`);
+      expect(content).toContain(apiCall);
+      expect(content).not.toContain(staleTestId);
+    });
+  }
+
+  it("commissions/invoices renders the live CommissionStatusTable, not a stub", () => {
+    const content = src("pages/commissions/invoices.tsx");
+    expect(content).toContain("CommissionStatusTable");
+    expect(content).not.toContain("commission-status-table-unavailable");
   });
 
-  it("commissions/payouts shows payout stub and upcoming payout stub", async () => {
-    const { default: Page } = await import("../commissions/payouts");
-    render(<Page />);
-    expect(screen.getByTestId("commission-payouts-unavailable")).toBeTruthy();
-    expect(screen.getByTestId("commission-upcoming-payout-unavailable")).toBeTruthy();
+  it("CommissionStatusTable itself calls real APIs, not a stub notice", () => {
+    const content = src("components/commission/CommissionStatusTable.tsx");
+    expect(content).toContain("api.commissionRepresentatives");
+    expect(content).toContain("api.commissionLines");
+    expect(content).not.toContain("commission-status-table-unavailable");
+  });
+
+  it("commissions/payouts source calls real api.commissionLines for approved/locked lines, not a stub", () => {
+    const content = src("pages/commissions/payouts.tsx");
+    expect(content).toContain('lineStatus: "approved"');
+    expect(content).toContain('lineStatus: "locked"');
+    expect(content).not.toContain("commission-payouts-unavailable");
+    expect(content).not.toContain("commission-upcoming-payout-unavailable");
   });
 });
 
 // ─── 4. Commission components render honest stubs ─────────────────────────────
 
 describe("Commission components — honest stubs, no mock data", () => {
+  // CommissionStatusTable shipped live in PR #45 (used by pages/commissions/
+  // invoices.tsx) and is covered under "wired to real APIs" above instead.
   const COMPONENT_TEST_IDS: Array<[string, string]> = [
     ["CommissionKPICards", "commission-kpi-unavailable"],
     ["CommissionPlanCard", "commission-plan-card-unavailable"],
     ["CommissionRepChart", "commission-rep-chart-unavailable"],
-    ["CommissionStatusTable", "commission-status-table-unavailable"],
     ["CommissionTrendChart", "commission-trend-chart-unavailable"],
     ["UpcomingPayoutCard", "commission-upcoming-payout-unavailable"],
   ];
@@ -273,11 +301,9 @@ describe("CommissionLayout — entity context wired, no dead affordances", () =>
     expect(content).toContain("setActiveSlug");
   });
 
-  it("Calculate Commissions button is disabled", () => {
+  it("Calculate Commissions button no longer exists (removed, not just disabled)", () => {
     const content = src("components/commission/CommissionLayout.tsx");
-    // The button must carry a disabled attribute
-    expect(content).toContain("disabled");
-    expect(content).toContain("Calculate Commissions");
+    expect(content).not.toContain("Calculate Commissions");
   });
 });
 
@@ -346,9 +372,11 @@ describe("CommissionLayout — no dead interactive period selector", () => {
     expect(content).not.toContain('<SelectItem value="jun26">');
   });
 
-  it("period Select carries disabled attribute", () => {
+  it("period Select is live — wired to setActivePeriod, not disabled", () => {
     const content = src("components/commission/CommissionLayout.tsx");
-    expect(content).toContain("<Select disabled>");
+    expect(content).toContain('data-testid="commission-period-select"');
+    expect(content).toContain("setActivePeriod");
+    expect(content).not.toMatch(/data-testid="commission-period-select"[^>]*disabled/);
   });
 });
 
