@@ -20,6 +20,7 @@ on:
       - "artifacts/api-server/src/__tests__/documentProcessing.test.ts"
       - "artifacts/api-server/src/__tests__/expenseAllocation.test.ts"
       - "artifacts/api-server/src/__tests__/documentExtractionValidation.test.ts"
+      - "artifacts/api-server/src/__tests__/commissionDocumentsDuplicateDetection.test.ts"
       - "artifacts/api-server/scripts/test-commissions-pg.ts"
       - "artifacts/api-server/scripts/test-commission-documents-pg.ts"
       - "artifacts/api-server/tsconfig.commissions.json"
@@ -97,6 +98,7 @@ jobs:
             src/__tests__/documentProcessing.test.ts \
             src/__tests__/expenseAllocation.test.ts \
             src/__tests__/documentExtractionValidation.test.ts \
+            src/__tests__/commissionDocumentsDuplicateDetection.test.ts \
             --reporter=verbose
 
       - name: Wait for PostgreSQL service

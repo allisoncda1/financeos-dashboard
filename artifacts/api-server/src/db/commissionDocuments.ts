@@ -203,12 +203,36 @@ export async function createCommissionDocument(input: {
     `);
     return { document: mapDocument(rows.rows[0] as Record<string, unknown>), created: true };
   } catch (err: unknown) {
-    const msg = err instanceof Error ? err.message : String(err);
-    if (msg.includes("uq_commission_documents_entity_sha256")) {
+    const pgErr = findPgDatabaseError(err);
+    if (pgErr?.code === "23505" && pgErr.constraint === "uq_commission_documents_entity_sha256") {
       throw Object.assign(new Error("duplicate_document"), { code: "DUPLICATE_DOCUMENT" });
     }
     throw err;
   }
+}
+
+/**
+ * findPgDatabaseError — unwraps drizzle-orm's DrizzleQueryError to reach the
+ * underlying `pg` DatabaseError.
+ *
+ * drizzle-orm (as of 0.4x) wraps every driver error in a DrizzleQueryError
+ * whose own `.message` is just "Failed query: <sql>\nparams: <params>" — NOT
+ * the original Postgres error text. The real error (with the SQLSTATE `code`
+ * and, for constraint violations, the `constraint` name) lives one level
+ * down in `.cause`. Matching on `err.message` directly (as an earlier
+ * version of this function did) silently never matches, since the SQL text
+ * itself doesn't mention the constraint name — this was only caught by
+ * exercising this exact code path against a real Postgres instance, not by
+ * mocked unit tests. Match on the unwrapped SQLSTATE `code` (23505 = unique
+ * violation) plus `constraint` name, not a substring of any `.message`.
+ */
+function findPgDatabaseError(err: unknown): { code?: string; constraint?: string } | null {
+  let current: unknown = err;
+  for (let i = 0; i < 5 && current instanceof Error; i++) {
+    if ("code" in current) return current as { code?: string; constraint?: string };
+    current = (current as { cause?: unknown }).cause;
+  }
+  return null;
 }
 
 /** Hard-delete — used ONLY as a compensating action when the object was

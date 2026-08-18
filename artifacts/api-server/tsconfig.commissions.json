@@ -25,6 +25,7 @@
     "src/__tests__/commissionDocuments.route.test.ts",
     "src/__tests__/documentProcessing.test.ts",
     "src/__tests__/documentExtractionValidation.test.ts",
+    "src/__tests__/commissionDocumentsDuplicateDetection.test.ts",
     "scripts/test-commissions-pg.ts",
     "scripts/test-commission-documents-pg.ts"
   ]
