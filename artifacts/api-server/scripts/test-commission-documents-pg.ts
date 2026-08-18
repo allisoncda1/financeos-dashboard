@@ -274,8 +274,8 @@ async function main(): Promise<void> {
         VALUES ($1::uuid, 0, 50.00) RETURNING id::text
       `, [docRows.rows[0].id]);
       const runLineRows = await pool.query<{ id: string }>(`
-        INSERT INTO commission_run_lines (entity_id, invoice_id, invoice_qbo_id, invoice_amount, line_status)
-        VALUES ($1::uuid, gen_random_uuid(), 'QBO-BLANK', 500.00, 'attributed') RETURNING id::text
+        INSERT INTO commission_run_lines (entity_id, invoice_id, invoice_qbo_id, invoice_amount, line_status, source_fingerprint)
+        VALUES ($1::uuid, gen_random_uuid(), 'QBO-BLANK', 500.00, 'attributed', 'ci-fp-blank-reason') RETURNING id::text
       `, [ENTITY_A]);
       let threw = false;
       try {
@@ -446,14 +446,14 @@ async function main(): Promise<void> {
       concurrencyLineId = lineRows.rows[0].id;
 
       const runA = await pool.query<{ id: string }>(`
-        INSERT INTO commission_run_lines (entity_id, invoice_id, invoice_qbo_id, invoice_amount, line_status)
-        VALUES ($1::uuid, $2::uuid, 'QBO-CONC-A', 1000.00, 'attributed') RETURNING id::text
+        INSERT INTO commission_run_lines (entity_id, invoice_id, invoice_qbo_id, invoice_amount, line_status, source_fingerprint)
+        VALUES ($1::uuid, $2::uuid, 'QBO-CONC-A', 1000.00, 'attributed', 'ci-fp-conc-a') RETURNING id::text
       `, [ENTITY_A, CONCURRENCY_INVOICE_A]);
       runLineAId = runA.rows[0].id;
 
       const runB = await pool.query<{ id: string }>(`
-        INSERT INTO commission_run_lines (entity_id, invoice_id, invoice_qbo_id, invoice_amount, line_status)
-        VALUES ($1::uuid, $2::uuid, 'QBO-CONC-B', 1000.00, 'attributed') RETURNING id::text
+        INSERT INTO commission_run_lines (entity_id, invoice_id, invoice_qbo_id, invoice_amount, line_status, source_fingerprint)
+        VALUES ($1::uuid, $2::uuid, 'QBO-CONC-B', 1000.00, 'attributed', 'ci-fp-conc-b') RETURNING id::text
       `, [ENTITY_A, CONCURRENCY_INVOICE_B]);
       runLineBId = runB.rows[0].id;
     });
@@ -515,12 +515,12 @@ async function main(): Promise<void> {
       `, [doc.document.id]);
       const lineId = lineRows.rows[0].id;
       const runA = await pool.query<{ id: string }>(`
-        INSERT INTO commission_run_lines (entity_id, invoice_id, invoice_qbo_id, invoice_amount, line_status)
-        VALUES ($1::uuid, gen_random_uuid(), 'QBO-ROLLBACK-A', 500.00, 'attributed') RETURNING id::text
+        INSERT INTO commission_run_lines (entity_id, invoice_id, invoice_qbo_id, invoice_amount, line_status, source_fingerprint)
+        VALUES ($1::uuid, gen_random_uuid(), 'QBO-ROLLBACK-A', 500.00, 'attributed', 'ci-fp-rollback-a') RETURNING id::text
       `, [ENTITY_A]);
       const runB = await pool.query<{ id: string }>(`
-        INSERT INTO commission_run_lines (entity_id, invoice_id, invoice_qbo_id, invoice_amount, line_status)
-        VALUES ($1::uuid, gen_random_uuid(), 'QBO-ROLLBACK-B', 500.00, 'attributed') RETURNING id::text
+        INSERT INTO commission_run_lines (entity_id, invoice_id, invoice_qbo_id, invoice_amount, line_status, source_fingerprint)
+        VALUES ($1::uuid, gen_random_uuid(), 'QBO-ROLLBACK-B', 500.00, 'attributed', 'ci-fp-rollback-b') RETURNING id::text
       `, [ENTITY_A]);
 
       let threw = false;
@@ -557,8 +557,8 @@ async function main(): Promise<void> {
       `, [ENTITY_A, repId]);
       const ruleId = ruleRows.rows[0].id;
       const runLineRows = await pool.query<{ id: string }>(`
-        INSERT INTO commission_run_lines (entity_id, invoice_id, invoice_qbo_id, invoice_amount, invoice_status, representative_id, commission_rule_id, line_status)
-        VALUES ($1::uuid, gen_random_uuid(), 'QBO-CONFIGURED', 500.00, 'paid', $2::uuid, $3::uuid, 'attributed')
+        INSERT INTO commission_run_lines (entity_id, invoice_id, invoice_qbo_id, invoice_amount, invoice_status, representative_id, commission_rule_id, line_status, source_fingerprint)
+        VALUES ($1::uuid, gen_random_uuid(), 'QBO-CONFIGURED', 500.00, 'paid', $2::uuid, $3::uuid, 'attributed', 'ci-fp-configured-recalc')
         RETURNING id::text
       `, [ENTITY_A, repId, ruleId]);
       const runLineId = runLineRows.rows[0].id;
@@ -586,8 +586,8 @@ async function main(): Promise<void> {
 
     await assert("recalculateRunLineAfterAllocation with NO commission rule at all (Jason's situation) never invents a rate", async () => {
       const runLineRows = await pool.query<{ id: string }>(`
-        INSERT INTO commission_run_lines (entity_id, invoice_id, invoice_qbo_id, invoice_amount, invoice_status, line_status)
-        VALUES ($1::uuid, gen_random_uuid(), 'QBO-UNCONFIGURED', 500.00, 'paid', 'attributed')
+        INSERT INTO commission_run_lines (entity_id, invoice_id, invoice_qbo_id, invoice_amount, invoice_status, line_status, source_fingerprint)
+        VALUES ($1::uuid, gen_random_uuid(), 'QBO-UNCONFIGURED', 500.00, 'paid', 'attributed', 'ci-fp-unconfigured-recalc')
         RETURNING id::text
       `, [ENTITY_A]);
       const runLineId = runLineRows.rows[0].id;
