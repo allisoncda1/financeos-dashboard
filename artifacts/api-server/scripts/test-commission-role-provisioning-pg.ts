@@ -417,7 +417,7 @@ async function main(): Promise<void> {
       });
     });
 
-    await assert("CREATE SEQUENCE is rejected (this role gets USAGE/SELECT on specific existing sequences only, never CREATE)", async () => {
+    await assert("CREATE SEQUENCE is rejected (no commission_* table uses a sequence at all — every one is a UUID PK — this role has no sequence privilege of any kind)", async () => {
       await asCommissionWriter(pool, async (client) => {
         let threw = false;
         try { await client.query("CREATE SEQUENCE public.commission_writer_ddl_probe_seq"); }

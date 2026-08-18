@@ -17,10 +17,17 @@
 --     commission_expense_allocations, commission_document_events).
 --   • Do not run Step 5b before commission_004 has been applied — GRANT on a
 --     table that doesn't exist yet fails outright.
---   • The sequences referenced in Step 6 must already exist (created by 001;
---     004's four new tables use gen_random_uuid() primary keys, not
---     sequences, so no new sequence grants are needed for them).
 --   • This file does NOT create any objects — it only grants privileges.
+--   • No sequence grants anywhere in this file: EVERY commission_* table
+--     (all eleven, 001 through 004) uses a UUID primary key with
+--     gen_random_uuid() as its default — none of them is backed by a
+--     Postgres SEQUENCE. An earlier version of this file granted
+--     USAGE/SELECT on five "<table>_id_seq" sequences that were never
+--     created by any migration — a real, previously undetected bug that
+--     the real-Postgres integration test below caught by literally running
+--     this file against a freshly migrated schema. If a future migration
+--     ever adds a serial/bigserial column, add its sequence grant here
+--     then, not speculatively now.
 --
 -- Hard constraints this role must satisfy:
 --   • No WRITE to public.entities or public.invoices (Core read-only).
@@ -140,21 +147,18 @@ GRANT SELECT, INSERT
   ON TABLE public.commission_document_events     TO commission_writer;
 
 
--- Step 6 — Sequences: USAGE and SELECT so nextval() and currval() work.
---   (Sequence names follow the Neon/Drizzle default: <table>_<column>_seq)
---   Adjust names if the sequences were created with custom names.
---   None of commission_004's four tables use a sequence (all use
---   gen_random_uuid() primary keys) — nothing to add here for them.
-GRANT USAGE, SELECT
-  ON SEQUENCE public.commission_representatives_id_seq   TO commission_writer;
-GRANT USAGE, SELECT
-  ON SEQUENCE public.commission_attribution_rules_id_seq TO commission_writer;
-GRANT USAGE, SELECT
-  ON SEQUENCE public.commission_rules_id_seq             TO commission_writer;
-GRANT USAGE, SELECT
-  ON SEQUENCE public.commission_rule_audit_id_seq        TO commission_writer;
-GRANT USAGE, SELECT
-  ON SEQUENCE public.commission_customer_aliases_id_seq  TO commission_writer;
+-- Step 6 — Sequences: intentionally none.
+--   A now-corrected earlier version of this file granted USAGE/SELECT on
+--   five "<table>_id_seq" sequences that were NEVER created by any
+--   migration — every commission_* table (001 through 004) uses a UUID
+--   primary key with gen_random_uuid(), not a serial/bigserial column, so
+--   there has never been a real sequence for this role to use. Running the
+--   old Step 6 against a real database failed outright ("relation ...
+--   does not exist") — caught by the real-Postgres integration test
+--   (scripts/test-commission-role-provisioning-pg.ts), which runs this
+--   entire file verbatim against a freshly migrated schema rather than
+--   assuming it's correct. If a future migration adds a serial/bigserial
+--   column, add its sequence grant here then — not speculatively now.
 
 
 -- Step 7 — Verification queries (run as the new role to confirm access).
