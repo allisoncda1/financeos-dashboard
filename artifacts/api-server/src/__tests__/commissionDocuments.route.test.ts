@@ -15,6 +15,10 @@ import request from "supertest";
 import express from "express";
 
 vi.mock("../services/entityCache", () => ({ getCachedEntityId: vi.fn() }));
+vi.mock("../services/readiness", () => ({
+  getAiProviderReadiness: vi.fn(),
+  computeReadiness: vi.fn(),
+}));
 vi.mock("../services/documentProcessing", () => ({
   scheduleExtraction: vi.fn(),
   retryExtraction: vi.fn(),
@@ -52,6 +56,7 @@ vi.mock("../db/commissions", async (importOriginal) => {
 
 import commissionDocumentsRouter from "../routes/commissionDocuments";
 import { getCachedEntityId } from "../services/entityCache";
+import { getAiProviderReadiness, computeReadiness } from "../services/readiness";
 import { storeDocument, deleteDocument } from "../services/commissionDocumentStorage";
 import {
   createCommissionDocument, getCommissionDocumentById, listCommissionDocuments,
@@ -109,6 +114,10 @@ beforeEach(() => {
   // COMMISSION_DOCUMENTS_ENABLED=true" means in practice: the exact same
   // 32+ pre-existing tests, run with the flag explicitly on.
   process.env["COMMISSION_DOCUMENTS_ENABLED"] = "true";
+  // Same reasoning as the flag above: every pre-existing test predates the
+  // AI-provider production-readiness gate and exercises the "ready" path.
+  (getAiProviderReadiness as Mock).mockReturnValue({ ready: true });
+  (computeReadiness as Mock).mockResolvedValue({ featureEnabled: true, databaseReady: true, objectStorageReady: true, aiProviderReady: true });
   (getCachedEntityId as Mock).mockImplementation(async (slug: string) => {
     if (slug === SLUG_A) return ENTITY_A;
     if (slug === SLUG_B) return ENTITY_B;
@@ -591,5 +600,103 @@ describe("Feature flag — COMMISSION_DOCUMENTS_ENABLED", () => {
       expect(res.status).toBe(200);
       expect(listCommissionDocuments).toHaveBeenCalledTimes(1);
     });
+  });
+});
+
+describe("AI provider production readiness gate (requireAiProviderReadyForProduction)", () => {
+  it("upload is refused with 503 AI_PROVIDER_NOT_CONFIGURED when the provider isn't ready — no storage or DB call happens", async () => {
+    (getAiProviderReadiness as Mock).mockReturnValue({ ready: false, reason: "No real AI provider is configured for production use." });
+
+    const res = await request(makeApp())
+      .post(`/commissions/${SLUG_A}/documents`)
+      .attach("file", REAL_PDF_BYTES, { filename: "x.pdf", contentType: "application/pdf" });
+
+    expect(res.status).toBe(503);
+    expect(res.body.code).toBe("AI_PROVIDER_NOT_CONFIGURED");
+    expect(storeDocument).not.toHaveBeenCalled();
+    expect(createCommissionDocument).not.toHaveBeenCalled();
+  });
+
+  it("the 503 response never echoes the internal readiness reason string (its own fixed, generic message only)", async () => {
+    (getAiProviderReadiness as Mock).mockReturnValue({ ready: false, reason: "internal detail that must never reach the client" });
+
+    const res = await request(makeApp())
+      .post(`/commissions/${SLUG_A}/documents`)
+      .attach("file", REAL_PDF_BYTES, { filename: "x.pdf", contentType: "application/pdf" });
+
+    expect(res.status).toBe(503);
+    expect(JSON.stringify(res.body)).not.toMatch(/internal detail/);
+  });
+
+  it("upload proceeds normally when the provider IS ready", async () => {
+    (getAiProviderReadiness as Mock).mockReturnValue({ ready: true });
+    (storeDocument as Mock).mockResolvedValue({ stored: true, provider: "replit-object-storage", storageKey: "commission-documents/x.pdf", sha256: "abc" });
+    (createCommissionDocument as Mock).mockResolvedValue({ document: { id: DOC_ID, entityId: ENTITY_A, status: "uploaded" }, created: true });
+
+    const res = await request(makeApp())
+      .post(`/commissions/${SLUG_A}/documents`)
+      .attach("file", REAL_PDF_BYTES, { filename: "x.pdf", contentType: "application/pdf" });
+
+    expect(res.status).toBe(202);
+  });
+
+  it("manual retry is refused with 503 AI_PROVIDER_NOT_CONFIGURED when the provider isn't ready — retryExtraction never called", async () => {
+    (getAiProviderReadiness as Mock).mockReturnValue({ ready: false, reason: "No real AI provider is configured for production use." });
+
+    const res = await request(makeApp()).post(`/commissions/${SLUG_A}/documents/${DOC_ID}/retry`);
+
+    expect(res.status).toBe(503);
+    expect(res.body.code).toBe("AI_PROVIDER_NOT_CONFIGURED");
+    expect(retryExtraction).not.toHaveBeenCalled();
+  });
+
+  it("manual retry proceeds normally when the provider IS ready", async () => {
+    (getAiProviderReadiness as Mock).mockReturnValue({ ready: true });
+    (retryExtraction as Mock).mockResolvedValue({ ok: true });
+
+    const res = await request(makeApp()).post(`/commissions/${SLUG_A}/documents/${DOC_ID}/retry`);
+    expect(res.status).toBe(200);
+  });
+
+  it("read-only endpoints (list, detail) are NOT gated by AI-provider readiness — only upload/retry are", async () => {
+    (getAiProviderReadiness as Mock).mockReturnValue({ ready: false, reason: "not ready" });
+    (listCommissionDocuments as Mock).mockResolvedValue([]);
+
+    const res = await request(makeApp()).get(`/commissions/${SLUG_A}/documents`);
+    expect(res.status).toBe(200);
+    expect(res.body.code).not.toBe("AI_PROVIDER_NOT_CONFIGURED");
+  });
+});
+
+describe("GET /:slug/documents/readiness", () => {
+  it("returns the four readiness booleans and nothing else", async () => {
+    (computeReadiness as Mock).mockResolvedValue({ featureEnabled: true, databaseReady: true, objectStorageReady: false, aiProviderReady: false });
+
+    const res = await request(makeApp()).get(`/commissions/${SLUG_A}/documents/readiness`);
+
+    expect(res.status).toBe(200);
+    expect(res.body.data).toEqual({ featureEnabled: true, databaseReady: true, objectStorageReady: false, aiProviderReady: false });
+    expect(Object.keys(res.body.data).sort()).toEqual(["aiProviderReady", "databaseReady", "featureEnabled", "objectStorageReady"]);
+  });
+
+  it("never leaks a secret or connection detail, even if computeReadiness's own inputs would have contained one", async () => {
+    // computeReadiness itself is responsible for never producing anything
+    // beyond the four booleans (see readiness.test.ts) — this asserts the
+    // ROUTE layer doesn't add anything on top of whatever it returns.
+    (computeReadiness as Mock).mockResolvedValue({ featureEnabled: true, databaseReady: true, objectStorageReady: true, aiProviderReady: true });
+    const res = await request(makeApp()).get(`/commissions/${SLUG_A}/documents/readiness`);
+    expect(JSON.stringify(res.body)).not.toMatch(/postgresql:\/\/|ANTHROPIC|sk-ant|COMMISSION_DATABASE_URL/);
+  });
+
+  it("readonly role cannot view readiness (requires 'financials' permission) — 403", async () => {
+    const res = await request(makeReadonlyApp()).get(`/commissions/${SLUG_A}/documents/readiness`);
+    expect(res.status).toBe(403);
+    expect(computeReadiness).not.toHaveBeenCalled();
+  });
+
+  it("an unknown slug returns 404, never calling computeReadiness", async () => {
+    const res = await request(makeApp()).get(`/commissions/not_a_real_entity/documents/readiness`);
+    expect(res.status).toBe(404);
+    expect(computeReadiness).not.toHaveBeenCalled();
   });
 });

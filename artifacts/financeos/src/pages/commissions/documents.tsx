@@ -3,7 +3,7 @@ import { useLocation } from "wouter";
 import { CommissionLayout } from "@/components/commission/CommissionLayout";
 import { useCommissionEntity } from "@/lib/commission-context";
 import { api } from "@/lib/api";
-import type { CommissionDocument, CommissionDocumentStatus } from "@/lib/api";
+import type { CommissionDocument, CommissionDocumentStatus, CommissionDocumentsReadiness } from "@/lib/api";
 import { UploadCloud, FileText, AlertTriangle, CheckCircle2, Clock, XCircle, Archive } from "lucide-react";
 
 const STATUS_META: Record<CommissionDocumentStatus, { label: string; color: string; icon: typeof FileText }> = {
@@ -17,6 +17,15 @@ const STATUS_META: Record<CommissionDocumentStatus, { label: string; color: stri
 };
 
 const MAX_FILE_SIZE_MB = 25;
+
+/** A short, clear, non-technical explanation for why upload is disabled —
+ * never echoes any config detail, just which subsystem is the blocker. */
+function readinessBlockerMessage(readiness: CommissionDocumentsReadiness): string | null {
+  if (!readiness.databaseReady) return "Document processing is temporarily unavailable (database). Please try again shortly.";
+  if (!readiness.objectStorageReady) return "Document processing is temporarily unavailable (storage). Please try again shortly.";
+  if (!readiness.aiProviderReady) return "Document processing is not available right now. Please contact an administrator.";
+  return null;
+}
 
 function StatusBadge({ status }: { status: CommissionDocumentStatus }) {
   const meta = STATUS_META[status];
@@ -60,8 +69,26 @@ export default function CommissionDocumentsPage() {
   const [dragActive, setDragActive] = useState(false);
   const [uploadError, setUploadError] = useState<string | null>(null);
   const [uploading, setUploading] = useState(false);
+  const [readiness, setReadiness] = useState<CommissionDocumentsReadiness | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const mounted = useRef(true);
+
+  useEffect(() => {
+    let active = true;
+    api.commissionDocumentsReadiness(activeSlug)
+      .then((res) => {
+        if (!active) return;
+        const data = (res as { data?: CommissionDocumentsReadiness }).data ?? (res as CommissionDocumentsReadiness);
+        setReadiness(data);
+      })
+      .catch(() => { /* Ready/unready is advisory for the button state — a failed check disables upload safely below via the null-readiness fallback. */ });
+    return () => { active = false; };
+  }, [activeSlug]);
+
+  // Absent/unknown readiness never defaults to "ready" — the button stays
+  // disabled until a successful readiness check says otherwise.
+  const blockerMessage = readiness ? readinessBlockerMessage(readiness) : "Checking document processing availability…";
+  const uploadDisabled = uploading || blockerMessage !== null;
 
   const loadDocuments = useCallback(() => {
     mounted.current = true;
@@ -92,6 +119,13 @@ export default function CommissionDocumentsPage() {
     }
     if (file.size > MAX_FILE_SIZE_MB * 1024 * 1024) {
       setUploadError(`File exceeds the ${MAX_FILE_SIZE_MB}MB limit.`);
+      return;
+    }
+    // Client-side file validation always runs regardless of readiness — only
+    // the actual network upload is gated. Never accept a drop while not
+    // ready: the disabled button alone doesn't stop drag-and-drop.
+    if (uploadDisabled) {
+      setUploadError(blockerMessage ?? "Document processing is not available right now.");
       return;
     }
 
@@ -131,7 +165,8 @@ export default function CommissionDocumentsPage() {
         <button
           type="button"
           onClick={() => fileInputRef.current?.click()}
-          disabled={uploading}
+          disabled={uploadDisabled}
+          title={blockerMessage ?? undefined}
           className="mt-2 bg-blue-600 text-white text-sm font-semibold px-4 py-2 rounded-lg hover:bg-blue-700 disabled:opacity-50"
           data-testid="button-choose-file"
         >
@@ -146,6 +181,9 @@ export default function CommissionDocumentsPage() {
           onChange={(e) => void handleFiles(e.target.files)}
         />
         <p className="text-[11px] text-gray-400 mt-2">PDF only, up to {MAX_FILE_SIZE_MB}MB</p>
+        {readiness && blockerMessage && (
+          <p className="text-xs text-amber-700 bg-amber-50 px-3 py-2 rounded-lg mt-3 inline-block" data-testid="upload-not-ready">{blockerMessage}</p>
+        )}
         {uploadError && (
           <p className="text-xs text-red-600 bg-red-50 px-3 py-2 rounded-lg mt-3 inline-block" data-testid="upload-error">{uploadError}</p>
         )}

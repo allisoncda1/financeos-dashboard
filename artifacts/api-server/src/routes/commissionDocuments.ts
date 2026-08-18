@@ -18,6 +18,19 @@
  * storage call, no AI provider call, ever happens. This is deliberately
  * separate from and unrelated to routes/commissions.ts's router, which is
  * never touched by this flag.
+ *
+ * Production AI readiness: upload and retry are ALSO gated behind
+ * requireAiProviderReadyForProduction, which refuses with 503
+ * AI_PROVIDER_NOT_CONFIGURED — before any storage or DB call — whenever
+ * NODE_ENV=production and no real AI provider/credential is configured.
+ * MockProvider is never used implicitly for a real document in production;
+ * it remains the correct default everywhere else (dev/test/CI). The same
+ * check backs both this gate and GET .../documents/readiness (see
+ * services/readiness.ts), and services/documentProcessing.ts's
+ * runExtraction() re-checks it immediately before ever calling the AI
+ * provider, as a defense-in-depth backstop for the one fire-and-forget path
+ * (the abandoned-document resume sweep) these two route-level gates don't
+ * cover.
  */
 import { Router, type IRouter, type Request, type Response, type NextFunction } from "express";
 import multer from "multer";
@@ -48,6 +61,7 @@ import { isValidUuid, getCommissionLines } from "../db/commissions";
 import { validatePdfUpload, MAX_FILE_SIZE_BYTES } from "../services/pdfExtraction";
 import { storeDocument, deleteDocument, sha256hex } from "../services/commissionDocumentStorage";
 import { scheduleExtraction, retryExtraction, resumeAbandonedDocuments, MAX_EXTRACTION_ATTEMPTS } from "../services/documentProcessing";
+import { computeReadiness, getAiProviderReadiness } from "../services/readiness";
 
 const router: IRouter = Router();
 const SLUG_RE = /^[a-zA-Z0-9_]{2,50}$/;
@@ -69,6 +83,29 @@ function requireCommissionDocumentsEnabled(_req: Request, res: Response, next: N
 }
 router.use(requireCommissionDocumentsEnabled);
 
+/**
+ * requireAiProviderReadyForProduction — the production kill switch for the
+ * mock AI provider. Outside production this always passes (MockProvider is
+ * the correct default for dev/test/CI). In production, refuses with 503
+ * BEFORE any storage or DB call — applied ahead of multer on the upload
+ * route specifically so a request that will be rejected never even pays for
+ * multipart parsing, let alone an object-storage call. The message is a
+ * fixed, generic string: it never names the missing env var, the expected
+ * provider, or any secret.
+ */
+function requireAiProviderReadyForProduction(_req: Request, res: Response, next: NextFunction): void {
+  const readiness = getAiProviderReadiness();
+  if (!readiness.ready) {
+    res.status(503).json({
+      ok: false,
+      error: "Document processing is not available right now. Please try again later or contact an administrator.",
+      code: "AI_PROVIDER_NOT_CONFIGURED",
+    });
+    return;
+  }
+  next();
+}
+
 const upload = multer({
   storage: multer.memoryStorage(),
   limits: { fileSize: MAX_FILE_SIZE_BYTES },
@@ -82,6 +119,21 @@ function actorId(req: unknown): string {
   return u?.email ?? u?.name ?? "unknown";
 }
 
+// ─── GET /:slug/documents/readiness — operational status for the Upload button ─
+// Authorized users only (same "financials" tier as upload itself) — never
+// public. Returns four plain booleans and nothing else: no connection
+// string, no secret value or name, no provider name. Read-only: a SELECT 1
+// ping and a storage-availability probe, no writes.
+router.get("/:slug/documents/readiness", requireAuth, requirePermission("financials"), async (req, res) => {
+  const slug = req.params["slug"] as string;
+  if (!slugGuard(slug)) return res.status(404).json({ ok: false, error: "Invalid slug" });
+  const entityId = await getCachedEntityId(slug);
+  if (!entityId) return res.status(404).json({ ok: false, error: "Entity not found" });
+
+  const readiness = await computeReadiness();
+  return res.json({ ok: true, data: readiness });
+});
+
 // ─── POST /:slug/documents — upload a vendor PDF ──────────────────────────────
 // Sequencing (storage/DB compensation):
 //   1. Validate (MIME/size/signature) — reject before touching storage or DB.
@@ -92,7 +144,7 @@ function actorId(req: unknown): string {
 //      object is deleted (compensating action) so nothing orphaned is left
 //      in object storage with no database reference.
 //   4. DB row created → schedule extraction, respond 202.
-router.post("/:slug/documents", requireAuth, requirePermission("financials"), upload.single("file"), async (req, res) => {
+router.post("/:slug/documents", requireAuth, requirePermission("financials"), requireAiProviderReadyForProduction, upload.single("file"), async (req, res) => {
   const slug = req.params["slug"] as string;
   if (!slugGuard(slug)) return res.status(404).json({ ok: false, error: "Invalid slug" });
   const entityId = await getCachedEntityId(slug);
@@ -236,7 +288,7 @@ router.get("/:slug/documents/:id/file", requireAuth, async (req, res) => {
 });
 
 // ─── POST /:slug/documents/:id/retry — manual re-extraction ───────────────────
-router.post("/:slug/documents/:id/retry", requireAuth, requirePermission("control"), async (req, res) => {
+router.post("/:slug/documents/:id/retry", requireAuth, requirePermission("control"), requireAiProviderReadyForProduction, async (req, res) => {
   const slug = req.params["slug"] as string;
   const id = req.params["id"] as string;
   if (!slugGuard(slug)) return res.status(404).json({ ok: false, error: "Invalid slug" });

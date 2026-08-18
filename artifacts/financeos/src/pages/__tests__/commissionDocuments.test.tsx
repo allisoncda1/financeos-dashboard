@@ -18,11 +18,13 @@ vi.mock("wouter", () => ({
 
 const listMock = vi.fn();
 const uploadMock = vi.fn();
+const readinessMock = vi.fn();
 
 vi.mock("@/lib/api", () => ({
   api: {
     commissionDocuments: (...a: unknown[]) => listMock(...a),
     uploadCommissionDocument: (...a: unknown[]) => uploadMock(...a),
+    commissionDocumentsReadiness: (...a: unknown[]) => readinessMock(...a),
   },
 }));
 
@@ -35,6 +37,10 @@ function pdfFile(name = "invoice.pdf") {
 beforeEach(() => {
   vi.clearAllMocks();
   listMock.mockResolvedValue({ data: [] });
+  // Every pre-existing test in this file predates the readiness gate and
+  // exercises the "everything is ready" path — matches "comportement actuel
+  // inchangé" for the upload flow these tests already cover.
+  readinessMock.mockResolvedValue({ data: { featureEnabled: true, databaseReady: true, objectStorageReady: true, aiProviderReady: true } });
 });
 
 describe("Commission Documents — list", () => {

@@ -41,6 +41,7 @@ import {
 } from "../db/commissionDocuments";
 import { retrieveDocument } from "./commissionDocumentStorage";
 import { extractPdfText, PdfProcessingError } from "./pdfExtraction";
+import { getAiProviderReadiness } from "./readiness";
 import { getProvider } from "../ai/provider";
 
 export const MAX_EXTRACTION_ATTEMPTS = 5;
@@ -106,6 +107,18 @@ export async function runExtraction(entityId: string, documentId: string, perfor
   await recordDocumentEvent({ documentId, eventType: "extraction_started", performedBy });
 
   try {
+    // Defense-in-depth backstop: routes/commissionDocuments.ts already
+    // refuses upload/retry with 503 before this function is ever reached,
+    // but resumeAbandonedDocuments() is a fire-and-forget sweep with no
+    // HTTP request to refuse — this is the one path that reaches
+    // runExtraction() without having passed that route-level gate. Checked
+    // before any storage read or PDF parsing, not just before the AI call,
+    // since none of that work is worth doing if this fails anyway.
+    const readiness = getAiProviderReadiness();
+    if (!readiness.ready) {
+      throw new Error(readiness.reason ?? "AI provider is not configured for production use.");
+    }
+
     const retrieved = await retrieveDocument(document.storageKey);
     if (!retrieved.available) {
       throw new Error(retrieved.reason);

@@ -13,7 +13,8 @@
     "rc001:backfill:dry": "DRY_RUN=true tsx src/scripts/backfillPayments.ts",
     "rc001:backfill": "tsx src/scripts/backfillPayments.ts",
     "test:commissions:pg": "tsx scripts/test-commissions-pg.ts",
-    "test:commission-documents:pg": "tsx scripts/test-commission-documents-pg.ts"
+    "test:commission-documents:pg": "tsx scripts/test-commission-documents-pg.ts",
+    "test:commission-role-provisioning:pg": "tsx scripts/test-commission-role-provisioning-pg.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.110.0",

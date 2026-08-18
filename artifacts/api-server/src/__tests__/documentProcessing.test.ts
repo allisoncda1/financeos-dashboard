@@ -5,7 +5,7 @@
  * — critically — a simulated process restart between upload and extraction,
  * proving the lease/claim model recovers without an external queue.
  */
-import { describe, it, expect, vi, beforeEach, type Mock } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterEach, type Mock } from "vitest";
 
 vi.mock("../db/commissionDocuments", () => ({
   getCommissionDocumentById: vi.fn(),
@@ -303,5 +303,86 @@ describe("No sensitive content leaked into sanitized errors", () => {
     const failedCall = (completeProcessing as Mock).mock.calls.find((c) => c[1].status === "failed");
     expect(failedCall![1].lastError).not.toMatch(/\/home\/runner|api-key\.txt/);
     expect(failedCall![1].lastError).toContain("[path]");
+  });
+});
+
+describe("Production AI-provider readiness — defense-in-depth backstop inside runExtraction", () => {
+  // Uses the REAL services/readiness.ts (not mocked) — this tests the
+  // actual integration between runExtraction and the readiness check, the
+  // one path (resumeAbandonedDocuments' fire-and-forget sweep) that never
+  // goes through the route-level requireAiProviderReadyForProduction gate
+  // tested in commissionDocuments.route.test.ts.
+  afterEach(() => {
+    delete process.env["NODE_ENV"];
+    delete process.env["ANTHROPIC_API_KEY"];
+    process.env["AI_PROVIDER"] = "mock";
+  });
+
+  it("in production with no real provider configured: extraction never calls the AI provider, storage/PDF work is skipped, document is marked failed with a generic reason", async () => {
+    process.env["NODE_ENV"] = "production";
+    delete process.env["ANTHROPIC_API_KEY"];
+    // AI_PROVIDER left as "mock" (the beforeEach default) — exactly the
+    // implicit-mock-in-production scenario this backstop must catch.
+
+    const doc = baseDocument();
+    (getCommissionDocumentById as Mock).mockResolvedValue(doc);
+    (claimDocumentForProcessing as Mock).mockImplementation(makeSingleSuccessClaim(doc));
+
+    const result = await runExtraction(ENTITY_ID, DOC_ID, "reviewer@financeos.io");
+
+    expect(result.ran).toBe(true);
+    // The claim happened (attempts/lease accounting is unaffected), but
+    // nothing past it ever ran: no storage read, no PDF parse, no line
+    // replacement — proving the check runs before any of that work.
+    expect(retrieveDocument).not.toHaveBeenCalled();
+    expect(extractPdfText).not.toHaveBeenCalled();
+    expect(replaceDocumentLines).not.toHaveBeenCalled();
+
+    const failedCall = (completeProcessing as Mock).mock.calls.find((c) => c[1].status === "failed");
+    expect(failedCall).toBeTruthy();
+    expect(failedCall![1].status).not.toBe("needs_review"); // never a fake/mock extraction result
+    expect(failedCall![1].lastError).not.toMatch(/ANTHROPIC_API_KEY|AI_PROVIDER|mock/i);
+  });
+
+  it("in production with AI_PROVIDER=claude but no credential: same refusal, same guarantees", async () => {
+    process.env["NODE_ENV"] = "production";
+    process.env["AI_PROVIDER"] = "claude";
+    delete process.env["ANTHROPIC_API_KEY"];
+
+    const doc = baseDocument();
+    (getCommissionDocumentById as Mock).mockResolvedValue(doc);
+    (claimDocumentForProcessing as Mock).mockImplementation(makeSingleSuccessClaim(doc));
+
+    await runExtraction(ENTITY_ID, DOC_ID, "reviewer@financeos.io");
+
+    expect(retrieveDocument).not.toHaveBeenCalled();
+    expect(replaceDocumentLines).not.toHaveBeenCalled();
+    const failedCall = (completeProcessing as Mock).mock.calls.find((c) => c[1].status === "failed");
+    expect(failedCall).toBeTruthy();
+  });
+
+  // NOTE: "ready in production with AI_PROVIDER=claude + ANTHROPIC_API_KEY
+  // set" is intentionally NOT exercised end-to-end here — letting
+  // runExtraction reach that point would construct a real ClaudeProvider
+  // and attempt an actual network call to Anthropic with a fake key. That
+  // exact condition (getAiProviderReadiness returns ready:true for
+  // AI_PROVIDER=claude + a key present) is already verified precisely at
+  // the unit level in readiness.test.ts, which is the correct place for it.
+
+  it("outside production (dev/test/CI), mock provider is accepted even with no credential — extraction proceeds", async () => {
+    delete process.env["NODE_ENV"];
+    delete process.env["ANTHROPIC_API_KEY"];
+    process.env["AI_PROVIDER"] = "mock";
+
+    const doc = baseDocument();
+    (getCommissionDocumentById as Mock).mockResolvedValue(doc);
+    (claimDocumentForProcessing as Mock).mockImplementation(makeSingleSuccessClaim(doc));
+    (retrieveDocument as Mock).mockResolvedValue({ available: true, data: Buffer.from("x") });
+    (extractPdfText as Mock).mockResolvedValue({ text: MCA_FIXTURE_TEXT, numPages: 1, truncated: false });
+
+    await runExtraction(ENTITY_ID, DOC_ID, "reviewer@financeos.io");
+
+    expect(replaceDocumentLines).toHaveBeenCalledTimes(1);
+    expect((completeProcessing as Mock).mock.calls[0][1].status).toBe("needs_review");
   });
 });

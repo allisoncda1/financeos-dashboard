@@ -502,6 +502,8 @@ export const api = {
   },
   commissionDocuments: (slug: string, status?: string) =>
     getEnvelope<CommissionDocument[]>(`/commissions/${slug.toLowerCase()}/documents${status ? `?status=${status}` : ""}`),
+  commissionDocumentsReadiness: (slug: string) =>
+    get<CommissionDocumentsReadiness>(`/commissions/${slug.toLowerCase()}/documents/readiness`),
   commissionDocument: (slug: string, documentId: string) =>
     get<{ document: CommissionDocument; lines: CommissionDocumentLine[] }>(`/commissions/${slug.toLowerCase()}/documents/${documentId}`),
   commissionDocumentEvents: (slug: string, documentId: string) =>
@@ -842,6 +844,13 @@ export type CommissionDocumentEvent = {
   afterSnapshot: unknown;
   reason: string | null;
   createdAt: string;
+};
+
+export type CommissionDocumentsReadiness = {
+  featureEnabled: boolean;
+  databaseReady: boolean;
+  objectStorageReady: boolean;
+  aiProviderReady: boolean;
 };
 
 export type CommissionRule = {

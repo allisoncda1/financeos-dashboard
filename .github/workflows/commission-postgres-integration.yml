@@ -7,11 +7,13 @@ on:
       - "artifacts/api-server/src/db/commissionDocuments.ts"
       - "artifacts/api-server/src/db/ops-connection.ts"
       - "artifacts/api-server/src/db/migrations/commission_*.sql"
+      - "artifacts/api-server/scripts/test-commission-role-provisioning-pg.ts"
       - "artifacts/api-server/src/services/commissionEngine.ts"
       - "artifacts/api-server/src/services/expenseAllocation.ts"
       - "artifacts/api-server/src/services/pdfExtraction.ts"
       - "artifacts/api-server/src/services/commissionDocumentStorage.ts"
       - "artifacts/api-server/src/services/documentProcessing.ts"
+      - "artifacts/api-server/src/services/readiness.ts"
       - "artifacts/api-server/src/ai/**"
       - "artifacts/api-server/src/config/featureFlags.ts"
       - "artifacts/api-server/src/routes/auth.ts"
@@ -24,9 +26,12 @@ on:
       - "artifacts/api-server/src/__tests__/documentExtractionValidation.test.ts"
       - "artifacts/api-server/src/__tests__/commissionDocumentsDuplicateDetection.test.ts"
       - "artifacts/api-server/src/__tests__/featureFlags.test.ts"
+      - "artifacts/api-server/src/__tests__/readiness.test.ts"
       - "artifacts/financeos/src/lib/auth.tsx"
       - "artifacts/financeos/src/App.tsx"
       - "artifacts/financeos/src/components/commission/CommissionSidebar.tsx"
+      - "artifacts/financeos/src/lib/api.ts"
+      - "artifacts/financeos/src/pages/commissions/documents.tsx"
       - "artifacts/api-server/scripts/test-commissions-pg.ts"
       - "artifacts/api-server/scripts/test-commission-documents-pg.ts"
       - "artifacts/api-server/tsconfig.commissions.json"
@@ -106,6 +111,7 @@ jobs:
             src/__tests__/documentExtractionValidation.test.ts \
             src/__tests__/commissionDocumentsDuplicateDetection.test.ts \
             src/__tests__/featureFlags.test.ts \
+            src/__tests__/readiness.test.ts \
             --reporter=verbose
 
       - name: Wait for PostgreSQL service
@@ -133,6 +139,15 @@ jobs:
         env:
           GITHUB_ACTIONS: "true"
 
+      - name: Commission role provisioning PostgreSQL integration tests
+        working-directory: artifacts/api-server
+        shell: bash
+        run: |
+          set -o pipefail
+          pnpm test:commission-role-provisioning:pg 2>&1 | tee /tmp/pg-role-provisioning-integration-output.txt
+        env:
+          GITHUB_ACTIONS: "true"
+
       - name: Upload integration test output
         if: always()
         uses: actions/upload-artifact@v4
@@ -141,5 +156,6 @@ jobs:
           path: |
             /tmp/pg-integration-output.txt
             /tmp/pg-documents-integration-output.txt
+            /tmp/pg-role-provisioning-integration-output.txt
           if-no-files-found: warn
           retention-days: 14

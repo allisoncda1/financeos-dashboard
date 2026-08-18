@@ -16,6 +16,7 @@
     "src/services/pdfExtraction.ts",
     "src/services/commissionDocumentStorage.ts",
     "src/services/documentProcessing.ts",
+    "src/services/readiness.ts",
     "src/ai/types.ts",
     "src/ai/promptBuilder.ts",
     "src/ai/provider.ts",
@@ -28,7 +29,9 @@
     "src/__tests__/documentExtractionValidation.test.ts",
     "src/__tests__/commissionDocumentsDuplicateDetection.test.ts",
     "src/__tests__/featureFlags.test.ts",
+    "src/__tests__/readiness.test.ts",
     "scripts/test-commissions-pg.ts",
-    "scripts/test-commission-documents-pg.ts"
+    "scripts/test-commission-documents-pg.ts",
+    "scripts/test-commission-role-provisioning-pg.ts"
   ]
 }
