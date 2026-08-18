@@ -65,13 +65,12 @@ function AddRepModal({ slug, onClose, onAdded }: { slug: string; onClose: () => 
     setSaving(true);
     setError(null);
     try {
-      await api.createCommissionRepresentative(slug, name.trim());
+      await api.createCommissionRepresentative(slug, { displayName: name.trim() });
       onAdded();
       onClose();
     } catch (err: unknown) {
-      const body = err && typeof err === "object" && "body" in err
-        ? (err as { body?: { code?: string; error?: string } }).body : null;
-      if (body?.code === "DUPLICATE_SLUG") {
+      const code = err instanceof Error ? (err as Error & { code?: string }).code : undefined;
+      if (code === "DUPLICATE_SLUG") {
         setError("A representative with that name already exists.");
       } else {
         setError("Failed to add representative. Please try again.");

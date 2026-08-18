@@ -797,7 +797,7 @@ router.post("/:slug/representatives", requireAuth, requirePermission("control"),
     if (!entityId) return res.status(404).json({ error: "Entity not found" });
 
     const rep = await createCommissionRepresentative({ displayName: trimmedName, slug: repSlug });
-    return res.status(201).json({ data: rep });
+    return res.status(201).json({ ok: true, data: rep });
   } catch (err: unknown) {
     if (err instanceof Error && (err as { code?: string }).code === "DUPLICATE_SLUG") {
       return res.status(409).json({ error: "A representative with that name already exists", code: "DUPLICATE_SLUG" });

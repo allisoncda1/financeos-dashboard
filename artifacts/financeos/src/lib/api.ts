@@ -168,7 +168,9 @@ async function postEnvelope<T>(path: string, body: unknown): Promise<{ data: T }
   });
   if (res.status === 401) { handleUnauthorized(); throw new Error("Session expired"); }
   const json = await res.json().catch(() => ({ ok: false, error: `API ${path} -> ${res.status}` }));
-  if (!res.ok || !json.ok) throw new Error(json.error ?? `API ${path} -> ${res.status}`);
+  if (!res.ok || !json.ok) {
+    throw Object.assign(new Error(json.error ?? `API ${path} -> ${res.status}`), { code: json.code });
+  }
   return { data: json.data as T };
 }
 
@@ -430,7 +432,7 @@ export const api = {
 
   createCommissionRepresentative: (
     slug: string,
-    body: { displayName: string; slug: string },
+    body: { displayName: string },
   ) =>
     postEnvelope<CommissionRepresentative>(
       `/commissions/${slug.toLowerCase()}/representatives`,
