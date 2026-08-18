@@ -18,7 +18,7 @@ import type {
 } from "../lib/types";
 import type { Alert } from "../rules/engine";
 
-export type AICapability = "briefing" | "report-summary" | "financials-analysis" | "question";
+export type AICapability = "briefing" | "report-summary" | "financials-analysis" | "question" | "document-extraction";
 
 export type AIOptions = {
   temperature?: number;
@@ -65,4 +65,33 @@ export type AIProviderStatus = {
   lastUsed: string | null;
   cacheHits: number;
   totalRequests: number;
+};
+
+/**
+ * DocumentExtractionContext — the only data a provider sees for Commission
+ * Document extraction. Deliberately NOT part of AIContext (which is
+ * portfolio/briefing-shaped) — this is locally-extracted PDF text, always
+ * untrusted DATA to extract facts from, never an instruction to follow.
+ */
+export type DocumentExtractionContext = {
+  documentText: string;
+  fileName: string;
+};
+
+/** Strict shape the model must return — one row per line item found on the document. */
+export type ExtractedDocumentLine = {
+  lineIndex: number;
+  clientName: string | null;
+  amount: string | null; // decimal string, e.g. "75.00" — never a number (avoids float coercion)
+  description: string | null;
+  proofPage: number | null;
+  ambiguous: boolean;
+};
+
+export type DocumentExtractionResult = {
+  vendorName: string | null;
+  documentNumber: string | null;
+  documentDate: string | null; // YYYY-MM-DD
+  documentTotal: string | null;
+  lines: ExtractedDocumentLine[];
 };

@@ -53,7 +53,7 @@ const MONEY_RE = /^-?\d{1,15}(\.\d{1,8})?$/;
 const SCALE = 100_000_000n; // 10^8
 
 /** Parse a monetary string to an integer scaled by 10^8. Throws on invalid input. */
-function parseToScaled(s: string): bigint {
+export function parseToScaled(s: string): bigint {
   const t = s.trim();
   if (!MONEY_RE.test(t)) {
     throw new Error(`Invalid monetary value: "${t}" — expected decimal string, no scientific notation`);
@@ -68,7 +68,7 @@ function parseToScaled(s: string): bigint {
 }
 
 /** Format a BigInt cent value (10^2 scale) as a 2dp string. */
-function centsToString(cents: bigint): string {
+export function centsToString(cents: bigint): string {
   const sign = cents < 0n ? -1n : 1n;
   const abs = cents < 0n ? -cents : cents;
   const dollars = abs / 100n;

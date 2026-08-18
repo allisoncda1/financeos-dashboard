@@ -24,6 +24,12 @@ export type AuthedUser = {
   role: Role;
   name: string;
   permissions: Permission[];
+  /**
+   * Deployment-controlled kill switch (COMMISSION_DOCUMENTS_ENABLED on the
+   * backend). Absent/false means the Commission Documents nav item and
+   * routes must not be shown — never assume true by default.
+   */
+  commissionDocumentsEnabled: boolean;
 };
 
 type AuthStatus = "loading" | "authenticated" | "unauthenticated";

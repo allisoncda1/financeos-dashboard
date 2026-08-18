@@ -64,7 +64,7 @@ vi.mock("../services/entityCache", () => ({
 }));
 
 // ─── Imports ──────────────────────────────────────────────────────────────────
-import { describe, it, expect, vi, beforeEach, type Mock } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterEach, type Mock } from "vitest";
 import request from "supertest";
 import express from "express";
 import commissionsRouter from "../routes/commissions";
@@ -1586,5 +1586,32 @@ describe("PATCH /commissions/:slug/lines/:lineId/representative", () => {
     });
     expect(JSON.stringify(res.body)).not.toContain("secret-host");
     expect(JSON.stringify(res.body)).not.toContain("pool");
+  });
+});
+
+describe("COMMISSION_DOCUMENTS_ENABLED has no effect on this router", () => {
+  // commissions.ts is a structurally separate router from
+  // commissionDocuments.ts (registered independently in routes/index.ts) and
+  // never imports config/featureFlags.ts — this router's own tests must
+  // keep passing unchanged regardless of the flag's value.
+  afterEach(() => {
+    delete process.env["COMMISSION_DOCUMENTS_ENABLED"];
+  });
+
+  it("GET /:slug/lines works the same whether the flag is unset, false, or true", async () => {
+    delete process.env["COMMISSION_DOCUMENTS_ENABLED"];
+    const withoutFlag = await request(makeApp()).get(`/commissions/${SLUG}/lines`);
+    expect(withoutFlag.status).toBe(200);
+    expect(Array.isArray(withoutFlag.body.data)).toBe(true);
+
+    process.env["COMMISSION_DOCUMENTS_ENABLED"] = "false";
+    const flagFalse = await request(makeApp()).get(`/commissions/${SLUG}/lines`);
+    expect(flagFalse.status).toBe(200);
+    expect(flagFalse.body.data).toEqual(withoutFlag.body.data);
+
+    process.env["COMMISSION_DOCUMENTS_ENABLED"] = "true";
+    const flagTrue = await request(makeApp()).get(`/commissions/${SLUG}/lines`);
+    expect(flagTrue.status).toBe(200);
+    expect(flagTrue.body.data).toEqual(withoutFlag.body.data);
   });
 });

@@ -4,8 +4,11 @@
  * Reads COMMISSION_DATABASE_URL exclusively. This variable must point to the
  * shared FinanceOS Neon/PostgreSQL financial model (project: financeos,
  * branch: production, database: neondb) using a Commission-scoped write role
- * that has SELECT on public.entities and public.invoices plus full DML on the
- * seven commission_* tables only.
+ * that has SELECT on public.entities and public.invoices, plus precisely the
+ * DML each of the eleven commission_* tables actually needs (not blanket
+ * full DML on every table) — see db/migrations/commission_role_provisioning.sql
+ * for the exact, code-derived privilege matrix and the GRANT statements
+ * themselves.
  *
  * DATABASE_URL  — never read here (Dashboard operational DB / heliumdb).
  * CORE_DATABASE_URL — never read here (Core is read-only via @workspace/db).

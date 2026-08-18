@@ -7,7 +7,7 @@ import MfaSetupPage from "@/pages/mfa-setup";
 import MfaChallengePage from "@/pages/mfa-challenge";
 import PrivacyPage from "@/pages/privacy";
 import HomePage from "@/pages/home";
-import { AuthProvider } from "@/lib/auth";
+import { AuthProvider, useAuth } from "@/lib/auth";
 import { ProtectedRoute } from "@/components/auth/ProtectedRoute";
 
 import PortfolioPage from "@/pages/portfolio";
@@ -94,6 +94,8 @@ import CommissionSettingsPage from "@/pages/commissions/settings";
 import CommissionReviewDetailPage from "@/pages/commissions/review-detail";
 import CommissionReviewPage from "@/pages/commissions/review";
 import CommissionSalesRepDetailPage from "@/pages/commissions/sales-rep-detail";
+import CommissionDocumentsPage from "@/pages/commissions/documents";
+import CommissionDocumentDetailPage from "@/pages/commissions/document-detail";
 import ForecastOverviewPage from "@/pages/forecast/overview";
 import RevenueForecastPage from "@/pages/forecast/revenue";
 import CashFlowForecastPage from "@/pages/forecast/cash-flow";
@@ -262,11 +264,18 @@ function AccountingRoutes() {
 }
 
 function CommissionRoutes() {
+  // Absent/false means disabled — never default these routes to reachable.
+  // When disabled, navigating to /commissions/documents(/:id) falls through
+  // to the catch-all NotFound below, exactly as if the routes didn't exist.
+  const { user } = useAuth();
+  const documentsEnabled = Boolean(user?.commissionDocumentsEnabled);
   return (
     <CommissionEntityProvider>
     <Switch>
       <Route path="/commissions" component={CommissionOverviewPage} />
       <Route path="/commissions/invoices" component={CommissionInvoicesPage} />
+      {documentsEnabled && <Route path="/commissions/documents/:documentId" component={CommissionDocumentDetailPage} />}
+      {documentsEnabled && <Route path="/commissions/documents" component={CommissionDocumentsPage} />}
       <Route path="/commissions/sales-reps/:repId" component={CommissionSalesRepDetailPage} />
       <Route path="/commissions/sales-reps" component={CommissionSalesRepsPage} />
       <Route path="/commissions/clients" component={CommissionClientsPage} />

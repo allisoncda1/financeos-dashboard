@@ -4,12 +4,13 @@ describe("CommissionSidebar", () => {
   const NAV = [
     { label: "Overview",   href: "/commissions"            },
     { label: "Invoices",   href: "/commissions/invoices"   },
+    { label: "Documents",  href: "/commissions/documents"  },
     { label: "Sales Reps", href: "/commissions/sales-reps" },
     { label: "Review",     href: "/commissions/review"     },
     { label: "Payouts",    href: "/commissions/payouts"    },
     { label: "Reports",    href: "/commissions/reports"    },
   ];
-  it("has exactly 6 items",             () => expect(NAV).toHaveLength(6));
+  it("has exactly 7 items",             () => expect(NAV).toHaveLength(7));
   it("has no Settings/Rules/Clients",   () => {
     const labels = NAV.map(n => n.label);
     expect(labels).not.toContain("Settings");
@@ -17,8 +18,8 @@ describe("CommissionSidebar", () => {
     expect(labels).not.toContain("Clients");
     expect(labels).not.toContain("Calculations");
   });
-  it("Review is at index 3",            () => expect(NAV[3].label).toBe("Review"));
-  it("Payouts is at index 4",           () => expect(NAV[4].label).toBe("Payouts"));
+  it("Review is at index 4",            () => expect(NAV[4].label).toBe("Review"));
+  it("Payouts is at index 5",           () => expect(NAV[5].label).toBe("Payouts"));
 });
 
 const EXPENSES_RE = /^(?:0|[1-9]\d*)(?:\.\d{1,2})?$|^0\.\d{1,2}$/;

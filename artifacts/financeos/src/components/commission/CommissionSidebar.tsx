@@ -5,7 +5,7 @@ import Link from "@/lib/next-compat";
 import { usePathname } from "@/lib/next-compat";
 import { motion, AnimatePresence } from "framer-motion";
 import type { ComponentType } from "react";
-import { LayoutDashboard, FileText, Users, ClipboardList, Banknote, BarChart3, X, ChevronDown, LogOut } from "lucide-react";
+import { LayoutDashboard, FileText, FileUp, Users, ClipboardList, Banknote, BarChart3, X, ChevronDown, LogOut } from "lucide-react";
 import { FinanceOSLogo } from "@/components/ui/FinanceOSLogo";
 import { useAuth } from "@/lib/auth";
 
@@ -20,6 +20,7 @@ const ROLE_LABEL: Record<string, string> = { admin:"Admin", cfo:"CFO", controlle
 const NAV_ITEMS: { icon: LucideIcon; label: string; href: string; exact?: boolean }[] = [
   { icon: LayoutDashboard, label: "Overview",   href: "/commissions", exact: true },
   { icon: FileText,        label: "Invoices",   href: "/commissions/invoices"     },
+  { icon: FileUp,          label: "Documents",  href: "/commissions/documents"    },
   { icon: Users,           label: "Sales Reps", href: "/commissions/sales-reps"   },
   { icon: ClipboardList,   label: "Review",     href: "/commissions/review"       },
   { icon: Banknote,        label: "Payouts",    href: "/commissions/payouts"      },
@@ -32,6 +33,8 @@ export function CommissionSidebar({ onClose }: { onClose?: () => void }) {
   const profileRef = useRef<HTMLDivElement>(null);
   const { user, logout } = useAuth();
   const { activeSlug } = useCommissionEntity();
+  // Absent/false means disabled — never default this nav item to visible.
+  const navItems = NAV_ITEMS.filter(item => item.href !== "/commissions/documents" || user?.commissionDocumentsEnabled);
   useEffect(() => {
     const h = (e: MouseEvent) => { if (profileRef.current && !profileRef.current.contains(e.target as Node)) setProfileOpen(false); };
     document.addEventListener("mousedown", h);
@@ -50,7 +53,7 @@ export function CommissionSidebar({ onClose }: { onClose?: () => void }) {
         <div>
           <p className="px-2.5 pb-1 text-[9px] font-semibold uppercase tracking-widest" style={{ color: "rgba(255,255,255,0.28)" }}>Commission Module</p>
           <div className="space-y-0.5">
-            {NAV_ITEMS.map(item => {
+            {navItems.map(item => {
               const active = item.exact ? pathname === item.href : pathname === item.href || pathname.startsWith(item.href + "/");
               return (
                 <Link key={item.href} href={item.href} data-testid={`nav-commission-${item.label.toLowerCase().replace(/\s+/g,"-")}`}

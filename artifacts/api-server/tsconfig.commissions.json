@@ -7,11 +7,31 @@
   },
   "include": [
     "src/auth/types.ts",
+    "src/config/featureFlags.ts",
     "src/db/ops-connection.ts",
     "src/db/commissions.ts",
+    "src/db/commissionDocuments.ts",
     "src/services/commissionEngine.ts",
+    "src/services/expenseAllocation.ts",
+    "src/services/pdfExtraction.ts",
+    "src/services/commissionDocumentStorage.ts",
+    "src/services/documentProcessing.ts",
+    "src/services/readiness.ts",
+    "src/ai/types.ts",
+    "src/ai/promptBuilder.ts",
+    "src/ai/provider.ts",
     "src/routes/commissions.ts",
+    "src/routes/commissionDocuments.ts",
     "src/__tests__/commissions.route.test.ts",
-    "scripts/test-commissions-pg.ts"
+    "src/__tests__/expenseAllocation.test.ts",
+    "src/__tests__/commissionDocuments.route.test.ts",
+    "src/__tests__/documentProcessing.test.ts",
+    "src/__tests__/documentExtractionValidation.test.ts",
+    "src/__tests__/commissionDocumentsDuplicateDetection.test.ts",
+    "src/__tests__/featureFlags.test.ts",
+    "src/__tests__/readiness.test.ts",
+    "scripts/test-commissions-pg.ts",
+    "scripts/test-commission-documents-pg.ts",
+    "scripts/test-commission-role-provisioning-pg.ts"
   ]
 }

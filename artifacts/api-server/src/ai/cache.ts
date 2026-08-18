@@ -84,6 +84,7 @@ const requestsByCapability: Record<AICapability, number> = {
   "report-summary": 0,
   "financials-analysis": 0,
   question: 0,
+  "document-extraction": 0,
 };
 
 function todayUtc(): string {
