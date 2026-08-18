@@ -174,6 +174,26 @@ async function postEnvelope<T>(path: string, body: unknown): Promise<{ data: T }
   return { data: json.data as T };
 }
 
+/**
+ * postFormData — for multipart file uploads (Commission Documents). Never
+ * sets Content-Type manually — the browser sets the correct multipart
+ * boundary itself when the body is a FormData instance.
+ */
+async function postFormData<T>(path: string, formData: FormData, idempotencyKey?: string): Promise<{ data: T; status: number }> {
+  const res = await fetch(`${BASE}${path}`, {
+    method: "POST",
+    credentials: "include",
+    headers: idempotencyKey ? { "Idempotency-Key": idempotencyKey } : undefined,
+    body: formData,
+  });
+  if (res.status === 401) { handleUnauthorized(); throw new Error("Session expired"); }
+  const json = await res.json().catch(() => ({ ok: false, error: `API ${path} -> ${res.status}` }));
+  if (!res.ok || !json.ok) {
+    throw Object.assign(new Error(json.error ?? `API ${path} -> ${res.status}`), { code: json.code });
+  }
+  return { data: json.data as T, status: res.status };
+}
+
 export type DownloadedFile = { blob: Blob; filename: string };
 
 /**
@@ -469,6 +489,53 @@ export const api = {
       payableTrigger?: string;
     },
   ) => post<ReviewApproveData>(`/commissions/${slug}/lines/${lineId}/review-approve`, body),
+
+  // ── Commission Documents ────────────────────────────────────────────
+  uploadCommissionDocument: (slug: string, file: File) => {
+    const formData = new FormData();
+    formData.append("file", file);
+    // A per-file idempotency key lets a retried request (e.g. after a
+    // network blip) be recognized as the same upload rather than creating
+    // a second document.
+    const idempotencyKey = `${file.name}:${file.size}:${file.lastModified}`;
+    return postFormData<CommissionDocument>(`/commissions/${slug.toLowerCase()}/documents`, formData, idempotencyKey);
+  },
+  commissionDocuments: (slug: string, status?: string) =>
+    getEnvelope<CommissionDocument[]>(`/commissions/${slug.toLowerCase()}/documents${status ? `?status=${status}` : ""}`),
+  commissionDocument: (slug: string, documentId: string) =>
+    get<{ document: CommissionDocument; lines: CommissionDocumentLine[] }>(`/commissions/${slug.toLowerCase()}/documents/${documentId}`),
+  commissionDocumentEvents: (slug: string, documentId: string) =>
+    getEnvelope<CommissionDocumentEvent[]>(`/commissions/${slug.toLowerCase()}/documents/${documentId}/events`),
+  retryDocumentExtraction: (slug: string, documentId: string) =>
+    post<{ ok: boolean }>(`/commissions/${slug.toLowerCase()}/documents/${documentId}/retry`, {}),
+  documentLineCandidates: (slug: string, documentId: string, lineId: string) =>
+    getEnvelope<Array<{ commissionRunLine: CommissionRunLine; confidence: number }>>(
+      `/commissions/${slug.toLowerCase()}/documents/${documentId}/lines/${lineId}/candidates`,
+    ),
+  confirmDocumentLineMatch: (slug: string, documentId: string, lineId: string, commissionRunLineId: string) =>
+    post<{ ok: boolean }>(`/commissions/${slug.toLowerCase()}/documents/${documentId}/lines/${lineId}/confirm`, { commissionRunLineId }),
+  ignoreDocumentLine: (slug: string, documentId: string, lineId: string) =>
+    post<{ ok: boolean }>(`/commissions/${slug.toLowerCase()}/documents/${documentId}/lines/${lineId}/ignore`, {}),
+  documentLineAllocationPreview: (slug: string, documentId: string, lineId: string) =>
+    get<{ documentLine: CommissionDocumentLine; existingAllocations: CommissionExpenseAllocation[]; newAllocationAmount: string | null }>(
+      `/commissions/${slug.toLowerCase()}/documents/${documentId}/lines/${lineId}/preview`,
+    ),
+  createDocumentLineAllocations: (
+    slug: string,
+    documentId: string,
+    lineId: string,
+    allocations: Array<{ commissionRunLineId: string; allocationMethod: string; allocatedAmount: string; reason: string; overrideAuthorizedBy?: string; overrideReason?: string }>,
+  ) =>
+    postEnvelope<{ allocations: CommissionExpenseAllocation[]; recalculated: Array<{ commissionRunLineId: string; grossProfit: string | null; commissionAmount: string | null; lineStatus: string; configured: boolean }> }>(
+      `/commissions/${slug.toLowerCase()}/documents/${documentId}/lines/${lineId}/allocations`,
+      { allocations },
+    ),
+  applyCommissionDocument: (slug: string, documentId: string) =>
+    post<{ ok: boolean }>(`/commissions/${slug.toLowerCase()}/documents/${documentId}/apply`, {}),
+  archiveCommissionDocument: (slug: string, documentId: string) =>
+    post<{ ok: boolean }>(`/commissions/${slug.toLowerCase()}/documents/${documentId}/archive`, {}),
+  reopenCommissionDocument: (slug: string, documentId: string, reason: string) =>
+    post<{ ok: boolean }>(`/commissions/${slug.toLowerCase()}/documents/${documentId}/reopen`, { reason }),
 };
 
 
@@ -702,6 +769,79 @@ export type CommissionRepresentative = {
   representativeType: "external_rep" | "internal_house";
   payoutEligible: boolean;
   notes: string | null;
+};
+
+export type CommissionDocumentStatus =
+  | "uploaded" | "processing" | "needs_review" | "ready_to_apply" | "applied" | "failed" | "archived";
+export type CommissionDocumentLineStatus = "unmatched" | "suggested" | "confirmed" | "ignored";
+
+export type CommissionDocument = {
+  id: string;
+  entityId: string;
+  fileName: string;
+  contentType: string;
+  fileSize: number;
+  sha256: string;
+  storageKey: string;
+  storageProvider: string;
+  status: CommissionDocumentStatus;
+  vendorName: string | null;
+  documentNumber: string | null;
+  documentDate: string | null;
+  periodYear: number | null;
+  periodMonth: number | null;
+  documentTotal: string | null;
+  attempts: number;
+  processingStartedAt: string | null;
+  leaseExpiresAt: string | null;
+  nextRetryAt: string | null;
+  lastError: string | null;
+  appliedAt: string | null;
+  appliedBy: string | null;
+  archivedAt: string | null;
+  archivedBy: string | null;
+  createdBy: string;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type CommissionDocumentLine = {
+  id: string;
+  documentId: string;
+  lineIndex: number;
+  rawText: string | null;
+  extractedClientName: string | null;
+  extractedAmount: string | null;
+  extractedDescription: string | null;
+  proofPage: number | null;
+  status: CommissionDocumentLineStatus;
+  suggestedInvoiceId: string | null;
+  suggestedConfidence: string | null;
+  confirmedInvoiceId: string | null;
+  confirmedBy: string | null;
+  confirmedAt: string | null;
+};
+
+export type CommissionExpenseAllocation = {
+  id: string;
+  documentLineId: string;
+  commissionRunLineId: string;
+  allocationMethod: "fixed_amount" | "percentage_of_expense" | "full_expense" | "prorata_revenue";
+  allocatedAmount: string;
+  reason: string;
+  createdBy: string;
+  createdAt: string;
+  supersededAt: string | null;
+};
+
+export type CommissionDocumentEvent = {
+  id: string;
+  eventType: string;
+  performedBy: string | null;
+  beforeSnapshot: unknown;
+  afterSnapshot: unknown;
+  reason: string | null;
+  createdAt: string;
 };
 
 export type CommissionRule = {

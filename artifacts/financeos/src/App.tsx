@@ -94,6 +94,8 @@ import CommissionSettingsPage from "@/pages/commissions/settings";
 import CommissionReviewDetailPage from "@/pages/commissions/review-detail";
 import CommissionReviewPage from "@/pages/commissions/review";
 import CommissionSalesRepDetailPage from "@/pages/commissions/sales-rep-detail";
+import CommissionDocumentsPage from "@/pages/commissions/documents";
+import CommissionDocumentDetailPage from "@/pages/commissions/document-detail";
 import ForecastOverviewPage from "@/pages/forecast/overview";
 import RevenueForecastPage from "@/pages/forecast/revenue";
 import CashFlowForecastPage from "@/pages/forecast/cash-flow";
@@ -267,6 +269,8 @@ function CommissionRoutes() {
     <Switch>
       <Route path="/commissions" component={CommissionOverviewPage} />
       <Route path="/commissions/invoices" component={CommissionInvoicesPage} />
+      <Route path="/commissions/documents/:documentId" component={CommissionDocumentDetailPage} />
+      <Route path="/commissions/documents" component={CommissionDocumentsPage} />
       <Route path="/commissions/sales-reps/:repId" component={CommissionSalesRepDetailPage} />
       <Route path="/commissions/sales-reps" component={CommissionSalesRepsPage} />
       <Route path="/commissions/clients" component={CommissionClientsPage} />

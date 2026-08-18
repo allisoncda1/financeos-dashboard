@@ -19,6 +19,7 @@
     "src/ai/promptBuilder.ts",
     "src/ai/provider.ts",
     "src/routes/commissions.ts",
+    "src/routes/commissionDocuments.ts",
     "src/__tests__/commissions.route.test.ts",
     "scripts/test-commissions-pg.ts"
   ]
