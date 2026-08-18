@@ -20,10 +20,14 @@ import { num, isKnown, fmtMoney, fmtPct } from "./format";
 import {
   buildAnalysisPrompt,
   buildBriefingPrompt,
+  buildDocumentExtractionPrompt,
   buildQuestionPrompt,
   buildReportSummaryPrompt,
 } from "./promptBuilder";
-import type { AICapability, AIContext, AIOptions, AIResponse } from "./types";
+import type {
+  AICapability, AIContext, AIOptions, AIResponse,
+  DocumentExtractionContext, DocumentExtractionResult, ExtractedDocumentLine,
+} from "./types";
 import type { EntityMetrics } from "../lib/types";
 
 // Env-configurable generation settings — never logged, only used to shape
@@ -61,6 +65,69 @@ export interface AIProvider {
   summarizeReport(context: AIContext): Promise<AIResponse>;
   analyzeFinancials(context: AIContext): Promise<AIResponse>;
   answerQuestion(context: AIContext): Promise<AIResponse>;
+  /**
+   * extractCommissionDocument — proposes structured facts from a vendor
+   * document's locally-extracted text. Never calculates or approves
+   * anything; the caller treats every returned field as a PROPOSAL requiring
+   * human confirmation. Returns `structured: undefined` (never throws) if
+   * the model's response cannot be parsed as valid JSON matching the
+   * expected shape — the caller must treat that as needs_review, never as
+   * an empty-but-valid result.
+   */
+  extractCommissionDocument(context: DocumentExtractionContext): Promise<AIResponse>;
+}
+
+/**
+ * MOCK_LINE_RE — the deterministic "extraction" format MockProvider parses.
+ * Each line item in a test fixture's documentText is written as:
+ *   - ClientName: $75.00 (description text) [AMBIGUOUS]
+ * The trailing [AMBIGUOUS] marker is optional. A header block of
+ * "Vendor: X" / "DocumentNumber: X" / "Date: YYYY-MM-DD" / "Total: $X.XX"
+ * lines (in any order, before the first "- " line) is parsed for the
+ * document-level fields. This lets tests fully control extraction output
+ * without any network call or hardcoded fixture-specific logic here.
+ */
+const MOCK_LINE_RE = /^-\s*(.+?):\s*\$([0-9.]+)(?:\s*\(([^)]*)\))?\s*(\[AMBIGUOUS\])?\s*$/;
+const MOCK_HEADER_RE = /^(Vendor|DocumentNumber|Date|Total):\s*(.+)$/;
+
+function mockExtractDocument(documentText: string): DocumentExtractionResult {
+  const lines = documentText.split("\n");
+  let vendorName: string | null = null;
+  let documentNumber: string | null = null;
+  let documentDate: string | null = null;
+  let documentTotal: string | null = null;
+  const extractedLines: ExtractedDocumentLine[] = [];
+  let lineIndex = 0;
+
+  for (const rawLine of lines) {
+    const line = rawLine.trim();
+    if (!line) continue;
+
+    const headerMatch = line.match(MOCK_HEADER_RE);
+    if (headerMatch) {
+      const [, key, value] = headerMatch;
+      if (key === "Vendor") vendorName = value.trim();
+      else if (key === "DocumentNumber") documentNumber = value.trim();
+      else if (key === "Date") documentDate = value.trim();
+      else if (key === "Total") documentTotal = value.replace("$", "").trim();
+      continue;
+    }
+
+    const lineMatch = line.match(MOCK_LINE_RE);
+    if (lineMatch) {
+      const [, clientName, amount, description, ambiguousFlag] = lineMatch;
+      extractedLines.push({
+        lineIndex: lineIndex++,
+        clientName: clientName.trim(),
+        amount: amount.trim(),
+        description: description?.trim() || null,
+        proofPage: 1,
+        ambiguous: Boolean(ambiguousFlag),
+      });
+    }
+  }
+
+  return { vendorName, documentNumber, documentDate, documentTotal, lines: extractedLines };
 }
 
 function entityMetricsList(context: AIContext): EntityMetrics[] {
@@ -210,6 +277,21 @@ export class MockProvider implements AIProvider {
     logAndRecordUsage("question", this.name, response.tokensUsed ?? 0);
     return response;
   }
+
+  async extractCommissionDocument(context: DocumentExtractionContext): Promise<AIResponse> {
+    const structured = mockExtractDocument(context.documentText);
+    const content = JSON.stringify(structured);
+    const response: AIResponse = {
+      content,
+      structured,
+      provider: this.name,
+      model: this.model,
+      generatedAt: new Date().toISOString(),
+      tokensUsed: Math.ceil(content.length / 4),
+    };
+    logAndRecordUsage("document-extraction", this.name, response.tokensUsed ?? 0);
+    return response;
+  }
 }
 
 /**
@@ -330,6 +412,49 @@ export class ClaudeProvider implements AIProvider {
     logAndRecordUsage("question", this.name, tokensUsed);
     return response;
   }
+
+  async extractCommissionDocument(context: DocumentExtractionContext): Promise<AIResponse> {
+    const prompt = buildDocumentExtractionPrompt(context);
+    const { text, tokensUsed } = await this.complete(prompt, 4096);
+
+    let structured: DocumentExtractionResult | undefined;
+    try {
+      const jsonText = text.replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/, "");
+      const parsed: unknown = JSON.parse(jsonText);
+      structured = isValidExtractionResult(parsed) ? parsed : undefined;
+    } catch {
+      structured = undefined;
+    }
+
+    // structured stays undefined (never a fabricated empty result) when the
+    // model's response is not valid JSON matching the expected shape — the
+    // caller must treat this as needs_review, not as "zero lines found".
+    const response = this.response(text, tokensUsed, structured);
+    logAndRecordUsage("document-extraction", this.name, tokensUsed);
+    return response;
+  }
+}
+
+/** Strict runtime validator for the model's JSON response — never trust shape without checking. */
+export function isValidExtractionResult(v: unknown): v is DocumentExtractionResult {
+  if (typeof v !== "object" || v === null) return false;
+  const o = v as Record<string, unknown>;
+  const nullableString = (x: unknown) => x === null || typeof x === "string";
+  if (!nullableString(o["vendorName"]) || !nullableString(o["documentNumber"]) ||
+      !nullableString(o["documentDate"]) || !nullableString(o["documentTotal"])) return false;
+  if (!Array.isArray(o["lines"])) return false;
+  return (o["lines"] as unknown[]).every((line) => {
+    if (typeof line !== "object" || line === null) return false;
+    const l = line as Record<string, unknown>;
+    return (
+      typeof l["lineIndex"] === "number" &&
+      nullableString(l["clientName"]) &&
+      nullableString(l["amount"]) &&
+      nullableString(l["description"]) &&
+      (l["proofPage"] === null || typeof l["proofPage"] === "number") &&
+      typeof l["ambiguous"] === "boolean"
+    );
+  });
 }
 
 const mockProvider = new MockProvider();
