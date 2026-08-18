@@ -9,11 +9,21 @@
  * Every endpoint is scoped by :slug -> entityId exactly like routes/commissions.ts
  * (slugGuard + getCachedEntityId 404 guard) — a document belonging to one
  * entity can never be read or mutated via another entity's slug.
+ *
+ * Feature flag: every endpoint on this router is gated behind
+ * COMMISSION_DOCUMENTS_ENABLED (see requireCommissionDocumentsEnabled below,
+ * applied once via router.use() so no individual route can accidentally
+ * skip it). When disabled, every request short-circuits with a clean 404
+ * before reaching any handler — no db/commissionDocuments query, no object
+ * storage call, no AI provider call, ever happens. This is deliberately
+ * separate from and unrelated to routes/commissions.ts's router, which is
+ * never touched by this flag.
  */
-import { Router, type IRouter } from "express";
+import { Router, type IRouter, type Request, type Response, type NextFunction } from "express";
 import multer from "multer";
 import { requireAuth } from "../auth/middleware";
 import { requirePermission } from "../auth/permissions";
+import { isCommissionDocumentsEnabled } from "../config/featureFlags";
 import { getCachedEntityId } from "../services/entityCache";
 import {
   createCommissionDocument,
@@ -42,6 +52,22 @@ import { scheduleExtraction, retryExtraction, resumeAbandonedDocuments, MAX_EXTR
 const router: IRouter = Router();
 const SLUG_RE = /^[a-zA-Z0-9_]{2,50}$/;
 function slugGuard(slug: string): boolean { return SLUG_RE.test(slug); }
+
+/**
+ * requireCommissionDocumentsEnabled — the single gate for this entire
+ * router. Reads the flag fresh on every request (never cached), so it
+ * reflects the current process.env at request time. Applied via
+ * router.use() below, before any route — no handler in this file, no
+ * multer parsing, no DB/storage/AI call, is ever reached when disabled.
+ */
+function requireCommissionDocumentsEnabled(_req: Request, res: Response, next: NextFunction): void {
+  if (!isCommissionDocumentsEnabled()) {
+    res.status(404).json({ ok: false, error: "Commission Documents is not enabled.", code: "FEATURE_DISABLED" });
+    return;
+  }
+  next();
+}
+router.use(requireCommissionDocumentsEnabled);
 
 const upload = multer({
   storage: multer.memoryStorage(),

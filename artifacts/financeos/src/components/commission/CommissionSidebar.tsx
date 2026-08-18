@@ -33,6 +33,8 @@ export function CommissionSidebar({ onClose }: { onClose?: () => void }) {
   const profileRef = useRef<HTMLDivElement>(null);
   const { user, logout } = useAuth();
   const { activeSlug } = useCommissionEntity();
+  // Absent/false means disabled — never default this nav item to visible.
+  const navItems = NAV_ITEMS.filter(item => item.href !== "/commissions/documents" || user?.commissionDocumentsEnabled);
   useEffect(() => {
     const h = (e: MouseEvent) => { if (profileRef.current && !profileRef.current.contains(e.target as Node)) setProfileOpen(false); };
     document.addEventListener("mousedown", h);
@@ -51,7 +53,7 @@ export function CommissionSidebar({ onClose }: { onClose?: () => void }) {
         <div>
           <p className="px-2.5 pb-1 text-[9px] font-semibold uppercase tracking-widest" style={{ color: "rgba(255,255,255,0.28)" }}>Commission Module</p>
           <div className="space-y-0.5">
-            {NAV_ITEMS.map(item => {
+            {navItems.map(item => {
               const active = item.exact ? pathname === item.href : pathname === item.href || pathname.startsWith(item.href + "/");
               return (
                 <Link key={item.href} href={item.href} data-testid={`nav-commission-${item.label.toLowerCase().replace(/\s+/g,"-")}`}

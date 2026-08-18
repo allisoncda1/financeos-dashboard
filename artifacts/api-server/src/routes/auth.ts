@@ -8,6 +8,7 @@ import {
   resetPassword,
 } from "../auth/passwordResetService";
 import { sendEmail, emailConfigured } from "../lib/email";
+import { isCommissionDocumentsEnabled } from "../config/featureFlags";
 
 const router: IRouter = Router();
 
@@ -247,6 +248,7 @@ router.get("/me", (req, res) => {
       role: user.role,
       name: user.name,
       permissions: ROLE_PERMISSIONS[user.role],
+      commissionDocumentsEnabled: isCommissionDocumentsEnabled(),
     },
     ts: new Date().toISOString(),
   });

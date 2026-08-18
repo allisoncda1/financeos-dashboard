@@ -7,6 +7,7 @@
   },
   "include": [
     "src/auth/types.ts",
+    "src/config/featureFlags.ts",
     "src/db/ops-connection.ts",
     "src/db/commissions.ts",
     "src/db/commissionDocuments.ts",
@@ -26,6 +27,7 @@
     "src/__tests__/documentProcessing.test.ts",
     "src/__tests__/documentExtractionValidation.test.ts",
     "src/__tests__/commissionDocumentsDuplicateDetection.test.ts",
+    "src/__tests__/featureFlags.test.ts",
     "scripts/test-commissions-pg.ts",
     "scripts/test-commission-documents-pg.ts"
   ]

@@ -10,7 +10,7 @@
  * documentProcessing.test.ts and provider.documentExtraction.test.ts,
  * where the extraction pipeline itself is exercised.
  */
-import { describe, it, expect, vi, beforeEach, type Mock } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterEach, type Mock } from "vitest";
 import request from "supertest";
 import express from "express";
 
@@ -103,6 +103,12 @@ function makeReadonlyApp() {
 
 beforeEach(() => {
   vi.clearAllMocks();
+  // Every test in this file (other than the dedicated feature-flag describe
+  // block below) exercises the flag's "enabled" state — i.e. today's actual
+  // behavior. This is what "comportement actuel inchangé quand
+  // COMMISSION_DOCUMENTS_ENABLED=true" means in practice: the exact same
+  // 32+ pre-existing tests, run with the flag explicitly on.
+  process.env["COMMISSION_DOCUMENTS_ENABLED"] = "true";
   (getCachedEntityId as Mock).mockImplementation(async (slug: string) => {
     if (slug === SLUG_A) return ENTITY_A;
     if (slug === SLUG_B) return ENTITY_B;
@@ -481,5 +487,109 @@ describe("GET /:slug/documents — listing and filters", () => {
   it("rejects an invalid status filter", async () => {
     const res = await request(makeApp()).get(`/commissions/${SLUG_A}/documents?status=not_a_status`);
     expect(res.status).toBe(400);
+  });
+});
+
+describe("Feature flag — COMMISSION_DOCUMENTS_ENABLED", () => {
+  afterEach(() => {
+    // Every other test in this file relies on the flag being "true" (set in
+    // the file-level beforeEach) — restore it immediately so a failure
+    // partway through one of these tests can never leak a disabled flag
+    // into an unrelated test elsewhere in this file.
+    process.env["COMMISSION_DOCUMENTS_ENABLED"] = "true";
+  });
+
+  describe("disabled (absent, or any value other than the exact string 'true')", () => {
+    it.each([
+      ["unset", undefined],
+      ["false", "false"],
+      ["wrong case ('TRUE')", "TRUE"],
+      ["truthy-looking but not exact ('1')", "1"],
+    ])("upload is refused (%s) — 404 FEATURE_DISABLED, storage/DB never touched", async (_label, value) => {
+      if (value === undefined) delete process.env["COMMISSION_DOCUMENTS_ENABLED"];
+      else process.env["COMMISSION_DOCUMENTS_ENABLED"] = value;
+
+      const res = await request(makeApp())
+        .post(`/commissions/${SLUG_A}/documents`)
+        .attach("file", REAL_PDF_BYTES, { filename: "x.pdf", contentType: "application/pdf" });
+
+      expect(res.status).toBe(404);
+      expect(res.body).toEqual({ ok: false, error: "Commission Documents is not enabled.", code: "FEATURE_DISABLED" });
+      expect(storeDocument).not.toHaveBeenCalled();
+      expect(createCommissionDocument).not.toHaveBeenCalled();
+    });
+
+    it("list is refused — 404 FEATURE_DISABLED, listCommissionDocuments and the abandoned-document sweep never run", async () => {
+      delete process.env["COMMISSION_DOCUMENTS_ENABLED"];
+      const res = await request(makeApp()).get(`/commissions/${SLUG_A}/documents`);
+      expect(res.status).toBe(404);
+      expect(res.body.code).toBe("FEATURE_DISABLED");
+      expect(listCommissionDocuments).not.toHaveBeenCalled();
+      expect(resumeAbandonedDocuments).not.toHaveBeenCalled();
+    });
+
+    it("document detail is refused — 404 FEATURE_DISABLED, getCommissionDocumentById never called", async () => {
+      process.env["COMMISSION_DOCUMENTS_ENABLED"] = "false";
+      const res = await request(makeApp()).get(`/commissions/${SLUG_A}/documents/${DOC_ID}`);
+      expect(res.status).toBe(404);
+      expect(res.body.code).toBe("FEATURE_DISABLED");
+      expect(getCommissionDocumentById).not.toHaveBeenCalled();
+    });
+
+    it("manual retry is refused — 404 FEATURE_DISABLED, retryExtraction never called (no AI/processing work triggered)", async () => {
+      delete process.env["COMMISSION_DOCUMENTS_ENABLED"];
+      const res = await request(makeApp()).post(`/commissions/${SLUG_A}/documents/${DOC_ID}/retry`);
+      expect(res.status).toBe(404);
+      expect(res.body.code).toBe("FEATURE_DISABLED");
+      expect(retryExtraction).not.toHaveBeenCalled();
+    });
+
+    it("creating allocations is refused — 404 FEATURE_DISABLED, createAllocations never called (no write to commission_run_lines)", async () => {
+      process.env["COMMISSION_DOCUMENTS_ENABLED"] = "false";
+      const res = await request(makeApp())
+        .post(`/commissions/${SLUG_A}/documents/${DOC_ID}/lines/${LINE_PRECISION}/allocations`)
+        .send({ allocations: [{ commissionRunLineId: RUN_LINE_ID, allocationMethod: "fixed_amount", allocatedAmount: "1.00", reason: "x" }] });
+      expect(res.status).toBe(404);
+      expect(res.body.code).toBe("FEATURE_DISABLED");
+      expect(createAllocations).not.toHaveBeenCalled();
+    });
+
+    it("applying a document is refused — 404 FEATURE_DISABLED, markDocumentApplied never called", async () => {
+      delete process.env["COMMISSION_DOCUMENTS_ENABLED"];
+      const res = await request(makeApp()).post(`/commissions/${SLUG_A}/documents/${DOC_ID}/apply`);
+      expect(res.status).toBe(404);
+      expect(res.body.code).toBe("FEATURE_DISABLED");
+      expect(markDocumentApplied).not.toHaveBeenCalled();
+    });
+
+    it("even a readonly-role request is refused with the SAME 404 FEATURE_DISABLED (the flag check runs before any permission check)", async () => {
+      delete process.env["COMMISSION_DOCUMENTS_ENABLED"];
+      const res = await request(makeReadonlyApp()).get(`/commissions/${SLUG_A}/documents`);
+      expect(res.status).toBe(404);
+      expect(res.body.code).toBe("FEATURE_DISABLED");
+    });
+  });
+
+  describe("enabled (COMMISSION_DOCUMENTS_ENABLED=true) — behavior is unchanged from before the flag existed", () => {
+    it("upload proceeds normally", async () => {
+      process.env["COMMISSION_DOCUMENTS_ENABLED"] = "true";
+      (storeDocument as Mock).mockResolvedValue({ stored: true, provider: "replit-object-storage", storageKey: "commission-documents/x.pdf", sha256: "abc" });
+      (createCommissionDocument as Mock).mockResolvedValue({ document: { id: DOC_ID, entityId: ENTITY_A, status: "uploaded" }, created: true });
+
+      const res = await request(makeApp())
+        .post(`/commissions/${SLUG_A}/documents`)
+        .attach("file", REAL_PDF_BYTES, { filename: "x.pdf", contentType: "application/pdf" });
+
+      expect(res.status).toBe(202);
+      expect(createCommissionDocument).toHaveBeenCalledTimes(1);
+    });
+
+    it("list proceeds normally", async () => {
+      process.env["COMMISSION_DOCUMENTS_ENABLED"] = "true";
+      (listCommissionDocuments as Mock).mockResolvedValue([]);
+      const res = await request(makeApp()).get(`/commissions/${SLUG_A}/documents`);
+      expect(res.status).toBe(200);
+      expect(listCommissionDocuments).toHaveBeenCalledTimes(1);
+    });
   });
 });
