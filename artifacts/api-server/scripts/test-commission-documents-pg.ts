@@ -165,6 +165,27 @@ async function withTimeout<T>(p: Promise<T>, ms: number, label: string): Promise
   return Promise.race([p, new Promise<never>((_, reject) => setTimeout(() => reject(new Error(`Timeout after ${ms}ms: ${label}`)), ms))]);
 }
 
+/**
+ * Unwraps drizzle-orm's DrizzleQueryError (whose own `.message`/`.code` are
+ * not the underlying driver error) to reach the real pg DatabaseError's
+ * SQLSTATE `code` — same unwrapping db/commissionDocuments.ts's
+ * findPgDatabaseError() does for its own duplicate-detection. A raw
+ * assertion error thrown by this script (e.g. "Expected X, got Y") is
+ * itself a plain Error with no `code`, so this correctly returns null for
+ * those rather than reaching into an unrelated `.cause`.
+ */
+function unwrapPgErrorCode(err: unknown): string | undefined {
+  let current: unknown = err;
+  for (let i = 0; i < 5 && current instanceof Error; i++) {
+    if ("code" in current) {
+      const code = (current as { code?: unknown }).code;
+      if (typeof code === "string") return code;
+    }
+    current = (current as { cause?: unknown }).cause;
+  }
+  return undefined;
+}
+
 // ─── Fixed test constants ──────────────────────────────────────────────────
 
 const ENTITY_A = "eeeeeeee-0000-4000-a000-000000000001";
@@ -531,8 +552,8 @@ async function main(): Promise<void> {
         ], "ci-test");
       } catch (e: unknown) {
         threw = true;
-        const code = (e as { code?: string }).code;
-        if (code !== "23514") throw new Error(`Expected the raw Postgres CHECK violation (23514) to propagate, got ${code}`);
+        const code = unwrapPgErrorCode(e);
+        if (code !== "23514") throw new Error(`Expected the raw Postgres CHECK violation (23514) to propagate (possibly wrapped), got ${code}`);
       }
       if (!threw) throw new Error("Batch with a DB-level constraint violation on the second item should have thrown");
 
