@@ -27,6 +27,13 @@
  * see that file for the full rationale. This script reuses the same
  * postgres:16 service container and commission_test_ci* database.
  *
+ * NOTE — unlike test-commissions-pg.ts, this script ALSO sets
+ * CORE_DATABASE_URL/DATABASE_URL (see the comment right before the dynamic
+ * import below). That's a module-load-time workaround for an unrelated,
+ * pre-existing top-level `@workspace/db` import inside
+ * services/commissionEngine.ts, not a real dependency on Neon Core — this
+ * script never queries through it.
+ *
  * EXIT CODE: 0 all passed, 1 first failure / missing env / unexpected error.
  */
 
@@ -100,8 +107,28 @@ for (const [name, raw] of [
 }
 
 process.env.COMMISSION_DATABASE_URL = TEST_URL;
-// DATABASE_URL / CORE_DATABASE_URL intentionally left unset — this module
-// never reads Neon Core or the QBO ops database.
+
+// CORE_DATABASE_URL / DATABASE_URL — set to the SAME ephemeral CI container
+// as TEST_DATABASE_URL, and never queried through in this script.
+//
+// Why this is needed: db/commissionDocuments.ts imports applyFormula from
+// services/commissionEngine.ts (a pure function — no I/O) to recompute a
+// commission after an allocation. That file also has an unrelated,
+// pre-existing top-level `import { invoices } from "@workspace/db"` for a
+// different, Core-reading function this script never calls. @workspace/db's
+// module (lib/db/src/index.ts) throws at IMPORT TIME — before any of our
+// code runs — if CORE_DATABASE_URL/DATABASE_URL aren't set, regardless of
+// whether the importing code path actually touches Core.
+//
+// Setting them to TEST_DATABASE_URL's own ephemeral container (rather than
+// leaving them unset, or pointing anywhere else) satisfies that import-time
+// guard while guaranteeing this can never reach a real database: pg.Pool
+// does not open a connection at construction time, only when a query is
+// issued through it — and nothing in this script ever imports or calls
+// anything from @workspace/db's `db`/`opsDb` exports. This is strictly a
+// module-load workaround, not a real dependency on Core or the ops DB.
+process.env.CORE_DATABASE_URL = TEST_URL;
+process.env.DATABASE_URL = TEST_URL;
 
 // ─── Paths ─────────────────────────────────────────────────────────────────
 
@@ -591,7 +618,10 @@ async function main(): Promise<void> {
     // ── Done ─────────────────────────────────────────────────────────────
     console.log("");
     console.log(`✅  All ${passed} tests passed.`);
-    console.log("    No local database, no Neon Core, no QBO connection was used.");
+    console.log("    No local database and no QBO connection was used.");
+    console.log("    CORE_DATABASE_URL/DATABASE_URL were set to this same ephemeral");
+    console.log("    container (see comment near COMMISSION_DATABASE_URL above) but were");
+    console.log("    never queried through — no real Neon Core connection was made.");
   } catch (err) {
     if (err instanceof Error && err.message !== "STOP") {
       console.error("\n❌  Unexpected error:", err.message);
