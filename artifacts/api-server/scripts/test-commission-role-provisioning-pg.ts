@@ -139,9 +139,21 @@ async function assert(description: string, fn: () => Promise<void>): Promise<voi
   }
 }
 
-/** Runs `fn` under SET ROLE commission_writer, always resetting the role
- * afterward (even on failure), so a thrown permission-denied error from
- * inside `fn` never leaves the connection stuck as the restricted role. */
+/** Runs `fn` under SET ROLE commission_writer, always rolling back
+ * afterward (even on failure) so no mutation persists and the connection
+ * never leaks the restricted role to whoever borrows it from the pool
+ * next.
+ *
+ * ROLLBACK ALONE — never RESET ROLE first: once any statement inside the
+ * transaction fails (exactly what half of this script's assertions
+ * deliberately trigger, to prove a permission IS denied), Postgres marks
+ * the whole transaction "aborted" and refuses every subsequent command
+ * except ROLLBACK/COMMIT — including RESET ROLE itself. Calling RESET
+ * ROLE before ROLLBACK in that state throws "current transaction is
+ * aborted", which then masks the very permission-denied result the test
+ * just correctly caught. ROLLBACK on its own already undoes SET ROLE
+ * (transaction-scoped by default) and works unconditionally, whether the
+ * transaction is healthy or aborted. */
 async function asCommissionWriter<T>(pool: pg.Pool, fn: (client: pg.PoolClient) => Promise<T>): Promise<T> {
   const client = await pool.connect();
   try {
@@ -150,7 +162,6 @@ async function asCommissionWriter<T>(pool: pg.Pool, fn: (client: pg.PoolClient) 
     try {
       return await fn(client);
     } finally {
-      await client.query("RESET ROLE");
       await client.query("ROLLBACK");
     }
   } finally {
@@ -373,17 +384,23 @@ async function main(): Promise<void> {
       });
     });
 
-    await assert("INSERT/UPDATE/DELETE on public.entities and public.invoices (Core, read-only) is rejected", async () => {
-      await asCommissionWriter(pool, async (client) => {
-        for (const stmt of [
-          "INSERT INTO public.entities (id) VALUES (gen_random_uuid())",
-          "INSERT INTO public.invoices (id, entity_id) VALUES (gen_random_uuid(), gen_random_uuid())",
-        ]) {
+    await assert("INSERT on public.entities and public.invoices (Core, read-only) is rejected", async () => {
+      // Each statement gets its OWN transaction (its own asCommissionWriter
+      // call): once one statement fails, Postgres aborts the whole
+      // transaction and refuses every later command in it with "current
+      // transaction is aborted" — not 42501 — which would make a second
+      // statement in the SAME transaction fail this assertion for the
+      // wrong reason. Separate transactions avoid that entirely.
+      for (const stmt of [
+        "INSERT INTO public.entities (id) VALUES (gen_random_uuid())",
+        "INSERT INTO public.invoices (id, entity_id) VALUES (gen_random_uuid(), gen_random_uuid())",
+      ]) {
+        await asCommissionWriter(pool, async (client) => {
           let threw = false;
           try { await client.query(stmt); } catch (e: unknown) { threw = true; assertPermissionDenied(e, `write to Core (${stmt})`); }
           if (!threw) throw new Error(`Should have been rejected: ${stmt}`);
-        }
-      });
+        });
+      }
     });
 
     // ── 4. commission_writer has ZERO DDL capability, anywhere ─────────────
